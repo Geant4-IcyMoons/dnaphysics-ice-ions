@@ -1,0 +1,28 @@
+# 173LU ( 1.37 Y    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  - 4.323391e+07
+                               MshellEC            0        0.056709
+                               KshellEC            0         0.77446
+                               LshellEC            0         0.16883
+                               MshellEC            0  -     0.096593        670.2
+                               MshellEC       78.647  -        2.244      591.553
+                               MshellEC      179.364  -      0.97458      490.836
+                               MshellEC      350.764  -       1.1667      319.436
+                               MshellEC      412.967  -      0.17541      257.233
+                               MshellEC      636.128  -       1.0136       34.072
+                               KshellEC            0  -       1.7632        670.2
+                               KshellEC       78.647  -       39.887      591.553
+                               KshellEC      179.364  -       16.539      490.836
+                               KshellEC      350.764  -       16.977      319.436
+                               KshellEC      412.967  -       2.2798      257.233
+                               KshellEC      636.128  -        1e-25       34.072
+                               LshellEC            0  -       0.3148        670.2
+                               LshellEC       78.647  -       7.2904      591.553
+                               LshellEC      179.364  -       3.1447      490.836
+                               LshellEC      350.764  -       3.7012      319.436
+                               LshellEC      412.967  -      0.54967      257.233
+                               LshellEC      636.128  -       1.8825       34.072
+P      123.672  -     7.42e-05
+                                     IT            0               1
+P      128.343  -      5.2e-09
+                                     IT            0               1

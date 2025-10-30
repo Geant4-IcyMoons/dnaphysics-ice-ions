@@ -1,0 +1,16 @@
+# 193PT ( 50 Y      )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -  1.57788e+09
+                               MshellEC            0          0.3239
+                               LshellEC            0          0.6761
+                               MshellEC            0  -        32.39         56.6
+                               LshellEC            0  -        67.61         56.6
+P        1.642  -      9.7e-09
+                               BetaPlus            0               1
+                               BetaPlus            0  -          100       58.242
+P       14.276  -     2.52e-09
+                                     IT            0               1
+P       149.78  -       374112
+                                     IT            0               1
+P       1454.8  -      3.2e-09
+                                     IT            0               1

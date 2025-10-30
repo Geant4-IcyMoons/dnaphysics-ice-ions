@@ -1,0 +1,10 @@
+# 201RN ( 7.1 S     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -            7
+                                  Alpha            0               1
+                               BetaPlus            0        1.25e-27
+                                  Alpha            0  -        77.99       6860.7
+                                  Alpha          130  -       2.0101       6730.7
+                               BetaPlus            0  -        1e-25         6682
+P          245  -          3.8
+                                     IT            0               1

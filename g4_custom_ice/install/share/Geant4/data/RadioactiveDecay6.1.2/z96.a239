@@ -1,0 +1,9 @@
+# 239CM ( 2.7 H     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         9720
+                                  Alpha            0      9.9999e-06
+                               BetaPlus            0         0.99999
+                                  Alpha            0  -        0.001         6540
+                               BetaPlus            0  -       33.333         1760
+                               BetaPlus         40.7  -       33.333       1719.3
+                               BetaPlus        187.1  -       33.333       1572.9

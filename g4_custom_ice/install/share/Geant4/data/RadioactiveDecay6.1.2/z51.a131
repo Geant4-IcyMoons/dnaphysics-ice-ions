@@ -1,0 +1,32 @@
+# 131SB ( 23.03 M   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       1381.8
+                              BetaMinus            0               1
+                              BetaMinus      182.258  -       6.3788     3047.342    uniqueFirstForbidden
+                              BetaMinus      296.023  -      0.29441     2933.577    uniqueSecondForbidden
+                              BetaMinus      642.331  -       11.776     2587.269
+                              BetaMinus       943.43  -       5.6919      2286.17
+                              BetaMinus     1050.834  -       1.8646     2178.766
+                              BetaMinus      1207.14  -       2.8459      2022.46
+                              BetaMinus       1267.5  -       5.2012       1962.1
+                              BetaMinus       1398.9  -       1.3739       1830.7
+                              BetaMinus      1469.68  -       1.5702      1759.92
+                              BetaMinus      1669.81  -       4.1217      1559.79
+                              BetaMinus      1721.64  -       2.4534      1507.96
+                              BetaMinus      1876.41  -       28.459      1353.19
+                              BetaMinus      2015.41  -      0.68695      1214.19
+                              BetaMinus      2066.96  -       8.4396      1162.64
+                              BetaMinus       2179.8  -       2.7478       1049.8
+                              BetaMinus      2226.13  -       1.0795      1003.47
+                              BetaMinus       2335.5  -       1.8646        894.1
+                              BetaMinus      2398.53  -       2.7478       831.07
+                              BetaMinus      2496.49  -       2.8459       733.11
+                              BetaMinus      2552.06  -       2.4534       677.54
+                              BetaMinus      2598.94  -       2.8459       630.66
+                              BetaMinus       2662.2  -       2.2571        567.4
+P      1676.06  -      9.1e-05
+                                     IT            0               1
+P       1687.2  -      4.3e-06
+                                     IT            0               1
+P       2165.6  -      1.1e-06
+                                     IT            0               1

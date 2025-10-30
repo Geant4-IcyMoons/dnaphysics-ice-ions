@@ -1,0 +1,22 @@
+# 255LR (  31.1 S   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         31.1
+                                  Alpha            0         0.99462
+                               BetaPlus            0       0.0040323
+                              SpFission            0       0.0013441
+                                  Alpha            0  -          3.7         8556
+                                  Alpha           54  -       69.042         8502
+                                  Alpha          133  -        1.258         8423
+                               BetaPlus            0  -          0.3         3135
+                              SpFission            0  -          0.1        1e-06
+P           38  -         2.54
+                                  Alpha            0             0.4
+                                     IT            0             0.6
+                                  Alpha            0  -           37         8594
+                                  Alpha          133  -            3         8461
+P          740 +Y        1e-06
+                                     IT            0               1
+P        878.8 +Y        1e-08
+                                     IT            0               1
+P       1408.6 +Y         2.54
+                                     IT            0               1

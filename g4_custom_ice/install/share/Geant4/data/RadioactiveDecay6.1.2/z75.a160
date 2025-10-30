@@ -1,0 +1,9 @@
+# 160RE (    612 US )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -     0.000612
+                                  Alpha            0         0.10784
+                                 Proton            0         0.89216
+                                  Alpha            0  -           11         6698
+                                 Proton            0  -           91         1267
+P          184  -      2.8e-06
+                                     IT            0               1

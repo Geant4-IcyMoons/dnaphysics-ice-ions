@@ -1,0 +1,13 @@
+# 20MG ( 90.8 MS   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       0.0904
+                               BetaPlus            0               1
+                               BetaPlus       984.25  -       72.079      9642.95
+                               BetaPlus         2645  -      0.10341       7982.2
+                               BetaPlus         3001  -       11.892       7626.2
+                               BetaPlus         3871  -       4.9638       6756.2
+                               BetaPlus         4123  -       2.7921       6504.2
+                               BetaPlus         4800  -       1.9648       5827.2
+                               BetaPlus         5600  -       1.5512       5027.2
+                               BetaPlus         6266  -        1.241       4361.2
+                               BetaPlus         6534  -       3.4126       4093.2

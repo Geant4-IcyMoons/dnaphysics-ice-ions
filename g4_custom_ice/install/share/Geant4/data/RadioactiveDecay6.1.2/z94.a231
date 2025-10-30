@@ -1,0 +1,7 @@
+# 231PU (  8.6 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          516
+                                  Alpha            0             0.1
+                               BetaPlus            0             0.9
+                                  Alpha            0  -           10         6839
+                               BetaPlus            0  -           90         2680

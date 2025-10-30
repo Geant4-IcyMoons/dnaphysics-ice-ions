@@ -1,0 +1,7 @@
+# 170IR ( 0.87 S    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         0.87
+                                  Alpha            0        0.077381
+                               BetaPlus            0         0.92262
+                                  Alpha            0 +X          5.2         6230
+                               BetaPlus            0  -           62        10740

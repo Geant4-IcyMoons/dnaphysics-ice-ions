@@ -1,0 +1,9 @@
+# 201FR ( 69 MS     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        0.063
+                                  Alpha            0               1
+                                  Alpha            0  -          100         7519
+P          129  -        0.037
+                                     IT            0               1
+P        289.5  -      7.2e-07
+                                     IT            0               1

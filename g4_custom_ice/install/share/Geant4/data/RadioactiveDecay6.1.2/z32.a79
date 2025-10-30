@@ -1,0 +1,25 @@
+# 79GE (  18.98 S  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        18.98
+                              BetaMinus            0               1
+                              BetaMinus            0  -       59.718         4110
+                              BetaMinus       100.45  -      0.77634      4009.55
+                              BetaMinus       109.58  -       22.295      4000.42
+                              BetaMinus       603.69  -       2.6376      3506.31
+                              BetaMinus      1411.98  -       1.2839      2698.02
+                              BetaMinus      1490.23  -      0.33044      2619.77
+                              BetaMinus      1505.96  -       12.043      2604.04
+                              BetaMinus      1869.42  -      0.91568      2240.58
+P       185.95  -           39
+                              BetaMinus            0            0.96
+                                     IT            0            0.04
+                              BetaMinus            0  -       9.5364      4295.95    uniqueFirstForbidden
+                              BetaMinus       109.58  -       1.0596      4186.37    uniqueFirstForbidden
+                              BetaMinus       230.57  -       12.715      4065.38
+                              BetaMinus       634.06  -       8.2649      3661.89
+                              BetaMinus       772.81  -       10.702      3523.14
+                              BetaMinus       875.16  -       2.0132      3420.79
+                              BetaMinus      1012.03  -       10.278      3283.92
+                              BetaMinus      1490.23  -       2.9669      2805.72
+                              BetaMinus      1496.89  -       6.6755      2799.06
+                              BetaMinus      1890.36  -       31.788      2405.59

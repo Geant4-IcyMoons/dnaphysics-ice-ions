@@ -1,0 +1,20 @@
+# 257MD ( 5.52 H    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        19872
+                                  Alpha            0         0.14851
+                               MshellEC            0        0.093734
+                               KshellEC            0         0.51288
+                               LshellEC            0         0.23497
+                              SpFission            0        0.009901
+                                  Alpha            0  -     0.054005       7557.1
+                                  Alpha         46.3  -     0.037504       7510.8
+                                  Alpha           80  -     0.015002       7477.1
+                                  Alpha          106  -     0.019502       7451.1
+                                  Alpha          139  -     0.037504       7418.1
+                                  Alpha        181.3  -     0.030003       7375.8
+                                  Alpha        371.4  -       14.311       7185.7
+                                  Alpha          435  -      0.49505       7122.1
+                               MshellEC            0  -       9.4671          402
+                               KshellEC            0  -       51.801          402
+                               LshellEC            0  -       23.732          402
+                              SpFission            0  -            1        1e-06

@@ -1,0 +1,6 @@
+# 272BH ( 10.5 S    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         10.5
+                                  Alpha            0               1
+                                  Alpha            0  -           75         9300
+                                  Alpha          140  -           25         9160

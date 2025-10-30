@@ -1,0 +1,7 @@
+# 109TE (  4.4 S    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          4.4
+                                  Alpha            0           0.039
+                               BetaPlus            0           0.961
+                                  Alpha            0  -          3.9         3198
+                               BetaPlus            0  -         96.1         8536

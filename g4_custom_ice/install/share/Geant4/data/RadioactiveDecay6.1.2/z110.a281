@@ -1,0 +1,7 @@
+# 281DS (  12 S     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -           12
+                                  Alpha            0        0.056604
+                              SpFission            0          0.9434
+                                  Alpha            0  -            6         9470
+                              SpFission            0  -          100        1e-06

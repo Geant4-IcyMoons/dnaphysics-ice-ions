@@ -1,0 +1,61 @@
+# 193AU ( 17.65 H   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        63540
+                               MshellEC            0        0.049627
+                               KshellEC            0         0.79693
+                               LshellEC            0         0.15345
+                               MshellEC            0  -      0.72382         1075
+                               MshellEC        1.642  -        1e-25     1073.358
+                               MshellEC       14.276  -      0.96661     1060.724
+                               MshellEC      114.158  -      0.60725      960.842
+                               MshellEC       121.29  -     0.029416       953.71
+                               MshellEC       187.81  -       1.2882       887.19
+                               MshellEC       232.16  -       0.1898       842.84
+                               MshellEC       269.83  -      0.79007       805.17
+                               MshellEC       439.05  -      0.19483       635.95
+                               MshellEC       491.24  -      0.14496       583.76
+                               MshellEC       522.53  -     0.027754       552.47
+                               KshellEC            0  -       11.968         1075
+                               KshellEC        1.642  -        1e-25     1073.358
+                               KshellEC       14.276  -       15.952     1060.724
+                               KshellEC      114.158  -       9.8615      960.842
+                               KshellEC       121.29  -      0.47706       953.71
+                               KshellEC       187.81  -       20.624       887.19
+                               KshellEC       232.16  -       3.0088       842.84
+                               KshellEC       269.83  -        12.41       805.17
+                               KshellEC       439.05  -       2.8938       635.95
+                               KshellEC       491.24  -       2.1017       583.76
+                               KshellEC       522.53  -      0.39564       552.47
+                               LshellEC            0  -       2.2469         1075
+                               LshellEC        1.642  -        1e-25     1073.358
+                               LshellEC       14.276  -       2.9996     1060.724
+                               LshellEC      114.158  -       1.8807      960.842
+                               LshellEC       121.29  -     0.091069       953.71
+                               LshellEC       187.81  -       3.9816       887.19
+                               LshellEC       232.16  -       0.5859       842.84
+                               LshellEC       269.83  -       2.4359       805.17
+                               LshellEC       439.05  -      0.59623       635.95
+                               LshellEC       491.24  -      0.44233       583.76
+                               LshellEC       522.53  -     0.084523       552.47
+P       38.234  -     3.81e-09
+                                     IT            0               1
+P        290.2  -          3.9
+                               MshellEC            0       1.434e-05
+                               KshellEC            0      0.00024105
+                               LshellEC            0       4.461e-05
+                                     IT            0          0.9997
+                               MshellEC       149.78  -     0.001434      1215.42
+                               KshellEC       149.78  -     0.024105      1215.42
+                               LshellEC       149.78  -     0.004461      1215.42
+P       789.94  -      1.2e-09
+                                     IT            0               1
+P       1947.1  -     1.04e-08
+                                     IT            0               1
+P         2080  -     2.51e-09
+                                     IT            0               1
+P       2476.6  -     3.52e-09
+                                     IT            0               1
+P       2486.7  -      1.5e-07
+                                     IT            0               1
+P       2701.1  -      1.8e-09
+                                     IT            0               1

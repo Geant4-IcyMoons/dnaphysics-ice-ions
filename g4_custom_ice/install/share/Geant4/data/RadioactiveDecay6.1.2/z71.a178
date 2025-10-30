@@ -1,0 +1,27 @@
+# 178LU ( 28.4 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         1704
+                              BetaMinus            0               1
+                              BetaMinus            0  -       62.757       2097.5
+                              BetaMinus      93.1803  -       28.888      2004.32
+                              BetaMinus      1174.63  -     0.079691       922.87
+                              BetaMinus     1199.385  -      0.11954      898.115
+                              BetaMinus     1260.248  -     0.079691      837.252
+                              BetaMinus     1276.692  -     0.029884      820.808
+                              BetaMinus     1310.068  -       1.0957      787.432
+                              BetaMinus     1322.463  -     0.029884      775.037    uniqueFirstForbidden
+                              BetaMinus     1362.551  -      0.62757      734.949
+                              BetaMinus      1434.23  -       3.1876       663.27
+                              BetaMinus     1443.934  -     0.050803      653.566
+                              BetaMinus     1496.449  -       1.0957      601.051
+                              BetaMinus      1513.68  -      0.69729       583.82
+                              BetaMinus      1561.54  -      0.36857       535.96
+                              BetaMinus     1566.668  -      0.59768      530.832
+                              BetaMinus      1772.15  -      0.26896       325.35
+                              BetaMinus     1818.286  -     0.026896      279.214
+P        123.8  -         1386
+                              BetaMinus            0               1
+                              BetaMinus     1147.416  -       83.681     1073.884
+                              BetaMinus     1364.078  -       3.2992      857.222
+                              BetaMinus     1479.025  -       12.997      742.275
+                              BetaMinus     1601.484  -     0.022995      619.816

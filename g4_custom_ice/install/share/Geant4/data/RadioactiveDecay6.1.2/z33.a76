@@ -1,0 +1,26 @@
+# 76AS (  26.254 H )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -      94514.4
+                              BetaMinus            0         0.99973
+                               MshellEC            0      5.2572e-06
+                               KshellEC            0      0.00023678
+                               LshellEC            0      2.7887e-05
+                              BetaMinus            0  -       55.855       2960.6    uniqueFirstForbidden
+                              BetaMinus      559.103  -       31.731     2401.497
+                              BetaMinus     1122.279  -      0.69068     1838.321    uniqueFirstForbidden
+                              BetaMinus     1216.154  -       6.9168     1744.446
+                              BetaMinus     1330.872  -     0.059659     1629.728    uniqueFirstForbidden
+                              BetaMinus     1688.971  -     0.011011     1271.629
+                              BetaMinus     1787.655  -       1.6917     1172.945
+                              BetaMinus     1791.437  -     0.059359     1169.163
+                              BetaMinus      2026.02  -     0.001001       934.58    uniqueFirstForbidden
+                              BetaMinus     2170.572  -    0.0013013      790.028    uniqueFirstForbidden
+                              BetaMinus     2429.131  -       1.5215      531.469
+                              BetaMinus     2514.681  -     0.026827      445.919
+                              BetaMinus     2655.383  -      0.95595      305.217
+                              BetaMinus     2669.904  -      0.47747      290.696
+                               MshellEC      562.917  -   0.00052586      358.583
+                               KshellEC      562.917  -     0.023685      358.583
+                               LshellEC      562.917  -    0.0027894      358.583
+P      44.4254  -     1.84e-06
+                                     IT            0               1

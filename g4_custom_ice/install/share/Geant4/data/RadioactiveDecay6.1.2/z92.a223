@@ -1,0 +1,8 @@
+# 223U ( 59 US     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -      1.8e-05
+                                  Alpha            0           0.998
+                               BetaPlus            0        0.001996
+                                  Alpha            0  -           35         9158
+                                  Alpha          244  -           65         8914
+                               BetaPlus            0  -          0.2         3710

@@ -1,0 +1,7 @@
+# 110XE ( 105 MS    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        0.093
+                                  Alpha            0               1
+                               BetaPlus            0           1e-27
+                                  Alpha            0  -          100         3872
+                               BetaPlus            0  -        1e-25         8550

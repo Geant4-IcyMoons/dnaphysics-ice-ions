@@ -1,0 +1,40 @@
+# 192IR ( 73.829 D  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -      6378826
+                              BetaMinus            0          0.9524
+                               MshellEC            0       0.0028743
+                               KshellEC            0        0.036015
+                               LshellEC            0       0.0087109
+                              BetaMinus     784.5759  -       48.044     668.3241
+                              BetaMinus     920.9185  -       41.476     531.9815
+                              BetaMinus     1201.045  -       5.6075     251.8548
+                              BetaMinus     1378.046  -      0.10274       74.854
+                              BetaMinus      1383.95  -    0.0039052        68.95
+                              BetaMinus      1406.35  -    0.0059079        46.55
+                               MshellEC       580.28  -     0.037116       466.42
+                               MshellEC     690.3705  -       0.2386     356.3295
+                               MshellEC      909.592  -     0.011713      137.108
+                               KshellEC       580.28  -      0.52804       466.42
+                               KshellEC     690.3705  -       3.0221     356.3295
+                               KshellEC      909.592  -     0.051327      137.108
+                               LshellEC       580.28  -      0.11426       466.42
+                               LshellEC     690.3705  -      0.72454     356.3295
+                               LshellEC      909.592  -     0.032282      137.108
+P        56.72  -      6378826
+                              BetaMinus            0        0.000175
+                                     IT            0         0.99982
+                              BetaMinus            0  -        0.007      1509.62
+                              BetaMinus     316.5064  -        0.008     1193.114
+                              BetaMinus     612.4632  -       0.0025     897.1568
+P        66.83  -      1.5e-08
+                                     IT            0               1
+P       84.275  -      1.9e-09
+                                     IT            0               1
+P      104.776  -     1.74e-08
+                                     IT            0               1
+P     118.7824  -      1.5e-08
+                                     IT            0               1
+P       168.14  - 7.605382e+09
+                                     IT            0               1
+P      193.511  -      2.7e-09
+                                     IT            0               1

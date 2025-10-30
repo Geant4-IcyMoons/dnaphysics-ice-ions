@@ -1,0 +1,29 @@
+# 84NB ( 9.8 S     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          9.8
+                               MshellEC            0      9.9166e-05
+                               BetaPlus            0         0.99574
+                               KshellEC            0       0.0037225
+                               LshellEC            0      0.00044302
+                               MshellEC       539.92  -    0.0033281      -539.92
+                               MshellEC      1119.31  -    0.0035434     -1119.31
+                               MshellEC      1262.81  -   0.00064093     -1262.81
+                               MshellEC      1575.56  -    0.0012306     -1575.56
+                               MshellEC       1966.6  -    0.0011735      -1966.6
+                               BetaPlus       539.92  -       39.586      -539.92
+                               BetaPlus      1119.31  -       35.526     -1119.31
+                               BetaPlus      1262.81  -       5.9886     -1262.81
+                               BetaPlus      1575.56  -        10.15     -1575.56
+                               BetaPlus       1966.6  -       8.3232      -1966.6
+                               KshellEC       539.92  -      0.12434      -539.92
+                               KshellEC      1119.31  -      0.13335     -1119.31
+                               KshellEC      1262.81  -     0.023966     -1262.81
+                               KshellEC      1575.56  -      0.04616     -1575.56
+                               KshellEC       1966.6  -     0.044438      -1966.6
+                               LshellEC       539.92  -     0.014831      -539.92
+                               LshellEC      1119.31  -     0.015782     -1119.31
+                               LshellEC      1262.81  -    0.0028742     -1262.81
+                               LshellEC      1575.56  -    0.0055358     -1575.56
+                               LshellEC       1966.6  -    0.0052791      -1966.6
+P        337.7  -     1.03e-07
+                                     IT            0               1

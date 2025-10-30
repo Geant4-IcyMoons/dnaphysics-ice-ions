@@ -1,0 +1,5 @@
+# 71FE ( 3.5700e-02)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       0.0357
+                              BetaMinus            0               1
+                              BetaMinus            0  -          100        12400

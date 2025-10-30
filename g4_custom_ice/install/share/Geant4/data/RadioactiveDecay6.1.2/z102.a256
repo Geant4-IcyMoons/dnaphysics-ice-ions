@@ -1,0 +1,8 @@
+# 256NO (  2.91 S   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         2.91
+                                  Alpha            0          0.9947
+                              SpFission            0          0.0053
+                                  Alpha            0  -       86.539         8582
+                                  Alpha         42.1  -       12.931       8539.9
+                              SpFission            0  -         0.53        1e-06

@@ -1,0 +1,7 @@
+# 271DS (  1.6 MS   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       0.0016
+                                  Alpha            0               1
+                                  Alpha            0  -       33.333        10870
+                                  Alpha           80  -       33.333        10790
+                                  Alpha          320  -       33.333        10550

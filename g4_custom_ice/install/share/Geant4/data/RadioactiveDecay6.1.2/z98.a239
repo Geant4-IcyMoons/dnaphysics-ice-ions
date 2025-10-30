@@ -1,0 +1,7 @@
+# 239CF ( 39 S      )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -           39
+                                  Alpha            0               1
+                               BetaPlus            0           1e-27
+                                  Alpha           50  -          100         7710
+                               BetaPlus            0  -        1e-25         3950

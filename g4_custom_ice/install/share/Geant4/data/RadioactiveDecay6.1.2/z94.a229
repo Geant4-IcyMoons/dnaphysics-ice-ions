@@ -1,0 +1,9 @@
+# 229PU ( 9.0000e+01)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -           90
+                                  Alpha            0         0.46729
+                               BetaPlus            0         0.46729
+                              SpFission            0        0.065421
+                                  Alpha            0  -           50         7600
+                               BetaPlus            0  -           50         3590
+                              SpFission            0  -            7        1e-06

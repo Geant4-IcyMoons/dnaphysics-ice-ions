@@ -1,0 +1,5 @@
+# 198FR ( 1.5000e-02)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0 +X        0.015
+                               BetaPlus            0               1
+                               BetaPlus            0  -          100        10810

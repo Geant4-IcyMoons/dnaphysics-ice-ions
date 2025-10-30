@@ -1,0 +1,45 @@
+# 53FE ( 8.51 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        510.6
+                               MshellEC            0      0.00047497
+                               BetaPlus            0         0.97092
+                               KshellEC            0        0.025882
+                               LshellEC            0       0.0027239
+                               MshellEC            0  -     0.015191       3742.9
+                               MshellEC       377.89  -     0.017812      3365.01
+                               MshellEC      1620.12  -    0.0036015      2122.78
+                               MshellEC       2273.9  -    0.0054309         1469
+                               MshellEC      2686.16  -    0.0016461      1056.74
+                               MshellEC       2946.9  -     0.000826          796
+                               MshellEC      3127.37  -    0.0023226       615.53
+                               MshellEC       3248.9  -   0.00066682          494
+                               BetaPlus            0  -       55.134       3742.9
+                               BetaPlus       377.89  -         41.1      3365.01
+                               BetaPlus      1620.12  -      0.80195      2122.78
+                               BetaPlus       2273.9  -     0.055836         1469
+                               BetaPlus      2686.16  -   1.0024e-27      1056.74
+                               BetaPlus       2946.9  -   1.0024e-27          796
+                               BetaPlus      3127.37  -   1.0024e-27       615.53
+                               BetaPlus       3248.9  -   1.0024e-27          494
+                               KshellEC            0  -      0.82993       3742.9
+                               KshellEC       377.89  -      0.97268      3365.01
+                               KshellEC      1620.12  -      0.19628      2122.78
+                               KshellEC       2273.9  -      0.29523         1469
+                               KshellEC      2686.16  -     0.089161      1056.74
+                               KshellEC       2946.9  -     0.044563          796
+                               KshellEC      3127.37  -      0.12472       615.53
+                               KshellEC       3248.9  -     0.035614          494
+                               LshellEC            0  -     0.087143       3742.9
+                               LshellEC       377.89  -      0.10216      3365.01
+                               LshellEC      1620.12  -     0.020655      2122.78
+                               LshellEC       2273.9  -     0.031144         1469
+                               LshellEC      2686.16  -    0.0094364      1056.74
+                               LshellEC       2946.9  -     0.004733          796
+                               LshellEC      3127.37  -     0.013302       615.53
+                               LshellEC       3248.9  -    0.0038164          494
+P       741.11  -     6.35e-08
+                                     IT            0               1
+P       774.42  -        2e-09
+                                     IT            0               1
+P       3040.4  -        152.4
+                                     IT            0               1

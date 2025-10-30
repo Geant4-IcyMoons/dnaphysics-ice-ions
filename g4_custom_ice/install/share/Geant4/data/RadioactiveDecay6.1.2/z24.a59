@@ -1,0 +1,7 @@
+# 59CR (  0.74 S   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         0.74
+                              BetaMinus            0               1
+                              BetaMinus       1900.2  -          100       5509.2
+P        502.7  -      9.6e-05
+                                     IT            0               1

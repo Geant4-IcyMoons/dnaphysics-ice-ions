@@ -1,0 +1,27 @@
+# 77SR ( 9.0 S     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -            9
+                               MshellEC            0      0.00017693
+                               BetaPlus            0         0.99175
+                               KshellEC            0       0.0072376
+                               LshellEC            0      0.00083865
+                               MshellEC            0  -   0.00085663         7027
+                               MshellEC       144.83  -    0.0010926      6882.17
+                               MshellEC      146.934  -     0.013279     6880.066
+                               MshellEC       307.03  -    0.0015641      6719.97
+                               MshellEC       1541.2  -   0.00090079       5485.8
+                               BetaPlus            0  -       5.9505         7027
+                               BetaPlus       144.83  -        6.248      6882.17
+                               BetaPlus      146.934  -       76.365     6880.066
+                               BetaPlus       307.03  -       8.2315      6719.97
+                               BetaPlus       1541.2  -       2.3802       5485.8
+                               KshellEC            0  -      0.03505         7027
+                               KshellEC       144.83  -     0.044687      6882.17
+                               KshellEC      146.934  -      0.54326     6880.066
+                               KshellEC       307.03  -      0.06396      6719.97
+                               KshellEC       1541.2  -     0.036796       5485.8
+                               LshellEC            0  -    0.0040597         7027
+                               LshellEC       144.83  -    0.0051784      6882.17
+                               LshellEC      146.934  -     0.062942     6880.066
+                               LshellEC       307.03  -    0.0074158      6719.97
+                               LshellEC       1541.2  -    0.0042688       5485.8

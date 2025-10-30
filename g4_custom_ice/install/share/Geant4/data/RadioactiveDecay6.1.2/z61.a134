@@ -1,0 +1,27 @@
+# 134PM ( 5 S       )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -            5
+                               MshellEC            0       0.0012992
+                               BetaPlus            0         0.96144
+                               KshellEC            0        0.032687
+                               LshellEC            0       0.0045698
+                               MshellEC       294.17  -     0.032938      8585.83
+                               MshellEC       753.86  -     0.039691      8126.14
+                               MshellEC       1089.3  -     0.039851       7790.7
+                               MshellEC       1383.8  -    0.0095386       7496.2
+                               MshellEC       1669.2  -    0.0079035       7210.8
+                               BetaPlus       294.17  -       30.413      8585.83
+                               BetaPlus       753.86  -       29.432      8126.14
+                               BetaPlus       1089.3  -       26.489       7790.7
+                               BetaPlus       1383.8  -       5.5921       7496.2
+                               BetaPlus       1669.2  -       4.2186       7210.8
+                               KshellEC       294.17  -      0.83115      8585.83
+                               KshellEC       753.86  -       1.0001      8126.14
+                               KshellEC       1089.3  -      0.99629       7790.7
+                               KshellEC       1383.8  -      0.24141       7496.2
+                               KshellEC       1669.2  -      0.19976       7210.8
+                               LshellEC       294.17  -      0.11698      8585.83
+                               LshellEC       753.86  -      0.13751      8126.14
+                               LshellEC       1089.3  -      0.14114       7790.7
+                               LshellEC       1383.8  -     0.033562       7496.2
+                               LshellEC       1669.2  -     0.027793       7210.8

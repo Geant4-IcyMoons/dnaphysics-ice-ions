@@ -1,0 +1,21 @@
+# 98TC ( 4.2E+6 Y  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  - 1.325419e+14
+                              BetaMinus            0               1
+                              BetaMinus      1397.91  -          100       395.09
+P         21.8  -      2.4e-09
+                                     IT            0               1
+P        65.41  -      1.4e-09
+                                     IT            0               1
+P        81.68  -      1.4e-09
+                                     IT            0               1
+P        90.77  -     1.47e-05
+                                     IT            0               1
+P       138.59  -      8.2e-09
+                                     IT            0               1
+P       152.07  -      1.4e-09
+                                     IT            0               1
+P       190.28  -      1.4e-09
+                                     IT            0               1
+P       203.74  -      1.4e-09
+                                     IT            0               1

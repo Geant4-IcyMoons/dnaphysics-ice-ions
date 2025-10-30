@@ -1,0 +1,8 @@
+# 260SG ( 4.95 MS   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       0.0036
+                                  Alpha            0         0.36709
+                              SpFission            0         0.63291
+                                  Alpha            0  -        24.07         9901
+                                  Alpha         2868  -         4.93         7033
+                              SpFission            0  -           50        1e-06

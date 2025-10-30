@@ -1,0 +1,28 @@
+# 189AU ( 28.7 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         1722
+                                  Alpha            0           3e-07
+                               BetaPlus            0               1
+                                  Alpha            0  -        3e-05         4330
+                               BetaPlus            0  -          100         2887
+P         9.94  -        3e-08
+                                     IT            0               1
+P       247.25  -        275.4
+                               MshellEC            0         0.04039
+                               BetaPlus            0             0.1
+                               KshellEC            0         0.73266
+                               LshellEC            0         0.12695
+                               MshellEC       172.79  -        3.498      2961.46
+                               MshellEC        493.3  -      0.54095      2640.95
+                               BetaPlus       172.79  -            9      2961.46
+                               BetaPlus        493.3  -            1      2640.95
+                               KshellEC       172.79  -       63.506      2961.46
+                               KshellEC        493.3  -       9.7598      2640.95
+                               LshellEC       172.79  -       10.996      2961.46
+                               LshellEC        493.3  -       1.6992      2640.95
+P       325.12  -      1.9e-07
+                                     IT            0               1
+P       2554.2 +X      9.3e-09
+                                     IT            0               1
+P       2554.8  -     2.42e-07
+                                     IT            0               1

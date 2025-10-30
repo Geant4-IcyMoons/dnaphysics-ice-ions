@@ -1,0 +1,25 @@
+# 190BI (   6.3 S   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          6.3
+                                  Alpha            0         0.72727
+                               BetaPlus            0         0.27273
+                                  Alpha            0  -       1.1517         6862
+                                  Alpha        104.6  -       1.6796       6757.4
+                                  Alpha        215.2  -      0.18396       6646.8
+                                  Alpha        293.7  -       76.862       6568.3
+                                  Alpha          314  -     0.076782         6548
+                                  Alpha        506.7  -     0.046389       6355.3
+                               BetaPlus            0  -           30         9821
+P        121.5  -     1.75e-07
+                                     IT            0               1
+P          191  -          6.2
+                                  Alpha            0               1
+                                  Alpha           40  -       1.1912         7013
+                                  Alpha          129  -      0.98097         6924
+                                  Alpha          295  -     0.025926         6758
+                                  Alpha          321  -     0.030831         6732
+                                  Alpha          396  -      0.27327         6657
+                                  Alpha          414  -       67.337         6639
+                                  Alpha          481  -      0.16116         6572
+P          465  -        1e-06
+                                     IT            0               1

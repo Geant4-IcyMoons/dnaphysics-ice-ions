@@ -1,0 +1,9 @@
+# 218AC (  1.03 US  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -     1.03e-06
+                                  Alpha            0               1
+                                  Alpha            0  -          100         9380
+P        122.5 +Y      3.2e-08
+                                     IT            0               1
+P       506.99 +Y     1.03e-07
+                                     IT            0               1

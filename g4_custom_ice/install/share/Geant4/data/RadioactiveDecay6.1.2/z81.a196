@@ -1,0 +1,89 @@
+# 196TL ( 1.84 H    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         6624
+                               MshellEC            0        0.040749
+                               BetaPlus            0         0.12617
+                               KshellEC            0         0.70659
+                               LshellEC            0         0.12649
+                               MshellEC            0  -      0.18348         4329
+                               MshellEC       425.98  -       1.2482      3903.02
+                               MshellEC      1036.65  -      0.26019      3292.35
+                               MshellEC      1061.44  -      0.14812      3267.56
+                               MshellEC         1319  -    0.0018881         3010
+                               MshellEC       1390.9  -      0.13977       2938.1
+                               MshellEC      1774.99  -      0.24064      2554.01
+                               MshellEC       1815.2  -      0.22266       2513.8
+                               MshellEC       1845.4  -      0.11277       2483.6
+                               MshellEC         1922  -      0.37804         2407
+                               MshellEC         1979  -      0.24176         2350
+                               MshellEC       2012.6  -      0.28308       2316.4
+                               MshellEC       2454.8  -      0.13242       1874.2
+                               MshellEC       2495.9  -      0.17157       1833.1
+                               MshellEC       2654.2  -      0.12143       1674.8
+                               MshellEC         3164  -      0.18888         1165
+                               BetaPlus            0  -      0.77925         4329    uniqueFirstForbidden
+                               BetaPlus       425.98  -       8.9614      3903.02
+                               BetaPlus      1036.65  -      0.90588      3292.35
+                               BetaPlus      1061.44  -      0.49677      3267.56
+                               BetaPlus         1319  -   0.00097407         3010    uniqueFirstForbidden
+                               BetaPlus       1390.9  -      0.29222       2938.1
+                               BetaPlus      1774.99  -      0.24352      2554.01
+                               BetaPlus       1815.2  -      0.20455       2513.8
+                               BetaPlus       1845.4  -     0.096433       2483.6
+                               BetaPlus         1922  -      0.27274         2407
+                               BetaPlus         1979  -      0.15585         2350
+                               BetaPlus       2012.6  -      0.16559       2316.4
+                               BetaPlus       2454.8  -     0.017241       1874.2
+                               BetaPlus       2495.9  -     0.018507       1833.1
+                               BetaPlus       2654.2  -     0.005747       1674.8
+                               BetaPlus         3164  -   9.7407e-28         1165
+                               KshellEC            0  -       3.1413         4329
+                               KshellEC       425.98  -       22.118      3903.02
+                               KshellEC      1036.65  -       4.5756      3292.35
+                               KshellEC      1061.44  -       2.6031      3267.56
+                               KshellEC         1319  -     0.031222         3010
+                               KshellEC       1390.9  -       2.4431       2938.1
+                               KshellEC      1774.99  -        4.171      2554.01
+                               KshellEC       1815.2  -       3.8555       2513.8
+                               KshellEC       1845.4  -        1.951       2483.6
+                               KshellEC         1922  -       6.5275         2407
+                               KshellEC         1979  -        4.167         2350
+                               KshellEC       2012.6  -       4.8737       2316.4
+                               KshellEC       2454.8  -       2.2415       1874.2
+                               KshellEC       2495.9  -        2.899       1833.1
+                               KshellEC       2654.2  -       2.0341       1674.8
+                               KshellEC         3164  -       3.0269         1165
+                               LshellEC            0  -      0.56849         4329
+                               LshellEC       425.98  -       3.8866      3903.02
+                               LshellEC      1036.65  -      0.80942      3292.35
+                               LshellEC      1061.44  -      0.46068      3267.56
+                               LshellEC         1319  -    0.0058222         3010
+                               LshellEC       1390.9  -      0.43434       2938.1
+                               LshellEC      1774.99  -      0.74691      2554.01
+                               LshellEC       1815.2  -      0.69104       2513.8
+                               LshellEC       1845.4  -      0.34997       2483.6
+                               LshellEC         1922  -       1.1729         2407
+                               LshellEC         1979  -       0.7498         2350
+                               LshellEC       2012.6  -      0.87773       2316.4
+                               LshellEC       2454.8  -      0.40974       1874.2
+                               LshellEC       2495.9  -      0.53063       1833.1
+                               LshellEC       2654.2  -      0.37509       1674.8
+                               LshellEC         3164  -      0.58008         1165
+P        394.2  -         5076
+                               MshellEC            0        0.041512
+                               BetaPlus            0        0.068317
+                               KshellEC            0         0.72323
+                               LshellEC            0         0.12894
+                                     IT            0           0.038
+                               MshellEC      1785.15  -      0.28027      2938.05
+                               MshellEC      1841.34  -        3.871      2881.86
+                               BetaPlus      1785.15  -      0.42698      2938.05
+                               BetaPlus      1841.34  -       6.4047      2881.86
+                               KshellEC      1785.15  -       4.8875      2938.05
+                               KshellEC      1841.34  -       67.436      2881.86
+                               LshellEC      1785.15  -      0.87062      2938.05
+                               LshellEC      1841.34  -       12.023      2881.86
+P        638.1  -      2.5e-09
+                                     IT            0               1
+P        738.1  -     2.13e-08
+                                     IT            0               1

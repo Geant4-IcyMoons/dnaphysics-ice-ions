@@ -1,0 +1,9 @@
+# 38CL ( 37.230 M  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       2233.8
+                              BetaMinus            0               1
+                              BetaMinus            0  -           56      4916.71    uniqueFirstForbidden
+                              BetaMinus     2167.472  -         11.1     2749.238
+                              BetaMinus      3810.18  -         32.9      1106.53
+P      671.365  -        0.715
+                                     IT            0               1

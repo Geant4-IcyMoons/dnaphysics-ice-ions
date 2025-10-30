@@ -1,0 +1,63 @@
+# 25SI ( 220 MS    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         0.22
+                               BetaPlus            0         0.99988
+                               KshellEC            0       0.0001203
+                               LshellEC            0      3.2448e-07
+                               BetaPlus            0  -       24.877        12743
+                               BetaPlus        944.9  -       25.872      11798.1
+                               BetaPlus       1612.5  -       14.926      11130.5
+                               BetaPlus       2673.3  -       4.7764      10069.7
+                               BetaPlus         3844  -      0.39803         8899
+                               BetaPlus         4192  -       2.9753         8551
+                               BetaPlus         4582  -       3.1842         8161
+                               BetaPlus         4906  -      0.59705         7837
+                               BetaPlus         5597  -      0.55724         7146
+                               BetaPlus         5804  -       1.6916         6939
+                               BetaPlus         6170  -      0.31842         6573
+                               BetaPlus         6620  -      0.15921         6123
+                               BetaPlus         6871  -      0.49754         5872
+                               BetaPlus         7107  -       3.6818         5636
+                               BetaPlus         7255  -      0.99508         5488
+                               BetaPlus         7678  -      0.33833         5065
+                               BetaPlus         7892  -       12.737         4851
+                               BetaPlus         8193  -       1.1941         4550
+                               BetaPlus         9073  -      0.20897         3670
+                               KshellEC            0  -        1e-25        12743
+                               KshellEC        944.9  -        1e-25      11798.1
+                               KshellEC       1612.5  -        1e-25      11130.5
+                               KshellEC       2673.3  -        1e-25      10069.7
+                               KshellEC         3844  -        1e-25         8899
+                               KshellEC         4192  -        1e-25         8551
+                               KshellEC         4582  -        1e-25         8161
+                               KshellEC         4906  -    6.866e-05         7837
+                               KshellEC         5597  -   8.7567e-05         7146
+                               KshellEC         5804  -   0.00029355         6939
+                               KshellEC         6170  -    6.667e-05         6573
+                               KshellEC         6620  -   4.2788e-05         6123
+                               KshellEC         6871  -   0.00015921         5872
+                               KshellEC         7107  -    0.0013434         5636
+                               KshellEC         7255  -   0.00039803         5488
+                               KshellEC         7678  -   0.00017911         5065
+                               KshellEC         7892  -    0.0080601         4851
+                               KshellEC         8193  -   0.00096522         4550
+                               KshellEC         9073  -   0.00036558         3670
+                               LshellEC            0  -        1e-25        12743
+                               LshellEC        944.9  -        1e-25      11798.1
+                               LshellEC       1612.5  -        1e-25      11130.5
+                               LshellEC       2673.3  -        1e-25      10069.7
+                               LshellEC         3844  -        1e-25         8899
+                               LshellEC         4192  -        1e-25         8551
+                               LshellEC         4582  -        1e-25         8161
+                               LshellEC         4906  -        1e-25         7837
+                               LshellEC         5597  -        1e-25         7146
+                               LshellEC         5804  -        1e-25         6939
+                               LshellEC         6170  -        1e-25         6573
+                               LshellEC         6620  -        1e-25         6123
+                               LshellEC         6871  -        1e-25         5872
+                               LshellEC         7107  -        1e-25         5636
+                               LshellEC         7255  -        1e-25         5488
+                               LshellEC         7678  -        1e-25         5065
+                               LshellEC         7892  -        1e-25         4851
+                               LshellEC         8193  -        1e-25         4550
+                               LshellEC         9073  -   3.2447e-05         3670

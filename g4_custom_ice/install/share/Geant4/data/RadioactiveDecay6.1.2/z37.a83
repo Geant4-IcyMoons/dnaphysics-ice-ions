@@ -1,0 +1,30 @@
+# 83RB (  86.2 D   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -      7447680
+                               MshellEC            0        0.022209
+                               KshellEC            0         0.87047
+                               LshellEC            0         0.10732
+                               MshellEC            0  -       0.1075          920
+                               MshellEC       9.4057  -       0.1325     910.5943
+                               MshellEC     561.9585  -       1.3186     358.0415
+                               MshellEC     571.1538  -       0.6367     348.8462
+                               MshellEC      690.146  -    0.0030854      229.854
+                               MshellEC       799.48  -     0.022562       120.52
+                               KshellEC            0  -        4.235          920
+                               KshellEC       9.4057  -       5.4474     910.5943
+                               KshellEC     561.9585  -       51.628     358.0415
+                               KshellEC     571.1538  -       24.876     348.8462
+                               KshellEC      690.146  -       0.1153      229.854
+                               KshellEC       799.48  -      0.74557       120.52
+                               LshellEC            0  -      0.51953          920
+                               LshellEC       9.4057  -      0.64351     910.5943
+                               LshellEC     561.9585  -        6.371     358.0415
+                               LshellEC     571.1538  -        3.076     348.8462
+                               LshellEC      690.146  -      0.01483      229.854
+                               LshellEC       799.48  -      0.10704       120.52
+P       5.2357  -     7.15e-08
+                                     IT            0               1
+P       42.078  -       0.0003
+                                     IT            0               1
+P      2413.75  -      4.2e-09
+                                     IT            0               1

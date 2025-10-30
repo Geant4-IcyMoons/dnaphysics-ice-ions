@@ -1,0 +1,52 @@
+# 117CD ( 2.49 H    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         8964
+                              BetaMinus            0               1
+                              BetaMinus      315.303  -        20.72     2209.697
+                              BetaMinus      588.653  -       3.6507     1936.347
+                              BetaMinus      659.765  -       2.5654     1865.235
+                              BetaMinus      749.488  -       13.024     1775.512
+                              BetaMinus     1051.709  -      0.78934     1473.291
+                              BetaMinus      1376.28  -      0.30587      1148.72
+                              BetaMinus      1439.38  -       0.1184      1085.62
+                              BetaMinus      1468.67  -     0.069068      1056.33
+                              BetaMinus      1554.48  -      0.10853       970.52
+                              BetaMinus      1609.39  -      0.39467       915.61
+                              BetaMinus       1612.1  -        0.296        912.9
+                              BetaMinus     1712.547  -       3.3547      812.453
+                              BetaMinus      1784.97  -      0.54267       740.03
+                              BetaMinus     1891.929  -       31.574      633.071
+                              BetaMinus     1997.368  -       8.0908      527.632
+                              BetaMinus      2022.23  -       2.1707       502.77
+                              BetaMinus      2064.16  -         1.48       460.84
+                              BetaMinus      2109.83  -       1.5787       415.17
+                              BetaMinus      2112.98  -      0.12827       412.02
+                              BetaMinus      2171.74  -       1.8747       353.26
+                              BetaMinus     2311.722  -       6.1174      213.278
+                              BetaMinus      2327.79  -      0.59201       197.21
+                              BetaMinus       2345.5  -      0.34534        179.5
+                              BetaMinus      2455.97  -      0.10853        69.03
+P        136.4  -        12096
+                              BetaMinus            0               1
+                              BetaMinus            0  -      0.95896       2661.4
+                              BetaMinus       748.07  -       2.3015      1913.33    uniqueFirstForbidden
+                              BetaMinus     1065.984  -       2.3015     1595.416
+                              BetaMinus      1209.03  -      0.47948      1452.37
+                              BetaMinus     1234.606  -      0.86306     1426.794
+                              BetaMinus     1365.524  -      0.57537     1295.876
+                              BetaMinus     1432.921  -       2.3015     1228.479
+                              BetaMinus      1855.63  -      0.19179       805.77
+                              BetaMinus      1957.37  -      0.95896       704.03
+                              BetaMinus     1997.329  -        46.03      664.071
+                              BetaMinus     2095.035  -       19.659      566.365
+                              BetaMinus      2096.42  -       7.8634       564.98
+                              BetaMinus      2322.76  -        8.247       338.64
+                              BetaMinus      2400.38  -       1.3425       261.02
+                              BetaMinus      2405.29  -       3.5481       256.11
+                              BetaMinus      2417.44  -       1.6302       243.96
+                              BetaMinus      2440.05  -     0.095896       221.35
+                              BetaMinus       2462.5  -      0.20138        198.9
+                              BetaMinus      2476.21  -      0.23015       185.19
+                              BetaMinus      2540.86  -      0.22056       120.54
+P        293.5  -      3.6e-09
+                                     IT            0               1

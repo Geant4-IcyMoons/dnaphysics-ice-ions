@@ -1,0 +1,53 @@
+# Verbosity
+/tracking/verbose 1
+/run/verbose 2
+/control/verbose 2
+
+# ===== Parameters =====
+# N = number of particles AND threads
+/control/alias N 200
+/control/alias EMIN 2       # min energy value (numeric)
+/control/alias EMAX 100      # max energy value (numeric)
+/control/alias EUNIT eV     # unit for energies
+
+# Threads: set equal to N (must be before initialize)
+/run/numberOfThreads {N}
+
+# Material
+/dna/test/setMat G4_WATER
+
+# Size of World volume
+/dna/test/setSize 2 um
+
+# Atomic deexcitation
+/process/em/fluo true
+/process/em/auger true
+/process/em/augerCascade true
+/process/em/deexcitationIgnoreCut true
+
+# Initialize
+/run/initialize
+
+# ===== GPS-based random energies (same scalar setup) =====
+# One primary per event, energies sampled from Lin[EMIN, EMAX]
+/gps/particle e-
+/gps/ene/type Lin
+/gps/ene/min {EMIN} {EUNIT}
+/gps/ene/max {EMAX} {EUNIT}
+/gps/ene/gradient 0
+/gps/ene/intercept 1
+
+# Simple point source at origin, fixed direction (match dnaphysics-ice.in gun trajectory)
+/gps/pos/type Point
+/gps/pos/centre 0 0 0 mm
+# No random directions: set a fixed unit vector (along +x)
+/gps/direction 1 0 0
+
+# Emit one particle per event
+/gps/number 1
+
+# Useful: print GPS config
+/gps/verbose 1
+
+# Fire N events (enables event-level parallelism across {N} threads)
+/run/beamOn {N}

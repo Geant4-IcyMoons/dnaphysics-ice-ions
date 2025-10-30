@@ -1,0 +1,26 @@
+# 101Y ( 0.45 S    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         0.45
+                              BetaMinus            0               1
+                              BetaMinus            0  -       20.182         8106
+                              BetaMinus        98.16  -       3.0272      8007.84
+                              BetaMinus       216.67  -       8.0727      7889.33
+                              BetaMinus        231.8  -       1.9173       7874.2
+                              BetaMinus       321.11  -       2.5227      7784.89
+                              BetaMinus       467.77  -         1.11      7638.23    uniqueFirstForbidden
+                              BetaMinus       673.52  -       2.9263      7432.48
+                              BetaMinus       744.01  -       3.1282      7361.99
+                              BetaMinus       759.48  -       13.118      7346.52
+                              BetaMinus       786.66  -       4.7427      7319.34
+                              BetaMinus       808.46  -       3.0272      7297.54
+                              BetaMinus       827.78  -       2.9263      7278.22
+                              BetaMinus       845.19  -      0.90817      7260.81
+                              BetaMinus       880.37  -       5.2472      7225.63
+                              BetaMinus       902.49  -         1.11      7203.51
+                              BetaMinus       958.76  -       1.2109      7147.24
+                              BetaMinus       1038.4  -      0.80727       7067.6
+                              BetaMinus       1297.9  -       2.3209       6808.1
+                              BetaMinus      1398.55  -       12.109      6707.45
+                              BetaMinus      1529.93  -         3.33      6576.07
+                              BetaMinus      2023.17  -       4.9445      6082.83
+                              BetaMinus       2082.9  -       1.3118       6023.1

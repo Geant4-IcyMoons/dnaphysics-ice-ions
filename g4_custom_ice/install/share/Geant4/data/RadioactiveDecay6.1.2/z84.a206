@@ -1,0 +1,27 @@
+# 206PO ( 8.8 D     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       760320
+                                  Alpha            0          0.0545
+                               MshellEC            0        0.060073
+                               KshellEC            0         0.71063
+                               LshellEC            0          0.1748
+                                  Alpha            0  -         5.45         5327
+                               MshellEC       931.67  -       1.0418       908.33
+                               MshellEC      1077.87  -      0.05019       762.13
+                               MshellEC      1389.42  -       4.7719       450.58
+                               MshellEC      1523.65  -     0.056468       316.35
+                               MshellEC      1600.15  -     0.086919       239.85
+                               KshellEC       931.67  -       14.859       908.33
+                               KshellEC      1077.87  -      0.68731       762.13
+                               KshellEC      1389.42  -       54.367       450.58
+                               KshellEC      1523.65  -      0.52187       316.35
+                               KshellEC      1600.15  -      0.62753       239.85
+                               LshellEC       931.67  -       3.1034       908.33
+                               LshellEC      1077.87  -      0.14872       762.13
+                               LshellEC      1389.42  -       13.827       450.58
+                               LshellEC      1523.65  -      0.16018       316.35
+                               LshellEC      1600.15  -       0.2407       239.85
+P       1585.9  -     2.32e-07
+                                     IT            0               1
+P      2262.09  -     1.05e-06
+                                     IT            0               1

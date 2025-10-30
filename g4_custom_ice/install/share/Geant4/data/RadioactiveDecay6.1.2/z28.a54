@@ -1,0 +1,49 @@
+# 54NI ( 114.2 MS  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       0.1142
+                               MshellEC            0      1.9868e-05
+                               BetaPlus            0          0.9988
+                               KshellEC            0       0.0010675
+                               LshellEC            0      0.00011426
+                               MshellEC            0  -    0.0012913         8732
+                               MshellEC        936.9  -   0.00047352       7795.1
+                               MshellEC       2424.6  -   7.9083e-06       6307.4
+                               MshellEC       3376.1  -   3.2875e-05       5355.9
+                               MshellEC       3889.6  -   4.7533e-05       4842.4
+                               MshellEC       4293.4  -   3.7856e-05       4438.6
+                               MshellEC         4323  -   1.9692e-05         4409
+                               MshellEC       4543.8  -   3.2833e-05       4188.2
+                               MshellEC       4822.8  -   3.5092e-05       3909.2
+                               MshellEC       5202.4  -   8.1534e-06       3529.6
+                               BetaPlus            0  -       78.682         8732
+                               BetaPlus        936.9  -       19.695       7795.1
+                               BetaPlus       2424.6  -      0.15916       6307.4
+                               BetaPlus       3376.1  -      0.36805       5355.9
+                               BetaPlus       3889.6  -      0.36805       4842.4
+                               BetaPlus       4293.4  -      0.20889       4438.6
+                               BetaPlus         4323  -      0.10942         4409
+                               BetaPlus       4543.8  -      0.14921       4188.2
+                               BetaPlus       4822.8  -      0.11937       3909.2
+                               BetaPlus       5202.4  -     0.019894       3529.6
+                               KshellEC            0  -     0.069369         8732
+                               KshellEC        936.9  -     0.025452       7795.1
+                               KshellEC       2424.6  -   0.00042412       6307.4
+                               KshellEC       3376.1  -    0.0017582       5355.9
+                               KshellEC       3889.6  -    0.0025624       4842.4
+                               KshellEC       4293.4  -    0.0020318       4438.6
+                               KshellEC         4323  -    0.0010604         4409
+                               KshellEC       4543.8  -    0.0017679       4188.2
+                               KshellEC       4822.8  -    0.0018821       3909.2
+                               KshellEC       5202.4  -    0.0004418       3529.6
+                               LshellEC            0  -    0.0074251         8732
+                               LshellEC        936.9  -    0.0027227       7795.1
+                               LshellEC       2424.6  -   4.5441e-05       6307.4
+                               LshellEC       3376.1  -   0.00018838       5355.9
+                               LshellEC       3889.6  -    0.0002748       4842.4
+                               LshellEC       4293.4  -   0.00021816       4438.6
+                               LshellEC         4323  -   0.00011361         4409
+                               LshellEC       4543.8  -   0.00018868       4188.2
+                               LshellEC       4822.8  -   0.00020157       3909.2
+                               LshellEC       5202.4  -   4.7404e-05       3529.6
+P       6457.4  -     1.52e-07
+                                     IT            0               1

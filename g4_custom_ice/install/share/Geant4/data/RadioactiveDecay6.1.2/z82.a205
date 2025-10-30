@@ -1,0 +1,23 @@
+# 205PB ( 1.70E+7 Y )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  - 5.364792e+14
+                               MshellEC            0          0.4008
+                               LshellEC            0          0.5992
+                               MshellEC            0  -        40.08         50.6
+                               LshellEC            0  -        59.92         50.6
+P        2.329  -     2.42e-05
+                                     IT            0               1
+P      1013.85  -      0.00555
+                                     IT            0               1
+P       3195.8  -     2.17e-07
+                                     IT            0               1
+P       5064.7  -      3.5e-09
+                                     IT            0               1
+P       5161.9  -      6.3e-08
+                                     IT            0               1
+P       5902.9  -      1.4e-08
+                                     IT            0               1
+P       6318.7  -      1.4e-08
+                                     IT            0               1
+P       6533.5  -      1.4e-08
+                                     IT            0               1

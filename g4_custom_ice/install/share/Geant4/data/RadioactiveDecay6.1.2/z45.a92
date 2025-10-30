@@ -1,0 +1,27 @@
+# 92RH (  4.66 S   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0 +X         0.53
+                               MshellEC            0      0.00020258
+                               BetaPlus            0         0.99186
+                               KshellEC            0         0.00708
+                               LshellEC            0      0.00086236
+                               MshellEC       1854.9  -    0.0019711       9447.1
+                               MshellEC       2671.5  -    0.0049283       8630.5
+                               MshellEC       2775.9  -    0.0020208       8526.1
+                               MshellEC       2833.9  -    0.0017254       8468.1
+                               MshellEC       3014.5  -    0.0096126       8287.5
+                               BetaPlus       1854.9  -       13.872       9447.1
+                               BetaPlus       2671.5  -       24.772       8630.5
+                               BetaPlus       2775.9  -       9.8096       8526.1
+                               BetaPlus       2833.9  -       8.1251       8468.1
+                               BetaPlus       3014.5  -       42.607       8287.5
+                               KshellEC       1854.9  -     0.068908       9447.1
+                               KshellEC       2671.5  -      0.17226       8630.5
+                               KshellEC       2775.9  -     0.070627       8526.1
+                               KshellEC       2833.9  -     0.060291       8468.1
+                               KshellEC       3014.5  -      0.33591       8287.5
+                               LshellEC       1854.9  -    0.0083896       9447.1
+                               LshellEC       2671.5  -     0.020981       8630.5
+                               LshellEC       2775.9  -    0.0086027       8526.1
+                               LshellEC       2833.9  -    0.0073439       8468.1
+                               LshellEC       3014.5  -     0.040919       8287.5

@@ -1,0 +1,9 @@
+# 262LR ( 1.4400e+04)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        14400
+                                  Alpha            0           1e-26
+                               BetaPlus            0           1e-26
+                              SpFission            0               1
+                                  Alpha            0  -        1e-25         7990
+                               BetaPlus            0  -        1e-25         2000
+                              SpFission            0  -           10        1e-06

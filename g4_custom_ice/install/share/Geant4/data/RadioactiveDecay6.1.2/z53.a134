@@ -1,0 +1,32 @@
+# 134I ( 52.5 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         3150
+                              BetaMinus            0               1
+                              BetaMinus      1731.17  -       12.494      2350.83
+                              BetaMinus       1919.6  -       3.2723       2162.4
+                              BetaMinus       2136.6  -      0.22807       1945.4
+                              BetaMinus      2272.01  -       1.5866      1809.99
+                              BetaMinus      2302.25  -       2.2212      1779.75
+                              BetaMinus      2352.97  -       10.908      1729.03
+                              BetaMinus       2408.5  -       6.5447       1673.5
+                              BetaMinus      2547.55  -       4.0656      1534.45
+                              BetaMinus      2588.46  -       16.064      1493.54
+                              BetaMinus       2653.9  -       6.8422       1428.1
+                              BetaMinus       2772.9  -      0.51564       1309.1
+                              BetaMinus      2867.38  -       30.145      1214.62
+                              BetaMinus      3083.78  -       1.3387       998.22
+                              BetaMinus      3255.74  -      0.21816       826.26
+                              BetaMinus         3300  -     0.057514          782
+                              BetaMinus       3314.5  -      0.20824        767.5
+                              BetaMinus      3360.47  -       1.0809       721.53
+                              BetaMinus      3375.39  -        1.775       706.61
+                              BetaMinus         3477  -     0.066439          605
+                              BetaMinus      3492.29  -       0.3669       589.71
+P        44.39  -        1e-08
+                                     IT            0               1
+P       79.461  -     1.62e-09
+                                     IT            0               1
+P       316.49  -        211.2
+                              BetaMinus            0           0.023
+                                     IT            0           0.977
+                              BetaMinus       1965.5  -          2.3      2432.99

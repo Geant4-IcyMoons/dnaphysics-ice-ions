@@ -1,0 +1,27 @@
+# 30P ( 2.498 M   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       149.88
+                               MshellEC            0      1.1458e-05
+                               BetaPlus            0         0.99856
+                               KshellEC            0       0.0013057
+                               LshellEC            0      0.00011831
+                               MshellEC            0  -     0.001083      4232.11
+                               MshellEC     2235.322  -   2.1567e-05     1996.788
+                               MshellEC      3498.49  -   1.2497e-05       733.62
+                               MshellEC      3769.48  -   1.4459e-06       462.63
+                               MshellEC      3787.72  -    2.732e-05       444.39
+                               BetaPlus            0  -       99.804      4232.11
+                               BetaPlus     2235.322  -     0.052001     1996.788
+                               BetaPlus      3498.49  -        1e-27       733.62
+                               BetaPlus      3769.48  -        1e-27       462.63
+                               BetaPlus      3787.72  -        1e-27       444.39
+                               KshellEC            0  -      0.12344      4232.11
+                               KshellEC     2235.322  -    0.0024557     1996.788
+                               KshellEC      3498.49  -    0.0014185       733.62
+                               KshellEC      3769.48  -   0.00016363       462.63
+                               KshellEC      3787.72  -    0.0030907       444.39
+                               LshellEC            0  -     0.011182      4232.11
+                               LshellEC     2235.322  -   0.00022276     1996.788
+                               LshellEC      3498.49  -   0.00012904       733.62
+                               LshellEC      3769.48  -   1.4927e-05       462.63
+                               LshellEC      3787.72  -   0.00028204       444.39

@@ -1,0 +1,37 @@
+# 82Y ( 8.3 S     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          8.3
+                               MshellEC            0      0.00013306
+                               BetaPlus            0         0.99402
+                               KshellEC            0       0.0052402
+                               LshellEC            0      0.00061073
+                               MshellEC            0  -    0.0090621         7946
+                               MshellEC       573.54  -    0.0033154      7372.46
+                               MshellEC      1175.71  -   0.00024302      6770.29
+                               MshellEC      1310.89  -    0.0004644      6635.11
+                               MshellEC         1865  -   0.00022121         6081
+                               BetaPlus            0  -       74.551         7946
+                               BetaPlus       573.54  -       20.874      7372.46
+                               BetaPlus      1175.71  -       1.1928      6770.29
+                               BetaPlus      1310.89  -       2.0874      6635.11
+                               BetaPlus         1865  -      0.69581         6081
+                               KshellEC            0  -       0.3569         7946
+                               KshellEC       573.54  -      0.13056      7372.46
+                               KshellEC      1175.71  -     0.009575      6770.29
+                               KshellEC      1310.89  -     0.018279      6635.11
+                               KshellEC         1865  -    0.0087035         6081
+                               LshellEC            0  -     0.041587         7946
+                               LshellEC       573.54  -     0.015224      7372.46
+                               LshellEC      1175.71  -    0.0011161      6770.29
+                               LshellEC      1310.89  -    0.0021312      6635.11
+                               LshellEC         1865  -    0.0010154         6081
+P        401.1  -      1.1e-08
+                                     IT            0               1
+P       402.63  -     2.68e-07
+                                     IT            0               1
+P       405.76  -     3.53e-08
+                                     IT            0               1
+P        507.5  -     1.47e-07
+                                     IT            0               1
+P       511.82  -     1.42e-09
+                                     IT            0               1

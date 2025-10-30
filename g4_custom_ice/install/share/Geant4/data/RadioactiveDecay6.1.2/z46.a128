@@ -1,0 +1,7 @@
+# 128PD ( 3.5000e-02)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        0.035
+                              BetaMinus            0               1
+                              BetaMinus            0  -          100        10300
+P         2151  -      5.8e-06
+                                     IT            0               1

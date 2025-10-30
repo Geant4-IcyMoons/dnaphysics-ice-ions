@@ -1,0 +1,13 @@
+# 186OS ( 2.0E+15 Y )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -  6.31152e+22
+                                  Alpha            0               1
+                                  Alpha            0  -          100       2821.2
+P      1774.69  -     8.36e-09
+                                     IT            0               1
+P       2165.6  -      5.7e-09
+                                     IT            0               1
+P       5025.7  -        2e-09
+                                     IT            0               1
+P       7142.9  -        2e-09
+                                     IT            0               1

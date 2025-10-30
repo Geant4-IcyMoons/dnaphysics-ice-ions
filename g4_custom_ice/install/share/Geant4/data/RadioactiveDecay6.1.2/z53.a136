@@ -1,0 +1,30 @@
+# 136I (  83.4 S   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         83.4
+                              BetaMinus            0               1
+                              BetaMinus            0  -       3.0447         6884
+                              BetaMinus      1313.06  -       29.229      5570.94
+                              BetaMinus      2289.55  -       10.047      4594.45
+                              BetaMinus      2414.76  -       6.0893      4469.24
+                              BetaMinus      2559.91  -       2.5372      4324.09
+                              BetaMinus       2582.4  -      0.10149       4301.6
+                              BetaMinus      2634.19  -       34.506      4249.81
+                              BetaMinus      2849.44  -       0.8728      4034.56
+                              BetaMinus      2869.02  -       4.6685      4014.98
+                              BetaMinus      2979.09  -      0.31462      3904.91
+                              BetaMinus      3211.92  -      0.23342      3672.08
+                              BetaMinus      3873.18  -      0.19283      3010.82
+                              BetaMinus      4269.36  -       4.7801      2614.64
+                              BetaMinus       4454.1  -       1.3498       2429.9
+                              BetaMinus         4545  -      0.15223         2339
+                              BetaMinus       4711.2  -     0.053789       2172.8
+                              BetaMinus      4947.44  -      0.38566      1936.56
+                              BetaMinus      5017.01  -      0.50744      1866.99
+                              BetaMinus       5217.8  -      0.12179       1666.2
+                              BetaMinus       5760.3  -      0.25372       1123.7
+                              BetaMinus       6624.1  -      0.55819        259.9
+P          201  -         46.6
+                              BetaMinus            0               1
+                              BetaMinus            0  -          100         7085
+P       1616.1  -        4e-09
+                                     IT            0               1

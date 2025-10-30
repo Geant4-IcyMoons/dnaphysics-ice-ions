@@ -1,0 +1,30 @@
+# 250BK ( 3.212 H   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -      11563.2
+                              BetaMinus            0               1
+                              BetaMinus            0  -       4.8949       1781.7    uniqueFirstForbidden
+                              BetaMinus       42.721  -       4.8949     1738.979
+                              BetaMinus      141.875  -      0.34963     1639.825    uniqueFirstForbidden
+                              BetaMinus       871.57  -     0.059937       910.13
+                              BetaMinus       905.89  -   9.9895e-28       875.81
+                              BetaMinus     1031.852  -       83.313      749.848
+                              BetaMinus      1071.37  -       6.2235       710.33
+                              BetaMinus      1154.24  -    0.0014984       627.46    uniqueFirstForbidden
+                              BetaMinus      1175.52  -     0.058938       606.18
+                              BetaMinus      1189.39  -     0.016083       592.31
+                              BetaMinus      1209.97  -     0.026972       571.73
+                              BetaMinus       1244.5  -    0.0064932        537.2
+                              BetaMinus       1266.6  -    0.0079916        515.1    uniqueFirstForbidden
+                              BetaMinus       1296.6  -     0.020978        485.1
+                              BetaMinus       1385.5  -    0.0038959        396.2
+                              BetaMinus      1411.33  -    0.0033964       370.37
+                              BetaMinus         1658  -      0.11688        123.7
+                              BetaMinus      1695.15  -    0.0014984        86.55
+P        35.59  -      2.9e-05
+                                     IT            0               1
+P           86  -     0.000213
+                                     IT            0               1
+P        97.49  -      3.8e-08
+                                     IT            0               1
+P       175.13  -      4.2e-08
+                                     IT            0               1

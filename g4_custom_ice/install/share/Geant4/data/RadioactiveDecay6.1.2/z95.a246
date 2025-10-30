@@ -1,0 +1,9 @@
+# 246AM ( 39 M      )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         2340
+                              BetaMinus            0               1
+                              BetaMinus       1179.7  -          100       1197.3
+P        43.81 +X      4.3e-09
+                                     IT            0               1
+P         2000  -      7.3e-05
+                                     IT            0               1

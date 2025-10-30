@@ -1,0 +1,7 @@
+# 167TB ( 18.9 S    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         18.9
+                              BetaMinus            0               1
+                              BetaMinus         69.7  -          100       3958.3
+P          200  -      2.1e-06
+                                     IT            0               1

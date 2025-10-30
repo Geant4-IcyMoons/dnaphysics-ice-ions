@@ -1,0 +1,13 @@
+# 194HG (  447 Y    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  - 1.410625e+10
+                               MshellEC            0           0.314
+                               LshellEC            0           0.686
+                               MshellEC            0  -         31.4           28
+                               LshellEC            0  -         68.6           28
+P      1910.08  -     3.48e-09
+                                     IT            0               1
+P       2423.3  -      3.1e-09
+                                     IT            0               1
+P       2475.2  -      8.1e-09
+                                     IT            0               1

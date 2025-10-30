@@ -1,0 +1,27 @@
+# 155PM (   41.5 S  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         41.5
+                              BetaMinus            0               1
+                              BetaMinus            0  -       44.764         3251
+                              BetaMinus      16.5467  -   1.0998e-27     3234.453
+                              BetaMinus      53.0338  -   1.0998e-27     3197.966
+                              BetaMinus      76.3007  -   1.0998e-27     3174.699
+                              BetaMinus     127.6982  -       1.4848     3123.302
+                              BetaMinus      152.419  -      0.92387     3098.581
+                              BetaMinus     220.6842  -   1.0998e-27     3030.316
+                              BetaMinus      426.419  -       4.9493     2824.581
+                              BetaMinus      500.002  -       1.0009     2750.998
+                              BetaMinus      617.544  -      0.29696     2633.456
+                              BetaMinus      658.388  -       0.6709     2592.612
+                              BetaMinus     778.1473  -       29.762     2472.853
+                              BetaMinus      821.307  -        7.072     2429.693
+                              BetaMinus      844.115  -   1.0998e-27     2406.885
+                              BetaMinus      882.165  -     0.019797     2368.835
+                              BetaMinus      903.468  -      0.17707     2347.532
+                              BetaMinus          919  -       2.9256         2332
+                              BetaMinus      930.644  -      0.16498     2320.356
+                              BetaMinus       962.46  -      0.19027      2288.54
+                              BetaMinus     1106.671  -      0.46193     2144.329
+                              BetaMinus     1168.746  -      0.27496     2082.254
+                              BetaMinus     1327.528  -       1.6278     1923.472
+                              BetaMinus     1362.134  -       3.2335     1888.866

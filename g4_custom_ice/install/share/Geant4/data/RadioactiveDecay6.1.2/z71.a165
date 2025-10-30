@@ -1,0 +1,39 @@
+# 165LU ( 10.74 M   )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        644.4
+                               MshellEC            0        0.032139
+                               BetaPlus            0             0.2
+                               KshellEC            0         0.66162
+                               LshellEC            0         0.10624
+                               MshellEC            0  -       3.2139         3850
+                               MshellEC      1013.12  -        1e-25      2836.88
+                               MshellEC      1361.48  -        1e-25      2488.52
+                               MshellEC      1734.08  -        1e-25      2115.92
+                               MshellEC      2125.85  -        1e-25      1724.15
+                               MshellEC         2800  -        1e-25         1050
+                               MshellEC         3200  -        1e-25          650
+                               MshellEC         3600  -        1e-25          250
+                               BetaPlus            0  -           20         3850    uniqueFirstForbidden
+                               BetaPlus      1013.12  -   3.3333e-26      2836.88
+                               BetaPlus      1361.48  -   3.3333e-26      2488.52
+                               BetaPlus      1734.08  -   3.3333e-26      2115.92
+                               BetaPlus      2125.85  -   3.3333e-26      1724.15
+                               BetaPlus         2800  -   3.3333e-26         1050
+                               BetaPlus         3200  -   3.3333e-26          650
+                               BetaPlus         3600  -   3.3333e-26          250
+                               KshellEC            0  -       66.162         3850
+                               KshellEC      1013.12  -        1e-25      2836.88
+                               KshellEC      1361.48  -        1e-25      2488.52
+                               KshellEC      1734.08  -        1e-25      2115.92
+                               KshellEC      2125.85  -        1e-25      1724.15
+                               KshellEC         2800  -        1e-25         1050
+                               KshellEC         3200  -        1e-25          650
+                               KshellEC         3600  -        1e-25          250
+                               LshellEC            0  -       10.624         3850
+                               LshellEC      1013.12  -        1e-25      2836.88
+                               LshellEC      1361.48  -        1e-25      2488.52
+                               LshellEC      1734.08  -        1e-25      2115.92
+                               LshellEC      2125.85  -        1e-25      1724.15
+                               LshellEC         2800  -        1e-25         1050
+                               LshellEC         3200  -        1e-25          650
+                               LshellEC         3600  -        1e-25          250

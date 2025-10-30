@@ -1,0 +1,53 @@
+# 126IN ( 1.53 S    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         1.53
+                              BetaMinus            0               1
+                              BetaMinus      1141.15  -       17.944      7064.85
+                              BetaMinus      2049.74  -       3.9876      6156.26
+                              BetaMinus      2110.79  -       16.349      6095.21
+                              BetaMinus      2130.08  -      0.26917      6075.92
+                              BetaMinus      2194.21  -      0.49845      6011.79
+                              BetaMinus      2256.51  -      0.24923      5949.49
+                              BetaMinus      2370.46  -       2.0935      5835.54
+                              BetaMinus      2471.93  -      0.31901      5734.07
+                              BetaMinus      2631.03  -      0.42867      5574.97
+                              BetaMinus      2636.64  -        1.615      5569.36
+                              BetaMinus      2712.06  -      0.58818      5493.94
+                              BetaMinus      2742.57  -       2.7814      5463.43
+                              BetaMinus      2886.41  -       0.4187      5319.59
+                              BetaMinus      3246.55  -       5.3833      4959.45
+                              BetaMinus       3300.3  -      0.30904       4905.7
+                              BetaMinus      3344.83  -       24.125      4861.17
+                              BetaMinus         3435  -       0.2891         4771
+                              BetaMinus       3504.5  -      0.48849       4701.5
+                              BetaMinus         3818  -      0.34892         4388
+                              BetaMinus       3860.3  -      0.62805       4345.7
+                              BetaMinus      3886.54  -       5.9815      4319.46
+                              BetaMinus       3917.3  -      0.37883       4288.7
+                              BetaMinus      3964.19  -       9.2713      4241.81
+                              BetaMinus      4013.97  -      0.36886      4192.03
+                              BetaMinus         4241  -       1.4954         3965
+                              BetaMinus       4257.1  -      0.32898       3948.9
+                              BetaMinus      4303.27  -       2.4923      3902.73
+                              BetaMinus       4330.9  -       0.1296       3875.1
+                              BetaMinus       4656.5  -      0.20935       3549.5
+                              BetaMinus       4699.5  -     0.099691       3506.5
+                              BetaMinus       4797.1  -       0.1296       3408.9
+P           90  -         1.64
+                              BetaMinus            0               1
+                              BetaMinus      2488.23  -       3.1853      5807.77
+                              BetaMinus      2662.98  -      0.19908      5633.02
+                              BetaMinus      2840.24  -       2.1103      5455.76
+                              BetaMinus      3067.29  -       2.2895      5228.71
+                              BetaMinus      3454.87  -       5.4748      4841.13
+                              BetaMinus      3625.79  -       4.5789      4670.21
+                              BetaMinus      3783.41  -       1.9013      4512.59
+                              BetaMinus      3809.21  -       1.3239      4486.79
+                              BetaMinus      3830.75  -       4.5789      4465.25
+                              BetaMinus      3855.54  -        58.73      4440.46
+                              BetaMinus       3950.3  -       1.3936       4345.7
+                              BetaMinus      3977.39  -       5.4748      4318.61
+                              BetaMinus      4779.16  -       4.6785      3516.84
+                              BetaMinus       4990.2  -       4.0812       3305.8
+P        243.3  -      2.6e-05
+                                     IT            0               1

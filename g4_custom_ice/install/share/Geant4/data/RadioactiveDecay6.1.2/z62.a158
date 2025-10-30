@@ -1,0 +1,28 @@
+# 158SM ( 5.30 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          318
+                              BetaMinus            0               1
+                              BetaMinus         97.7  -       2.5287       1921.3
+                              BetaMinus        324.7  -       6.1272       1694.3
+                              BetaMinus        338.8  -       11.671       1680.2
+                              BetaMinus        363.6  -       16.534       1655.4
+                              BetaMinus        373.4  -       1.3616       1645.6
+                              BetaMinus        467.8  -       0.6808       1551.2
+                              BetaMinus          470  -       3.2095         1549
+                              BetaMinus        507.3  -       1.4589       1511.7
+                              BetaMinus        551.3  -        34.04       1467.7
+                              BetaMinus        632.8  -      0.72943       1386.2
+                              BetaMinus          660  -       1.1671         1359
+                              BetaMinus        741.1  -      0.90449       1277.9
+                              BetaMinus        791.5  -       4.8629       1227.5
+                              BetaMinus        921.3  -       2.3342       1097.7
+                              BetaMinus         1010  -      0.77806         1009
+                              BetaMinus         1110  -      0.87532          909
+                              BetaMinus       1209.6  -        3.793        809.4
+                              BetaMinus       1342.9  -       2.5287        676.1
+                              BetaMinus       1395.3  -      0.78778        623.7
+                              BetaMinus         1421  -      0.55437          598
+                              BetaMinus         1448  -       2.4314          571
+                              BetaMinus         1550  -       0.6419          469
+P       1279.7  -      7.4e-08
+                                     IT            0               1

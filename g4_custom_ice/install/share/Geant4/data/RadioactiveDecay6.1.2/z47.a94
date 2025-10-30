@@ -1,0 +1,7 @@
+# 94AG ( 4.0000e-01)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P         6670  -          0.4
+                               BetaPlus            0         0.95879
+                                 Proton            0        0.041206
+                               BetaPlus            0  -         95.4        27040
+                                 Proton            0  -          4.1        12640

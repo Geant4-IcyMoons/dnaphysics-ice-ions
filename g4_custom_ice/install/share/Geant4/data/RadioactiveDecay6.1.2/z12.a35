@@ -1,0 +1,5 @@
+# 35MG ( 1.1300e-02)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -       0.0113
+                              BetaMinus            0               1
+                              BetaMinus            0  -          100        15900

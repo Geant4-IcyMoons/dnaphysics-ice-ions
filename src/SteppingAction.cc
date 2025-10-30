@@ -1,0 +1,401 @@
+//
+// ********************************************************************
+// * License and Disclaimer                                           *
+// *                                                                  *
+// * The  Geant4 software  is  copyright of the Copyright Holders  of *
+// * the Geant4 Collaboration.  It is provided  under  the terms  and *
+// * conditions of the Geant4 Software License,  included in the file *
+// * LICENSE and available at  http://cern.ch/geant4/license .  These *
+// * include a list of copyright holders.                             *
+// *                                                                  *
+// * Neither the authors of this software system, nor their employing *
+// * institutes,nor the agencies providing financial support for this *
+// * work  make  any representation or  warranty, express or implied, *
+// * regarding  this  software system or assume any liability for its *
+// * use.  Please see the license in the file  LICENSE  and URL above *
+// * for the full disclaimer and the limitation of liability.         *
+// *                                                                  *
+// * This  code  implementation is the result of  the  scientific and *
+// * technical work of the GEANT4 collaboration.                      *
+// * By using,  copying,  modifying or  distributing the software (or *
+// * any work based  on the software)  you  agree  to acknowledge its *
+// * use  in  resulting  scientific  publications,  and indicate your *
+// * acceptance of all terms of the Geant4 Software license.          *
+// ********************************************************************
+//
+// This example is provided by the Geant4-DNA collaboration
+// Any report or published results obtained using the Geant4-DNA software
+// shall cite the following Geant4-DNA collaboration publications:
+// Med. Phys. 45 (2018) e722-e739
+// Phys. Med. 31 (2015) 861-874
+// Med. Phys. 37 (2010) 4692-4708
+// Int. J. Model. Simul. Sci. Comput. 1 (2010) 157–178
+//
+// The Geant4-DNA web site is available at http://geant4-dna.org
+//
+/// \file SteppingAction.cc
+/// \brief Implementation of the SteppingAction class
+
+#include "SteppingAction.hh"
+
+#include "DetectorConstruction.hh"
+#include "PrimaryGeneratorAction.hh"
+#include "RunAction.hh"
+
+#include "G4Alpha.hh"
+#include "G4AnalysisManager.hh"
+#include "G4DNAGenericIonsManager.hh"
+#include "G4Electron.hh"
+#include "G4Event.hh"
+#include "G4EventManager.hh"
+#include "G4Gamma.hh"
+#include "G4Proton.hh"
+#include "G4SteppingManager.hh"
+#include "G4SystemOfUnits.hh"
+
+#include "G4VEmProcess.hh"
+#include "G4EmCalculator.hh"
+#include "G4DNAMolecularMaterial.hh"
+#include "G4Material.hh"
+#include "G4DNAMichaudExcitationModel.hh"
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+SteppingAction::SteppingAction() : G4UserSteppingAction() {}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+SteppingAction::~SteppingAction() {}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+// Static storage for per-step logs
+static std::vector<SteppingAction::StepRecord> g_stepLogs;
+
+std::vector<SteppingAction::StepRecord>& SteppingAction::Logs() { return g_stepLogs; }
+void SteppingAction::ClearLogs() { g_stepLogs.clear(); }
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+void SteppingAction::UserSteppingAction(const G4Step* step)
+{
+  // Protection
+  if (!step->GetPostStepPoint()) return;
+  if (!step->GetPostStepPoint()->GetProcessDefinedStep()) return;
+
+  //
+  G4double flagParticle = -1.;
+  G4double flagProcess = -1.;
+  G4double x, y, z, xp, yp, zp;
+
+// Particle identification
+  G4ParticleDefinition* partDef = step->GetTrack()->GetDynamicParticle()->GetDefinition();
+
+  if (partDef == G4Gamma::GammaDefinition()) flagParticle = 0;
+  if (partDef == G4Electron::ElectronDefinition()) flagParticle = 1;
+  if (partDef == G4Proton::ProtonDefinition()) flagParticle = 2;
+  if (partDef == G4Alpha::AlphaDefinition()) flagParticle = 4;
+
+  G4DNAGenericIonsManager* instance = G4DNAGenericIonsManager::Instance();
+  if (partDef == instance->GetIon("hydrogen")) flagParticle = 3;
+  if (partDef == instance->GetIon("alpha+")) flagParticle = 5;
+  if (partDef == instance->GetIon("helium")) flagParticle = 6;
+
+  // Process identification
+  G4StepPoint* preStep = step->GetPreStepPoint();
+  G4StepPoint* postStep = step->GetPostStepPoint();
+  G4int procID = postStep->GetProcessDefinedStep()->GetProcessSubType();
+  const G4String& processName = postStep->GetProcessDefinedStep()->GetProcessName();
+
+
+  if (processName == "Capture") flagProcess = 1;
+  // (no subType and procID exists at the moment for this process)
+  // used to kill ions below tracking cut
+
+  else if (flagParticle == 0) {
+    if (procID == 12)
+      flagProcess = 81;
+    else if (procID == 13)
+      flagProcess = 82;
+    else if (procID == 14)
+      flagProcess = 83;
+    else if (procID == 11)
+      flagProcess = 84;
+  }
+
+  else if (flagParticle == 1) {
+    if (procID == 58)
+      flagProcess = 10;
+    else if (procID == 51)
+      flagProcess = 11;
+    else if (procID == 52)
+      flagProcess = 12;
+    else if (procID == 53)
+      flagProcess = 13;
+    else if (procID == 55)
+      flagProcess = 14;
+    else if (procID == 54)
+      flagProcess = 15;
+    else if (procID == 10)
+      flagProcess = 110;
+    else if (procID == 1)
+      flagProcess = 120;
+    else if (procID == 2)
+      flagProcess = 130;
+  }
+
+  else if (flagParticle == 2) {
+    if (procID == 51)
+      flagProcess = 21;
+    else if (procID == 52)
+      flagProcess = 22;
+    else if (procID == 53)
+      flagProcess = 23;
+    else if (procID == 56)
+      flagProcess = 24;
+    else if (procID == 10)
+      flagProcess = 210;
+    else if (procID == 1)
+      flagProcess = 220;
+    else if (procID == 2)
+      flagProcess = 230;
+    else if (procID == 8)
+      flagProcess = 240;
+  }
+
+  else if (flagParticle == 3) {
+    if (procID == 51)
+      flagProcess = 31;
+    else if (procID == 52)
+      flagProcess = 32;
+    else if (procID == 53)
+      flagProcess = 33;
+    else if (procID == 57)
+      flagProcess = 35;
+  }
+
+  else if (flagParticle == 4) {
+    if (procID == 51)
+      flagProcess = 41;
+    else if (procID == 52)
+      flagProcess = 42;
+    else if (procID == 53)
+      flagProcess = 43;
+    else if (procID == 56)
+      flagProcess = 44;
+    else if (procID == 10)
+      flagProcess = 410;
+    else if (procID == 1)
+      flagProcess = 420;
+    else if (procID == 2)
+      flagProcess = 430;
+    else if (procID == 8)
+      flagProcess = 440;
+  }
+
+  else if (flagParticle == 5) {
+    if (procID == 51)
+      flagProcess = 51;
+    else if (procID == 52)
+      flagProcess = 52;
+    else if (procID == 53)
+      flagProcess = 53;
+    else if (procID == 56)
+      flagProcess = 54;
+    else if (procID == 57)
+      flagProcess = 55;
+    else if (procID == 10)
+      flagProcess = 510;
+    else if (procID == 1)
+      flagProcess = 520;
+    else if (procID == 2)
+      flagProcess = 530;
+    else if (procID == 8)
+      flagProcess = 540;
+  }
+
+  else if (flagParticle == 6) {
+    if (procID == 51)
+      flagProcess = 61;
+    else if (procID == 52)
+      flagProcess = 62;
+    else if (procID == 53)
+      flagProcess = 63;
+    else if (procID == 57)
+      flagProcess = 65;
+  }
+
+  else if (processName == "GenericIon_G4DNAIonisation")
+    flagProcess = 73;
+  else if (processName == "msc")
+    flagProcess = 710;
+  else if (processName == "CoulombScat")
+    flagProcess = 720;
+  else if (processName == "ionIoni")
+    flagProcess = 730;
+  else if (processName == "nuclearStopping")
+    flagProcess = 740;
+  // (for all GenericIons)
+
+  // Alternatively, using process names
+
+  /*
+  else if (processName=="e-_G4DNAElectronSolvation")    flagProcess =10;
+  else if (processName=="e-_G4DNAElastic")              flagProcess =11;
+  else if (processName=="e-_G4DNAExcitation")           flagProcess =12;
+  else if (processName=="e-_G4DNAIonisation")           flagProcess =13;
+  else if (processName=="e-_G4DNAAttachment")           flagProcess =14;
+  else if (processName=="e-_G4DNAVibExcitation")        flagProcess =15;
+
+  else if (processName=="proton_G4DNAElastic")          flagProcess =21;
+  else if (processName=="proton_G4DNAExcitation")       flagProcess =22;
+  else if (processName=="proton_G4DNAIonisation")       flagProcess =23;
+  else if (processName=="proton_G4DNAChargeDecrease")   flagProcess =24;
+
+  else if (processName=="hydrogen_G4DNAElastic")        flagProcess =31;
+  else if (processName=="hydrogen_G4DNAExcitation")     flagProcess =32;
+  else if (processName=="hydrogen_G4DNAIonisation")     flagProcess =33;
+  else if (processName=="hydrogen_G4DNAChargeIncrease") flagProcess =35;
+
+  else if (processName=="alpha_G4DNAElastic")           flagProcess =41;
+  else if (processName=="alpha_G4DNAExcitation")        flagProcess =42;
+  else if (processName=="alpha_G4DNAIonisation")        flagProcess =43;
+  else if (processName=="alpha_G4DNAChargeDecrease")    flagProcess =44;
+
+  else if (processName=="alpha+_G4DNAElastic")          flagProcess =51;
+  else if (processName=="alpha+_G4DNAExcitation")       flagProcess =52;
+  else if (processName=="alpha+_G4DNAIonisation")       flagProcess =53;
+  else if (processName=="alpha+_G4DNAChargeDecrease")   flagProcess =54;
+  else if (processName=="alpha+_G4DNAChargeIncrease")   flagProcess =55;
+
+  else if (processName=="helium_G4DNAElastic")          flagProcess =61;
+  else if (processName=="helium_G4DNAExcitation")       flagProcess =62;
+  else if (processName=="helium_G4DNAIonisation")       flagProcess =63;
+  else if (processName=="helium_G4DNAChargeIncrease")   flagProcess =65;
+
+  else if (processName=="GenericIon_G4DNAIonisation")   flagProcess =73;
+
+  */
+  if (processName != "Transportation") {
+    x = preStep->GetPosition().x() / nanometer;
+    y = preStep->GetPosition().y() / nanometer;
+    z = preStep->GetPosition().z() / nanometer;
+
+    xp = postStep->GetPosition().x() / nanometer;
+    yp = postStep->GetPosition().y() / nanometer;
+    zp = postStep->GetPosition().z() / nanometer;
+
+    // get analysis manager
+
+    G4AnalysisManager* analysisManager = G4AnalysisManager::Instance();
+
+    // fill ntuple
+    analysisManager->FillNtupleDColumn(0, flagParticle);
+    analysisManager->FillNtupleDColumn(1, flagProcess);
+    analysisManager->FillNtupleDColumn(2, xp);
+    analysisManager->FillNtupleDColumn(3, yp);
+    analysisManager->FillNtupleDColumn(4, zp);
+    analysisManager->FillNtupleDColumn(5, step->GetTotalEnergyDeposit() / eV);
+
+    analysisManager->FillNtupleDColumn(
+      6, std::sqrt((x - xp) * (x - xp) + (y - yp) * (y - yp) + (z - zp) * (z - zp)));
+
+    analysisManager->FillNtupleDColumn(
+      7, (preStep->GetKineticEnergy() - postStep->GetKineticEnergy()) / eV);
+
+    analysisManager->FillNtupleDColumn(8, preStep->GetKineticEnergy() / eV);
+
+    analysisManager->FillNtupleDColumn(9, preStep->GetMomentumDirection()
+                                            * postStep->GetMomentumDirection());
+
+    analysisManager->FillNtupleIColumn(
+      10, G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID());
+
+    analysisManager->FillNtupleIColumn(11, step->GetTrack()->GetTrackID());
+
+    analysisManager->FillNtupleIColumn(12, step->GetTrack()->GetParentID());
+
+    analysisManager->FillNtupleIColumn(13, step->GetTrack()->GetCurrentStepNumber());
+
+    // Compute macroscopic cross section for the actual process (if available)
+    static G4EmCalculator emCal;
+    G4double sigmaPerVol = emCal.ComputeCrossSectionPerVolume(
+      preStep->GetKineticEnergy(),
+      step->GetTrack()->GetParticleDefinition(),
+      processName,
+      preStep->GetMaterial());
+
+    // Convert to microscopic area by dividing by molecular number density
+    // Default to -1 if density is not available
+    G4double sigma_area_cm2 = -1.0;
+    if (sigmaPerVol >= 0.) {
+      auto* mat = preStep->GetMaterial();
+      auto* table = G4DNAMolecularMaterial::Instance()->GetNumMolPerVolTableFor(mat);
+      if (table != nullptr) {
+        G4double n_per_mm3 = (*table)[mat->GetIndex()]; // 1/mm^3
+        if (n_per_mm3 > 0.) {
+          G4double sigma_area_mm2 = sigmaPerVol / n_per_mm3; // mm^2
+          sigma_area_cm2 = sigma_area_mm2 / (cm*cm);        // cm^2
+        }
+      }
+    }
+
+    // Append to post-run logs
+    SteppingAction::StepRecord rec;
+    rec.stepNo = step->GetTrack()->GetCurrentStepNumber();
+    rec.kinE_eV = preStep->GetKineticEnergy() / eV;
+    rec.process = processName;
+    // Derive a channel label for logging/printing:
+    // - Vibrational excitation: use vib_<index> when available (or nearest mode).
+    // - All other processes: use a descriptive category (elastic, excitation, ionisation, attachment, ...).
+    int chanIdx = -1;
+    G4double chanMicroXS_cm2 = -1.0;
+    if (processName.find("Vib") != std::string::npos) {
+      // Prefer exact info exposed by the active vib model (Michaud)
+      chanIdx = G4DNAMichaudExcitationModel::GetLastChannelIndex();
+      chanMicroXS_cm2 = G4DNAMichaudExcitationModel::GetLastPartialSigma_cm2();
+      if (chanIdx >= 0) {
+        std::ostringstream ch;
+        ch << "vib_" << chanIdx;
+        rec.channel = ch.str();
+      } else {
+        // Fallback: approximate channel by nearest dE to known centers
+        const G4double dE_eV = (preStep->GetKineticEnergy() - postStep->GetKineticEnergy())/eV;
+        static const G4double omega[8] = {0.024, 0.061, 0.092, 0.205, 0.417, 0.460, 0.510, 0.834};
+        int best = -1; G4double bestDiff = DBL_MAX;
+        for (int i=0;i<8;++i) { const G4double diff = std::abs(dE_eV - omega[i]); if (diff < bestDiff) { bestDiff = diff; best = i; } }
+        chanIdx = best;
+        if (best >= 0) { std::ostringstream ch; ch << "vib_" << best; rec.channel = ch.str(); }
+      }
+    } else {
+      // Map processName to a human-friendly category label
+      std::string label;
+      if (processName.find("Elastic") != std::string::npos)            label = "elastic";
+      else if (processName.find("Ionis") != std::string::npos ||
+               processName.find("Ioniz") != std::string::npos)          label = "ionisation";
+      else if (processName.find("Attach") != std::string::npos)         label = "attachment";
+      else if (processName.find("Excitation") != std::string::npos)     label = "excitation";
+      else if (processName.find("Charge") != std::string::npos)         label = "charge";
+      else if (processName.find("msc") != std::string::npos)            label = "msc";
+      else if (processName.find("Coulomb") != std::string::npos)        label = "coulomb";
+      else                                                               label = processName;
+      rec.channel = label;
+    }
+    // Use per-channel microscopic XS for vib when available; otherwise use per-volume XS converted to area
+    if (processName.find("Vib") != std::string::npos && chanMicroXS_cm2 > 0.) {
+      rec.sigma_area_cm2 = chanMicroXS_cm2;
+    } else {
+      rec.sigma_area_cm2 = sigma_area_cm2;
+    }
+    g_stepLogs.push_back(rec);
+
+    // Keep ntuple column 14 to carry the per-step sigma (1/cm)
+    analysisManager->FillNtupleDColumn(14, sigmaPerVol);
+    // New: record channel index (if identified), otherwise -1
+    analysisManager->FillNtupleIColumn(15, chanIdx);
+    // New: per-channel microscopic XS in cm^2 if available (else -1)
+    analysisManager->FillNtupleDColumn(16, chanMicroXS_cm2);
+
+    analysisManager->AddNtupleRow();
+  }
+}

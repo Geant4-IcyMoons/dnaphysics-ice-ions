@@ -1,0 +1,18 @@
+# 102ZR ( 2.9 S     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          2.9
+                              BetaMinus            0               1
+                              BetaMinus            0 +X       58.497         4717
+                              BetaMinus        20.37 +X       2.0821      4696.63
+                              BetaMinus        64.39 +X       2.0821      4652.61
+                              BetaMinus        93.95 +X      0.79318      4623.05
+                              BetaMinus       156.36 +X       1.2889      4560.64
+                              BetaMinus       160.72 +X      0.69403      4556.28
+                              BetaMinus       246.31 +X       2.1812      4470.69
+                              BetaMinus       258.43 +X       2.3795      4458.57
+                              BetaMinus        430.7 +X      0.25778       4286.3
+                              BetaMinus       599.49 +X       24.787      4117.51
+                              BetaMinus       705.08 +X       3.2719      4011.92
+                              BetaMinus        940.5 +X       1.6855       3776.5
+P       151.78  -      1.8e-09
+                                     IT            0               1

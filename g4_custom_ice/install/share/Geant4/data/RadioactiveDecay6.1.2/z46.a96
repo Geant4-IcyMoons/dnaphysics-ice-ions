@@ -1,0 +1,29 @@
+# 96PD ( 122 S     )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -          122
+                               MshellEC            0        0.017042
+                               BetaPlus            0         0.33725
+                               KshellEC            0         0.57419
+                               LshellEC            0        0.071523
+                               MshellEC       938.76  -      0.72057      2565.24
+                               MshellEC      1274.78  -       0.7414      2229.22
+                               MshellEC       1564.2  -      0.12391       1939.8
+                               MshellEC       1801.7  -      0.11829       1702.3
+                               BetaPlus       938.76  -       22.949      2565.24
+                               BetaPlus      1274.78  -       9.9777      2229.22
+                               BetaPlus       1564.2  -      0.59866       1939.8
+                               BetaPlus       1801.7  -      0.19955       1702.3
+                               KshellEC       938.76  -        24.19      2565.24
+                               KshellEC      1274.78  -       25.105      2229.22
+                               KshellEC       1564.2  -       4.1485       1939.8
+                               KshellEC       1801.7  -        3.975       1702.3
+                               LshellEC       938.76  -       3.0367      2565.24
+                               LshellEC      1274.78  -        3.099      2229.22
+                               LshellEC       1564.2  -      0.51857       1939.8
+                               LshellEC       1801.7  -      0.49808       1702.3
+P      2424.19  -      7.5e-09
+                                     IT            0               1
+P      2530.57  -      2.1e-06
+                                     IT            0               1
+P         7040  -      3.5e-08
+                                     IT            0               1

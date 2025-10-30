@@ -1,0 +1,12 @@
+# 232PU ( 34.1 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         2028
+                                  Alpha            0          0.2233
+                               MshellEC            0        0.050439
+                               KshellEC            0         0.58447
+                               LshellEC            0         0.14179
+                                  Alpha            0  -        15.41         6716
+                                  Alpha           59  -         7.59         6657
+                               MshellEC            0  -       5.1953         1000
+                               KshellEC            0  -       60.201         1000
+                               LshellEC            0  -       14.604         1000

@@ -1,0 +1,30 @@
+# 82BR ( 35.282 H  )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -     127015.2
+                              BetaMinus            0               1
+                              BetaMinus      776.526  -      0.67969     2316.574
+                              BetaMinus       1474.9  -      0.58259       1618.2
+                              BetaMinus     1820.536  -      0.38839     1272.564
+                              BetaMinus     1956.775  -     0.023304     1136.325
+                              BetaMinus     2094.019  -      0.67969      999.081    uniqueFirstForbidden
+                              BetaMinus     2426.895  -   9.7099e-28      666.205
+                              BetaMinus     2547.452  -    0.0038839      545.648
+                              BetaMinus     2556.184  -     0.038839      536.916
+                              BetaMinus     2648.369  -       96.225      444.731
+                              BetaMinus     2828.137  -       1.3788      264.963
+P      45.9492  -        367.8
+                              BetaMinus            0           0.024
+                                     IT            0           0.976
+                              BetaMinus            0  -       2.1148     3139.049    uniqueFirstForbidden
+                              BetaMinus      776.526  -      0.22155     2362.523
+                              BetaMinus       1474.9  -     0.049344     1664.149
+                              BetaMinus       1487.7  -    0.0014098     1651.349    uniqueFirstForbidden
+                              BetaMinus     1956.775  -    0.0056393     1182.274
+                              BetaMinus     2094.019  -    0.0030211      1045.03
+                              BetaMinus      2171.81  -   5.0351e-05     967.2392    uniqueFirstForbidden
+                              BetaMinus      2480.07  -   0.00053372     658.9792
+                              BetaMinus     2547.452  -    0.0021148     591.5972
+                              BetaMinus     2556.184  -    0.0004733     582.8652    uniqueFirstForbidden
+                              BetaMinus      2655.96  -    0.0011178     483.0892
+P      75.0621  -      7.2e-09
+                                     IT            0               1

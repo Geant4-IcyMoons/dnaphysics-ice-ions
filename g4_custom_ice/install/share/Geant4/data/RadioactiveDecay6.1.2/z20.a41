@@ -1,0 +1,11 @@
+# 41CA (  9.94E4 Y )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  - 3.136825e+12
+                               MshellEC            0         0.01482
+                               KshellEC            0         0.89359
+                               LshellEC            0        0.091589
+                               MshellEC            0  -        1.482       421.64
+                               KshellEC            0  -       89.359       421.64
+                               LshellEC            0  -       9.1589       421.64
+P      3829.87  -     3.02e-09
+                                     IT            0               1

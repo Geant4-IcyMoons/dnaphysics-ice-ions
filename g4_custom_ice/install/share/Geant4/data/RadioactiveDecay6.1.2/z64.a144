@@ -1,0 +1,32 @@
+# 144GD ( 4.47 M    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        268.2
+                               BetaPlus            0               1
+                               BetaPlus            0  -       4.1667         3860
+                               BetaPlus       333.29  -       4.1667      3526.71
+                               BetaPlus       347.12  -       4.1667      3512.88
+                               BetaPlus       604.41  -       4.1667      3255.59
+                               BetaPlus        621.5  -       4.1667       3238.5
+                               BetaPlus       629.51  -       4.1667      3230.49
+                               BetaPlus          784  -       4.1667         3076
+                               BetaPlus       907.92  -       4.1667      2952.08
+                               BetaPlus        974.8  -       4.1667       2885.2
+                               BetaPlus       1074.2  -       4.1667       2785.8
+                               BetaPlus       1145.6  -       4.1667       2714.4
+                               BetaPlus       1201.4  -       4.1667       2658.6
+                               BetaPlus      1293.51  -       4.1667      2566.49
+                               BetaPlus      1304.02  -       4.1667      2555.98
+                               BetaPlus      1402.22  -       4.1667      2457.78
+                               BetaPlus      1559.91  -       4.1667      2300.09
+                               BetaPlus       1804.7  -       4.1667       2055.3
+                               BetaPlus       1930.2  -       4.1667       1929.8
+                               BetaPlus      2362.12  -       4.1667      1497.88
+                               BetaPlus      2432.62  -       4.1667      1427.38
+                               BetaPlus      2692.72  -       4.1667      1167.28
+                               BetaPlus       2709.6  -       4.1667       1150.4
+                               BetaPlus      2804.62  -       4.1667      1055.38
+                               BetaPlus      2827.92  -       4.1667      1032.08
+P       2471.6  -      1.3e-08
+                                     IT            0               1
+P       3433.1  -     1.45e-07
+                                     IT            0               1

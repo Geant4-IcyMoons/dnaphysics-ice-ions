@@ -1,0 +1,42 @@
+Data files uploaded to G4ChannelingFastSimCrystalData for the simulations of channeling trajectories.
+
+The file name has the following format:
+<material>_<type(planes or axes)>_<crystallographic direction>.dat
+
+The data include the properties of the crystal lattice of a certain material and in a certain crystallographic direction (along either crystal planes or axes),
+in particular: 
+-electric field: x-component
+-electric field: y-component (only in the case of crystal axes => 2D model)
+-normalized atomic density (normalized to the amorphous density)
+-electron density
+-minimal energy of ionization
+
+All of these values are the functions of x (for crystal planes) or x and y (for crystal axes) within single periodic cell.
+The functions are saved in the form of interpolation coefficients of cubic splines either 1D [1] for planes and 2D [2] for axes 
+based on equidistant nodes.
+
+The file format:
+
+atomic density [cm^-3]
+amplutide of thermal vibrations [cm]
+cell size x [cm]
+cell size y [cm] (only for axes)
+number of interpolation intervals on x (number_of_nodes - 1)
+number of interpolation intervals on x (number_of_nodes - 1)  (only for axes)
+maximum of the potential (0 is in the minimum) [eV]
+minimal potential inside the crystal [eV]
+---in period on every interpolation interval--- :
+interpolation coefficients for electric field: x-component [eV/cm]
+interpolation coefficients for electric field: y-component [eV/cm] (only in the case of crystal axes => 2D model)
+normalized atomic density (in period on every element of the material)
+electron density [cm^-3]
+minimal energy of ionization [eV]
+
+CAUTION: the calculation of all the functions is based on the data in the beggining of the file. 
+Nothing in this file can be changed without changing all the other data!
+
+CAUTION: the amplutide of thermal vibrations is calculated for the room temperature [3].
+
+[1] A. A. Samarskii and A. V. Gulin, Numerical Methods (Nauka, Moscow, 1989).
+[2] G. I. Marchuk, Methods of Numerical Mathematics (Springer-Verlag, New York, 1975).
+[3] V. N. Baier, V. M. Katkov, and V. M. Strakhovenko, Electromagnetic Processes at High Energies in Oriented Single Crystals (World Scientific, Singapore, 1998).

@@ -1,0 +1,12 @@
+# 248FM ( 34.5 S    )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         34.5
+                                  Alpha            0         0.94905
+                               BetaPlus            0         0.04995
+                              SpFission            0        0.000999
+                                  Alpha            0  -           76         7995
+                                  Alpha           37  -           19         7958
+                               BetaPlus            0  -            5         1600
+                              SpFission            0  -          0.1        1e-06
+P         1074  -       0.0101
+                                     IT            0               1

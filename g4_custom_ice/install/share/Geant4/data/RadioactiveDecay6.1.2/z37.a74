@@ -1,0 +1,27 @@
+# 74RB ( 64.776 MS )
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -     0.064776
+                               MshellEC            0      3.6901e-05
+                               BetaPlus            0         0.99822
+                               KshellEC            0       0.0015613
+                               LshellEC            0      0.00017985
+                               MshellEC            0  -     0.003677        10416
+                               MshellEC       455.61  -   5.8314e-06      9960.39
+                               MshellEC          509  -   1.8745e-06         9907
+                               MshellEC       1203.2  -   2.9158e-06       9212.8
+                               MshellEC         1742  -   2.4999e-06         8674
+                               BetaPlus            0  -        99.55        10416
+                               BetaPlus       455.61  -      0.13832      9960.39
+                               BetaPlus          509  -     0.043099         9907
+                               BetaPlus       1203.2  -     0.053123       9212.8
+                               BetaPlus         1742  -     0.038088         8674
+                               KshellEC            0  -      0.15558        10416
+                               KshellEC       455.61  -   0.00024665      9960.39
+                               KshellEC          509  -   7.9281e-05         9907
+                               KshellEC       1203.2  -   0.00012333       9212.8
+                               KshellEC         1742  -   0.00010571         8674
+                               LshellEC            0  -     0.017921        10416
+                               LshellEC       455.61  -   2.8425e-05      9960.39
+                               LshellEC          509  -   9.1372e-06         9907
+                               LshellEC       1203.2  -   1.4209e-05       9212.8
+                               LshellEC         1742  -   1.2184e-05         8674

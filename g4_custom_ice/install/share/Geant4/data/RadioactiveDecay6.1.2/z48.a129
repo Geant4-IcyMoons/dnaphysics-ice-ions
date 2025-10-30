@@ -1,0 +1,7 @@
+# 129CD ( 1.5400e-01)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -        0.154
+                              BetaMinus            0               1
+                              BetaMinus            0  -          100         9713
+P         1940  -       0.0036
+                                     IT            0               1

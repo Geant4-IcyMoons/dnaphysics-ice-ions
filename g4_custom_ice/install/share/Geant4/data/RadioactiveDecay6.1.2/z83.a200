@@ -1,0 +1,7 @@
+# 200BI ( 2.1840e+03)
+#  Excitation  flag   Halflife  Mode    Daughter Ex flag   Intensity          Q
+P            0  -         2184
+                               BetaPlus            0               1
+                               BetaPlus            0  -          100         5880
+P        428.2  -          0.4
+                                     IT            0               1
