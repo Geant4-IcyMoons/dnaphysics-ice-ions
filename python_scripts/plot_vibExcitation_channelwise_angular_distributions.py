@@ -39,7 +39,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = SCRIPT_DIR / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TOP_ROOT = PROJECT_ROOT.parent.parent  # .../geant4_projects
-TABULAR_DIR = TOP_ROOT / "backup" / "geant4_icyMoons" / "tabular"
+GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent  # .../geant4_projects
+CUSTOM_DATA_ROOT = PROJECT_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
+TABULAR_DIR = PROJECT_ROOT / "tabular"
 
 TABLE2_PATH = str(TABULAR_DIR / "michaud_table2.csv")
 TABLE3_PATH = str(TABULAR_DIR / "michaud_table3.csv")
@@ -287,7 +289,7 @@ def plot_hg_for_channel_with_gamma(channel_idx: int, energies_eV: list[float]):
                 cos_all = np.asarray(arrs["cosTheta"][proc_mask], dtype=float)
                 e_all = np.asarray(arrs["kineticEnergy"][proc_mask], dtype=float)
                 if e_all.size:
-                    tol = 1.0  # eV
+                    tol = 0.001  # eV
                     sel = np.abs(e_all - E_closest) <= tol
                     if np.any(sel):
                         theta_sel = np.degrees(np.arccos(np.clip(cos_all[sel], -1.0, 1.0)))
@@ -426,7 +428,7 @@ def compare_at_nearest_event_energy(root_file: str,
 if __name__ == "__main__":
     # Example usage: save default plot to output folder
     try:
-        fig = plot_hg_for_channel_with_gamma(1, [3., 10., 50.])
+        fig = plot_hg_for_channel_with_gamma(1, [3., 10., 30.])
         out = OUTPUT_DIR / "hg_vib_channel_1.png"
         plt.show()
         fig.savefig(out, bbox_inches='tight')

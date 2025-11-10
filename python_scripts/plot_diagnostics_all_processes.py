@@ -43,6 +43,7 @@ hfont = {'fontname': font}
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
+FONTSIZE = 16
 
 plt.rcParams.update({
     'axes.linewidth': 1.5,
@@ -64,23 +65,7 @@ plt.rcParams.update({
     'ytick.minor.width': 1.5,
     'ytick.direction': 'in',
     'axes.titleweight': 'normal',
-    'axes.titlepad': 20
-})
-
-# -------- Paths and data locations --------
-# This script lives under dnaphysics-ice/python_scripts
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = Path(__file__).resolve().parent / "output"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-TOP_ROOT = PROJECT_ROOT.parent.parent  # .../geant4_projects
-TABULAR_DIR = TOP_ROOT / "backup" / "geant4_icyMoons" / "tabular"
-
-MICHAUD_TABLE2 = str(TABULAR_DIR / "michaud_table2.csv")
-MICHAUD_TABLE3 = str(TABULAR_DIR / "michaud_table3.csv")
-
-# Unified font size for all plot text
-FONTSIZE = 16
-plt.rcParams.update({
+    'axes.titlepad': 20,
     'font.size': FONTSIZE,
     'axes.titlesize': FONTSIZE,
     'axes.labelsize': FONTSIZE,
@@ -89,6 +74,18 @@ plt.rcParams.update({
     'legend.fontsize': FONTSIZE,
 })
 
+# -------- Paths and data locations --------
+# This script lives under dnaphysics-ice/python_scripts
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Roots for locating data
+GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent  # .../geant4_projects
+CUSTOM_DATA_ROOT = PROJECT_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
+TABULAR_DIR = PROJECT_ROOT / "tabular"
+
+MICHAUD_TABLE2 = str(TABULAR_DIR / "michaud_table2.csv")
+MICHAUD_TABLE3 = str(TABULAR_DIR / "michaud_table3.csv")
 
 # -------- Small helpers --------
 def _resolve_path(p: str) -> str:
@@ -114,7 +111,8 @@ def _find_g4ledata_file(basename: str) -> str | None:
         p = Path(led) / "dna" / basename
         if p.exists():
             return str(p)
-    data_root = TOP_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
+    # 2) Local custom install with versioned G4EMLOW dir under project tree
+    data_root = CUSTOM_DATA_ROOT
     if data_root.exists():
         for sub in sorted(data_root.iterdir()):
             if sub.is_dir() and sub.name.startswith("G4EMLOW"):
@@ -125,7 +123,7 @@ def _find_g4ledata_file(basename: str) -> str | None:
 
 def _find_backup_dat(basename: str) -> str | None:
     """Fallback: look for reference .dat in backup/geant4_icyMoons."""
-    p = TOP_ROOT / "backup" / "geant4_icyMoons" / basename
+    p = GEANT4_PROJECTS_ROOT / "backup" / "geant4_icyMoons" / basename
     return str(p) if p.exists() else None
 
 def _process_name_map() -> dict:
@@ -508,7 +506,7 @@ def plot_summary(arrs, out_path: str, fontsize: float):
     for name, ids in cats.items():
         mask = np.isin(uniq, ids)
         ax1.bar(uniq[mask], counts[mask], width=0.9, color=colors[name], alpha=0.7, label=name)
-    ax1.set_yscale('log'); ax1.set_xlabel("flagProcess"); ax1.set_ylabel("Counts"); ax1.legend(frameon=True, fontsize=FONTSIZE*0.9)
+    ax1.set_yscale('log'); ax1.set_xlabel("flagProcess"); ax1.set_ylabel("Counts")
 
     # Panel 2: 3D scatter x:y:z for electrons (downsample)
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -516,7 +514,7 @@ def plot_summary(arrs, out_path: str, fontsize: float):
     idx = np.where(np.asarray(fp)==1)[0]
     step = max(1, idx.size // 50000) if idx.size > 50000 else 1
     idx = idx[::step]
-    ax2.scatter(x_nm[idx], y_nm[idx], z_nm[idx], s=1, c='tab:black', alpha=0.6)
+    ax2.scatter(x_nm[idx], y_nm[idx], z_nm[idx], s=1, c='black', alpha=0.6)
     ax2.set_xlabel("x (nm)"); ax2.set_ylabel("y (nm)"); ax2.set_zlabel("z (nm)")
 
     # Panel 3: position histogram along x by process types
@@ -528,7 +526,7 @@ def plot_summary(arrs, out_path: str, fontsize: float):
         h, be = np.histogram(x_nm[m], bins=bins)
         centers = 0.5*(be[1:]+be[:-1])
         ax3.plot(centers, h, label=lab, color=col)
-    ax3.set_xlabel("x (nm)"); ax3.set_yscale('log'); ax3.legend(frameon=True, fontsize=FONTSIZE*0.9); ax3.set_ylabel("Counts")
+    ax3.set_xlabel("x (nm)"); ax3.set_yscale('log'); ax3.set_ylabel("Counts")
 
     # Panel 4: kinetic energy histogram for electrons
     ax4 = axs[3]
@@ -677,8 +675,7 @@ def main():
     plot_vib_energy_loss_hist(arrs, args.ncols, args.de_hist_out)
 
     # Summary and deflection angles
-    if args.summary:
-        plot_summary(arrs, args.summary_out, fontsize=FONTSIZE)
+    plot_summary(arrs, args.summary_out, fontsize=FONTSIZE)
     plot_deflection_angles_all(arrs, args.deflection_out, fontsize=FONTSIZE)
 
 
