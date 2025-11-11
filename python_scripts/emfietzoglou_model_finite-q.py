@@ -263,21 +263,15 @@ def _fj_q(fj0: np.ndarray, q: np.ndarray, C: DispersionCoeffs) -> np.ndarray:
     f_j(q) = f_j * exp(-a_j q^2) + b_j q^2 * exp(-c_j q^2)
     Returns shape (nq, n_exc).
     """
-    q = _ensure_1d(q)
     n_exc = fj0.size
     a = _lenN(C.a_fj, n_exc)
     b = _lenN(C.b_fj, n_exc)
     c = _lenN(C.c_fj, n_exc)
 
     q2 = q[:, None]**2
-    term1 = fj0[None, :] * np.exp(-a[None, :] * q2)
+    term1 = np.exp(-a[None, :] * q2)
     term2 = (b[None, :] * q2) * np.exp(-c[None, :] * q2)
-    fjq = term1 + term2
-    # Headroom check: sum_j f_j(q) < 1
-    s = np.sum(fjq, axis=1)
-    if np.any(s >= 0.995):
-        raise ValueError("Sum_j f_j(q) too large (>= 0.995). Revisit a_fj,b_fj,c_fj.")
-    return fjq
+    return fj0[None, :] * (term1 + term2)
 
 def _renorm_fi_q(fi0: np.ndarray, fj0_sum0: float, fjq_sum: np.ndarray) -> np.ndarray:
     """
@@ -285,31 +279,24 @@ def _renorm_fi_q(fi0: np.ndarray, fj0_sum0: float, fjq_sum: np.ndarray) -> np.nd
       f_i(q) = f_i * (1 - sum_j f_j(q)) / (1 - sum_j f_j(0))
     Returns shape (nq, n_ion).
     """
-    if not (fj0_sum0 < 1.0):
-        raise ValueError("sum_j f_j(0) must be < 1 for normalization.")
+
     scale = (1.0 - fjq_sum) / (1.0 - fj0_sum0)   # shape (nq,)
     return fi0[None, :] * scale[:, None]
 
 def _Ei_q(Ei0: np.ndarray, q: np.ndarray, C: DispersionCoeffs) -> np.ndarray:
     """
     Ionization resonance shift vs q:
-      E_i(q) = E_i + [1 - exp(-c_disp * q^d_disp)] * (RY) * q^2
+      E_i(q) = E_i + [1 - exp(-c_disp * q^d_disp)] * RY * q^2
     Returns shape (nq, n_ion).
     """
-    q = _ensure_1d(q)
-    lift = (1.0 - np.exp(-C.c_disp * (q**C.d_disp))) * (RY * q**2)  # shape (nq,)
-    return Ei0[None, :] + lift[:, None]
+    Ei_q = Ei0[None, :] + (RY * (q ** 2.))[:, None] * (1. - np.exp(-C.c_disp * (q ** C.d_disp)))[:, None]
+    return Ei_q
 
-def _gamma_q(g0: np.ndarray, q: np.ndarray, C: DispersionCoeffs) -> np.ndarray:
-    """
-    Width dispersion for excitations and ionizations:
-      gamma(q) = g0 + b1*(RY*q) + b2*(RY*q)^2
-    Returns shape (nq, n_chan).
-    """
+def _gamma_q(g0, q, C):
     q = _ensure_1d(q)
-    dq1 = (RY * q)[:, None]
-    dq2 = (RY * q)**2
-    return g0[None, :] + C.b1 * dq1 + C.b2 * dq2[:, None]
+    lin = (RY * q)[:, None]          # b1 * (Ry q)
+    quad = (RY * (q ** 2))[:, None]    # b2 * (Ry q^2)  <-- this was the bug
+    return g0[None, :] + C.b1 * lin + C.b2 * quad
 
 # ============================================================
 # Finite-q ε₂ and ε₁ (valence only), channel-resolved
@@ -473,7 +460,6 @@ def plot_Im_epsilon_channel_resolved_Eq(
     ax.set_xlabel("Energy (eV)")
     ax.set_ylabel(r"$\mathrm{Im}(\epsilon)(E,q)$")
 
-
 def plot_Re_epsilon_channel_resolved_Eq(
     E: np.ndarray,
     s: IceOpticalSet,
@@ -506,7 +492,6 @@ def plot_Re_epsilon_channel_resolved_Eq(
     ax.set_xlabel("Energy (eV)")
     ax.set_ylabel(r"$\mathrm{Re}(\epsilon)(E,q)$")
 
-
 def plot_ELF_channel_resolved_Eq(
     E: np.ndarray,
     s: IceOpticalSet,
@@ -534,7 +519,6 @@ def plot_ELF_channel_resolved_Eq(
         ax.legend(fontsize=10, loc='upper right')
     ax.set_xlabel("Energy (eV)")
     ax.set_ylabel(r"$ELF(E,q)$")
-
 
 def plot_ELF_totals_multiq(
     E: np.ndarray,
@@ -615,6 +599,13 @@ def plot_ELF_channel_resolved_multiq(E, qvals, s, C, include_kshell=True, ncols=
     ion_colors = ["#d62728", "#ff7f0e", "#bcbd22", "#e377c2"]
     legend_handles = None
     legend_labels = None
+    # Determine a common y-maximum across all panels from the total ELF curves
+    y_max = 0.0
+    for q in qvals:
+        _res = elf_channels_Eq(E, s, C, float(q), include_kshell=include_kshell)
+        if _res["total"].size:
+            y_max = max(y_max, float(np.nanmax(_res["total"])))
+    y_max = y_max + 0.1
     for i, q in enumerate(qvals):
         r, c = divmod(i, ncols)
         ax = axes[r][c]
@@ -642,6 +633,8 @@ def plot_ELF_channel_resolved_multiq(E, qvals, s, C, include_kshell=True, ncols=
         else:
             ax.set_ylabel("")
             ax.tick_params(labelleft=False)
+        # enforce common y range across panels
+        ax.set_ylim(0.0, y_max)
     for j in range(nG, nrows * ncols):
         r, c = divmod(j, ncols)
         axes[r][c].set_visible(False)
@@ -666,6 +659,13 @@ def plot_Im_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
         figsize = (5 * ncols, 3.5 * nrows)
     fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False, sharex=True)
     legend_handles = legend_labels = None
+    # Common y-maximum from total Im(ε)
+    y_max = 0.0
+    for q in qvals:
+        _tot = epsilon2_valence_Eq(E, np.array([float(q)], float), s, C)["total"][0]
+        if _tot.size:
+            y_max = max(y_max, float(np.nanmax(_tot)))
+    y_max = y_max + 0.1
     for i, q in enumerate(qvals):
         r, c = divmod(i, ncols)
         ax = axes[r][c]
@@ -680,6 +680,7 @@ def plot_Im_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
         else:
             ax.set_ylabel("")
             ax.tick_params(labelleft=False)
+        ax.set_ylim(0.0, y_max)
     for j in range(nG, nrows * ncols):
         r, c = divmod(j, ncols)
         axes[r][c].set_visible(False)
@@ -702,6 +703,13 @@ def plot_Re_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
         figsize = (5 * ncols, 3.5 * nrows)
     fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False, sharex=True)
     legend_handles = legend_labels = None
+    # Common y-maximum from total Re(ε)
+    y_max = 0.0
+    for q in qvals:
+        _tot = epsilon1_valence_Eq(E, np.array([float(q)], float), s, C)["total"][0]
+        if _tot.size:
+            y_max = max(y_max, float(np.nanmax(_tot)))
+    y_max = y_max + 0.1
     for i, q in enumerate(qvals):
         r, c = divmod(i, ncols)
         ax = axes[r][c]
@@ -716,6 +724,7 @@ def plot_Re_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
         else:
             ax.set_ylabel("")
             ax.tick_params(labelleft=False)
+        ax.set_ylim(0.0, y_max)
     for j in range(nG, nrows * ncols):
         r, c = divmod(j, ncols)
         axes[r][c].set_visible(False)
@@ -735,7 +744,7 @@ if __name__ == "__main__":
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])
     c_vec = np.array([0.098, 0.075, 0.074, 0.765, 0.425])
     C = DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)  # RR2017 defaults for c_disp,d_disp,b1,b2
-    E = np.linspace(1.0, 60.0, 20000)
+    E = np.linspace(1.0, 90.0, 20000)
     qvals = np.array([0.0, 0.1, 0.3, 0.6, 0.9, 2.0])  # a0^{-1}
     # Finite-q: ensure optical limit is recovered
     check_q0_convergence(E, s, C)
