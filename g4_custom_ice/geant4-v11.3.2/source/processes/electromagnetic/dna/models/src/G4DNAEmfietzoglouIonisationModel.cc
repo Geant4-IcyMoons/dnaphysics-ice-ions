@@ -87,6 +87,11 @@ G4VEmModel(nam)
   statCode = false;
 }
 
+// ---- thread-local storage definitions for per-step diagnostics ----
+thread_local G4int    G4DNAEmfietzoglouIonisationModel::s_lastShell = -1;
+thread_local G4double G4DNAEmfietzoglouIonisationModel::s_lastSigmaPartial_cm2 = -1.0;
+thread_local G4double G4DNAEmfietzoglouIonisationModel::s_lastEkin_eV = -1.0;
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
 G4DNAEmfietzoglouIonisationModel::~G4DNAEmfietzoglouIonisationModel()
@@ -751,6 +756,11 @@ G4int G4DNAEmfietzoglouIonisationModel::RandomSelect(G4double k,
 {
   G4int level = 0;
 
+  // Reset diagnostics for this call
+  s_lastShell = -1;
+  s_lastSigmaPartial_cm2 = -1.0;
+  s_lastEkin_eV = k / eV;
+
   auto pos = tableData.find(particle);
 
   if(pos != tableData.cend())
@@ -781,6 +791,9 @@ G4int G4DNAEmfietzoglouIonisationModel::RandomSelect(G4double k,
 
         if(valuesBuffer[i] > value)
         {
+          // Record chosen shell and its partial microscopic cross section
+          s_lastShell = i;
+          s_lastSigmaPartial_cm2 = valuesBuffer[i];
           delete[] valuesBuffer;
           return i;
         }

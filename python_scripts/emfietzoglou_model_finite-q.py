@@ -228,8 +228,48 @@ def epsilon1_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
 def epsilon2_Kshell_E0(E: np.ndarray, s: IceOpticalSet) -> np.ndarray:
     E = np.asarray(E, float)
     o = s.kshell
-    y = _drude_e2(E, o.f, o.E0, o.gamma)
+    y = (s.Ep**2) * _drude_e2(E, o.f, o.E0, o.gamma)
     return np.where(E >= o.Bth, y, 0.0)
+
+def epsilon2_Kshell_E0_fsum_corrected(E, s):
+    r"""
+    Oxygen K-shell ε2^(K)(E, q=0) normalized by the f-sum so that
+        ∫_0^∞ E * ε2^(K)(E) dE = (π/2) * Ep^2 * N_K,   with N_K = 0.178.
+    This enforces Neff^(K) = 0.178 and makes Neff_total → 1, Neff_valence → 0.822.
+
+    Uses a single (normal) Drude shape with onset at the O K edge.
+    Requires in 's.kshell' at least: E0, gamma, Bth. Uses s.Ep for Ep.
+    """
+    import numpy as np
+
+    E   = np.asarray(E, dtype=float)
+    Ep  = float(s.Ep)
+    ks  = getattr(s, "kshell", None)
+    if ks is None:
+        # No K-shell parameters present
+        return np.zeros_like(E)
+
+    E0   = float(getattr(ks, "E0",   450.0))
+    gamma= float(getattr(ks, "gamma",360.0))
+    Bth  = float(getattr(ks, "Bth",  532.0))
+    N_K  = 0.178  # Emfietzoglou et al., fixed atomic fraction
+
+    # Unit-amplitude Drude *shape* for ε2:
+    # ε2_shape(E) = (γ E) / [(E0^2 - E^2)^2 + (γ E)^2], zeroed below the edge
+    num   = gamma * E
+    den   = (E0*E0 - E*E)**2 + (gamma * E)**2
+    shape = np.where(E >= Bth, np.where(den > 0.0, num / den, 0.0), 0.0)
+
+    # Target area for ∫ E * ε2^(K)(E) dE
+    target = 0.5 * np.pi * (Ep**2) * N_K
+
+    # Cumulative trapezoid to avoid warnings; last value is the area
+    dE     = np.diff(E)
+    midE   = 0.5 * (E[1:] + E[:-1])
+    area_shape = np.sum(0.5 * (shape[1:] + shape[:-1]) * dE * midE)
+    A = target / area_shape if np.isfinite(area_shape) and area_shape > 0.0 else 0.0
+
+    return A * shape
 
 def elf_E0(E: np.ndarray, s: IceOpticalSet, include_kshell: bool = True) -> np.ndarray:
     """ELF at q=0 using valence ε plus optional additive K-shell ε2."""
@@ -423,7 +463,8 @@ def elf_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs, i
     denom = np.where(denom == 0.0, np.finfo(float).tiny, denom)
     elf = e2 / denom
     if include_kshell:
-        ks = epsilon2_Kshell_E0(E, s)             # (nE,)
+        # ks = epsilon2_Kshell_E0(E, s)             # (nE,)
+        ks = epsilon2_Kshell_E0_fsum_corrected(E, s)             # (nE,)
         elf = elf + ks[None, :]
     return elf
 
@@ -737,8 +778,8 @@ def plot_Re_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
 
 if __name__ == "__main__":
 
-    ice = "hexagonal"
-    # ice = "amorphous"
+    # ice = "hexagonal"
+    ice = "amorphous"
     s = epsilon_optical(ice)
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])

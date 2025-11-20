@@ -164,8 +164,16 @@ def load_arrays(path: str, tree_name: str = "step"):
 def load_reference_from_path(fpath: str):
     """Load reference partial XS from a .dat file.
 
-    Format: first column is energy (eV), followed by M partial XS columns
-    in 1e-16 cm^2. Returns (E_eV, ref_by_channel) where len(ref_by_channel)=M.
+    Format: first column is energy (eV), followed by M partial XS columns.
+
+    By default the columns are interpreted as being in 1e-16 cm^2 (Michaud
+    vibrational / elastic tables).  For some data sets (notably the
+    Emfietzoglou ionisation table used by G4DNAEmfietzoglouIonisationModel),
+    the caller applies an extra scale factor to convert the raw table units
+    to 1e-16 cm^2 before plotting.
+
+    Returns (E_eV, ref_by_channel) where len(ref_by_channel)=M and each
+    element is a NumPy array of the same length as E_eV.
     """
     E: list[float] = []
     rows: list[list[float]] = []
@@ -300,7 +308,9 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
                       if "channelMicroXS" in arrs else None)
 
     # Reference data
-    ref_E = None; ref_by_ch = None
+    ref_E = None
+    ref_by_ch = None
+    ion_frac_by_ch = None
     if dat_path:
         ref_E, ref_by_ch = load_reference_from_path(dat_path)
     else:
@@ -316,6 +326,13 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
                 p = _find_backup_dat("sigma_elastic_e_michaud.dat")
             if p:
                 ref_E, ref_by_ch = load_reference_from_path(p)
+        elif int(pcode) == 13:
+            # Ionisation (Emfietzoglou model with 5 shells)
+            p = _find_g4ledata_file("sigma_ionisation_e_emfietzoglou.dat")
+            if not p:
+                p = _find_backup_dat("sigma_ionisation_e_emfietzoglou.dat")
+            if p:
+                ref_E, ref_by_ch = load_reference_from_path(p)
         elif int(pcode) == 14:
             # Attachment (Michaud fit of 'Others' near ~4 eV), custom .dat
             p = _find_g4ledata_file("sigma_attachment_e_michaud.dat")
@@ -323,6 +340,30 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
                 p = _find_backup_dat("sigma_attachment_e_michaud.dat")
             if p:
                 ref_E, ref_by_ch = load_reference_from_path(p)
+
+    # If needed, rescale reference units into 1e-16 cm^2
+    # Emfietzoglou ionisation tables (sigma_ionisation_e_emfietzoglou.dat) are
+    # provided in units consistent with the G4DNAEmfietzoglouIonisationModel
+    # scale factor:
+    #   scaleFactor = (1.e-22 / 3.343) * m*m
+    # which corresponds to:
+    #   sigma[cm^2] = value * (1e-18 / 3.343)
+    # Therefore the values in "10^-16 cm^2" used for plotting are:
+    #   sigma[10^-16 cm^2] = value * (1e-2 / 3.343)
+    ion_frac_by_ch = None
+    if ref_E is not None and ref_by_ch is not None and int(pcode) == 13:
+        emf_to_1e16 = 1.0e-2 / 3.343
+        ref_by_ch = [np.asarray(col, dtype=float) * emf_to_1e16 for col in ref_by_ch]
+        # Precompute per-shell fractions sigma_shell / sigma_total on the reference grid
+        ref_stack = np.vstack(ref_by_ch)
+        ref_total = np.sum(ref_stack, axis=0)
+        ion_frac_by_ch = []
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for col in ref_by_ch:
+                frac = np.zeros_like(col, dtype=float)
+                mask = ref_total > 0.0
+                frac[mask] = col[mask] / ref_total[mask]
+                ion_frac_by_ch.append(frac)
 
     # Channels
     channels: List[int] = []
@@ -350,20 +391,51 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
         line_sim = None
         line_ref = None
         if ke is not None:
-            if chan_idx is not None and ch is not None and np.any(chan_idx >= 0):
-                m = (chan_idx == ch)
+            if int(pcode) == 13 and ion_frac_by_ch is not None and ref_E is not None:
+                # Ionisation: reconstruct per-shell simulation XS by scaling total
+                # simulation XS with the shell fractions from the Emfietzoglou
+                # reference table.
+                if xs_macro_mm_inv is not None and xs_macro_mm_inv.size == ke.size:
+                    x = ke
+                    if x.size:
+                        y_total = _to_micro_cm2(xs_macro_mm_inv, nH2O_cm3)
+                        if 0 <= ch < len(ion_frac_by_ch):
+                            frac_grid = ion_frac_by_ch[ch]
+                            frac_x = np.interp(x, ref_E, frac_grid, left=0.0, right=0.0)
+                            y = y_total * frac_x
+                            order = np.argsort(x)
+                            line_sim, = ax.plot(
+                                x[order],
+                                y[order] * scale,
+                                "--",
+                                linewidth=2,
+                                c="dodgerblue",
+                                zorder=2,
+                                label="Simulation",
+                            )
             else:
-                m = np.ones_like(ke, dtype=bool)
-            x = ke[m]
-            if x.size:
-                y_conv = _to_micro_cm2(xs_macro_mm_inv[m], nH2O_cm3)
-                if chan_micro is not None:
-                    y_micro = np.asarray(chan_micro[m], dtype=float)
-                    y = np.where(y_micro > 0.0, y_micro, y_conv)
+                if chan_idx is not None and ch is not None and np.any(chan_idx >= 0):
+                    m = (chan_idx == ch)
                 else:
-                    y = y_conv
-                order = np.argsort(x)
-                line_sim, = ax.plot(x[order], y[order] * scale, "--", linewidth=2, c="dodgerblue", zorder=2, label="Simulation")
+                    m = np.ones_like(ke, dtype=bool)
+                x = ke[m]
+                if x.size:
+                    y_conv = _to_micro_cm2(xs_macro_mm_inv[m], nH2O_cm3)
+                    if chan_micro is not None:
+                        y_micro = np.asarray(chan_micro[m], dtype=float)
+                        y = np.where(y_micro > 0.0, y_micro, y_conv)
+                    else:
+                        y = y_conv
+                    order = np.argsort(x)
+                    line_sim, = ax.plot(
+                        x[order],
+                        y[order] * scale,
+                        "--",
+                        linewidth=2,
+                        c="dodgerblue",
+                        zorder=2,
+                        label="Simulation",
+                    )
 
         if ref_E is not None and ref_by_ch is not None:
             if ch >= 0 and ch < len(ref_by_ch):
@@ -377,8 +449,15 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
 
         ax.set_xlabel("Kinetic Energy (eV)")
         ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
-        panel_label = f"{pname}_ch{ch}" if (chan_idx is not None and np.any(chan_idx >= 0)) else pname
+        if int(pcode) == 13:
+            panel_label = f"{pname}_ch{ch}"
+        else:
+            panel_label = f"{pname}_ch{ch}" if (chan_idx is not None and np.any(chan_idx >= 0)) else pname
         ax.set_title(panel_label)
+        
+        # Set xlim for ionisation process to 2-100 eV range
+        if int(pcode) == 13:
+            ax.set_xlim(2, 100)
 
         if not legend_added and (ch == 0 or i == 0):
             handles = []
@@ -544,6 +623,56 @@ def plot_summary(arrs, out_path: str, fontsize: float):
     return outpath
 
 
+def _born_angular_distribution(theta_deg, E_kin_eV, E_sec_eV):
+    """
+    Compute theoretical Born approximation angular distribution for ionisation.
+    
+    Based on G4DNABornAngle::SampleDirectionForShell:
+    - E_sec < 50 eV: Isotropic (uniform in cos(theta))
+    - 50 eV <= E_sec <= 200 eV: 90% forward peaked (0-45°), 10% isotropic
+    - E_sec > 200 eV: Born approximation formula
+    
+    Args:
+        theta_deg: array of angles in degrees
+        E_kin_eV: incident kinetic energy in eV
+        E_sec_eV: secondary electron energy in eV
+    
+    Returns:
+        Normalized PDF values at each theta
+    """
+    theta_rad = np.deg2rad(theta_deg)
+    
+    if E_sec_eV < 50:
+        # Isotropic: uniform in cos(theta)
+        pdf = np.sin(theta_rad) / 2.0  # d(cos)/dtheta = sin(theta), integral over hemisphere = 2
+    elif E_sec_eV <= 200:
+        # Mixed forward/isotropic
+        # 90% in forward cone (0-45°), 10% isotropic
+        forward_mask = theta_deg <= 45
+        pdf = np.zeros_like(theta_rad)
+        pdf[forward_mask] = 0.9 / (2 * np.pi * (1 - np.cos(np.pi/4))) * np.sin(theta_rad[forward_mask])
+        pdf[~forward_mask] = 0.1 * np.sin(theta_rad[~forward_mask]) / 2.0
+    else:
+        # Born approximation: P(theta) ~ sin^3(theta) / (1 + E_sec/(2*m_e*c^2) - cos(theta))^2
+        # where sin^2(theta) = (1 - E_sec/E_kin) / (1 + E_sec/(2*m_e*c^2))
+        m_e_c2 = 510998.95  # electron rest mass in eV
+        sin2_max = (1 - E_sec_eV/E_kin_eV) / (1 + E_sec_eV/(2*m_e_c2))
+        sin2 = np.sin(theta_rad)**2
+        
+        # Born formula (approximate)
+        pdf = (np.sin(theta_rad) * sin2) / (1 + E_sec_eV/(2*m_e_c2) - np.cos(theta_rad))**2
+        
+        # Suppress unphysical angles where sin^2 > sin2_max
+        pdf[sin2 > sin2_max] = 0
+    
+    # Normalize
+    integral = np.trapz(pdf, theta_rad)
+    if integral > 0:
+        pdf /= integral
+    
+    return pdf
+
+
 def plot_deflection_angles_all(arrs, out_path: str, fontsize: float = FONTSIZE):
     """Plot deflection-angle histograms for all (process, channel) pairs."""
     if out_path is None:
@@ -582,7 +711,9 @@ def plot_deflection_angles_all(arrs, out_path: str, fontsize: float = FONTSIZE):
             continue
         counts, bins, _ = ax.hist(thetas, bins=90, range=(0, 180), histtype="stepfilled", alpha=0.8, color='lightgray', label='Simulation')
 
+        # Overlay theoretical angular distributions
         if int(proc_code) == 15 and 0 <= int(ch_code) <= 7 and kin_energy is not None:
+            # Vibrational excitation: HG model from Michaud tables
             E_tab, gamma_tab = _load_michaud_gamma_for_channel(int(ch_code))
             if E_tab is not None and gamma_tab is not None and E_tab.size > 0:
                 e_sel = kin_energy[mask]
@@ -600,6 +731,7 @@ def plot_deflection_angles_all(arrs, out_path: str, fontsize: float = FONTSIZE):
                         p_int = p_int / np.nanmax(p_int)
                         scale = np.nanmax(counts) if counts.size else 1.0
                         ax.plot(theta_grid, p_int * scale, 'k-', lw=2.0, label='HG (integrated)')
+        
 
         # mean_angle = float(np.mean(thetas)); median_angle = float(np.median(thetas))
         # ax.axvline(median_angle, color="k", linestyle="--", linewidth=1.5, label=f"median={median_angle:.1f}°")

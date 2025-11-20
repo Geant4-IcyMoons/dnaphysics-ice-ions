@@ -363,16 +363,54 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
         const G4double dE_eV = (preStep->GetKineticEnergy() - postStep->GetKineticEnergy())/eV;
         static const G4double omega[8] = {0.024, 0.061, 0.092, 0.205, 0.417, 0.460, 0.510, 0.834};
         int best = -1; G4double bestDiff = DBL_MAX;
-        for (int i=0;i<8;++i) { const G4double diff = std::abs(dE_eV - omega[i]); if (diff < bestDiff) { bestDiff = diff; best = i; } }
+        for (int i=0;i<8;++i) {
+          const G4double diff = std::abs(dE_eV - omega[i]);
+          if (diff < bestDiff) { bestDiff = diff; best = i; }
+        }
         chanIdx = best;
-        if (best >= 0) { std::ostringstream ch; ch << "vib_" << best; rec.channel = ch.str(); }
+        if (best >= 0) {
+          std::ostringstream ch;
+          ch << "vib_" << best;
+          rec.channel = ch.str();
+        }
+      }
+    } else if (processName.find("Ionis") != std::string::npos ||
+               processName.find("Ioniz") != std::string::npos) {
+      // Ionisation: infer channel from energy loss and binding energies
+      // Emfietzoglou model has 5 shells with binding energies: 10, 13, 17, 32.2, 539.7 eV
+      const G4double dE_eV = (preStep->GetKineticEnergy() - postStep->GetKineticEnergy())/eV;
+      static const G4double bindingE[5] = {10.0, 13.0, 17.0, 32.2, 539.7};
+      
+      // Find which shell by comparing energy loss to binding energy + secondary electron energy
+      // Energy loss = binding energy + secondary electron kinetic energy
+      // We'll use a simple heuristic: if dE is closest to a binding energy (within reasonable margin)
+      int best = -1;
+      G4double bestDiff = DBL_MAX;
+      for (int i=0; i<5; ++i) {
+        // Energy loss should be at least the binding energy
+        if (dE_eV >= bindingE[i]) {
+          // Check if this is the closest binding energy below the energy loss
+          G4double diff = dE_eV - bindingE[i];
+          // Prefer shells where energy loss is reasonable (binding energy + some secondary KE)
+          if (diff < bestDiff && diff < 1000.0) { // secondary electron < 1 keV seems reasonable
+            bestDiff = diff;
+            best = i;
+          }
+        }
+      }
+      
+      chanIdx = best;
+      if (best >= 0) {
+        std::ostringstream ch;
+        ch << "ion_" << best;
+        rec.channel = ch.str();
+      } else {
+        rec.channel = "ionisation";
       }
     } else {
       // Map processName to a human-friendly category label
       std::string label;
       if (processName.find("Elastic") != std::string::npos)            label = "elastic";
-      else if (processName.find("Ionis") != std::string::npos ||
-               processName.find("Ioniz") != std::string::npos)          label = "ionisation";
       else if (processName.find("Attach") != std::string::npos)         label = "attachment";
       else if (processName.find("Excitation") != std::string::npos)     label = "excitation";
       else if (processName.find("Charge") != std::string::npos)         label = "charge";

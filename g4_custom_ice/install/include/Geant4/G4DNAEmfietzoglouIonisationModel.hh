@@ -83,6 +83,21 @@ public:
                                   G4double energyTransfer,
                                   G4int shell);
 
+  // ---- Per-step diagnostics for logging (thread-local) ----
+  // These expose, for the last sampled ionisation interaction on this thread:
+  // - the chosen shell index (0..4 for water)
+  // - the partial microscopic cross section at pre-step energy (cm^2)
+  // - the pre-step kinetic energy (eV)
+  static inline G4int    GetLastShellIndex()      { return s_lastShell; }
+  static inline G4double GetLastPartialSigma_cm2(){ return s_lastSigmaPartial_cm2; }
+  static inline G4double GetLastEkin_eV()         { return s_lastEkin_eV; }
+  static inline void     ClearLastIonisationInfo()
+  {
+    s_lastShell = -1;
+    s_lastSigmaPartial_cm2 = -1.0;
+    s_lastEkin_eV = -1.0;
+  }
+
   inline void SelectFasterComputation(G4bool input);
 
   inline void SelectStationary(G4bool input); 
@@ -170,6 +185,11 @@ private:
   // Partial cross section
 
   G4int RandomSelect(G4double energy, const G4String& particle);
+
+  // Thread-local diagnostics: last sampled shell and partial cross section
+  static thread_local G4int    s_lastShell;
+  static thread_local G4double s_lastSigmaPartial_cm2;
+  static thread_local G4double s_lastEkin_eV;
 
 };
 

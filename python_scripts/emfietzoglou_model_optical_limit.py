@@ -230,7 +230,7 @@ def epsilon1_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
 def epsilon2_Kshell_E0(E: np.ndarray, s: IceOpticalSet) -> np.ndarray:
     E = np.asarray(E, float)
     o = s.kshell
-    y = _drude_e2(E, o.f, o.E0, o.gamma)
+    y = (s.Ep**2) * _drude_e2(E, o.f, o.E0, o.gamma)
     return np.where(E >= o.Bth, y, 0.0)
 
 def epsilon2_Kshell_E0_fsum_corrected(E, s):
@@ -283,7 +283,8 @@ def elf_E0(E: np.ndarray, s: IceOpticalSet, include_kshell: bool = True) -> np.n
     denom = np.where(denom == 0.0, np.finfo(float).tiny, denom)
     elf_val = e2t / denom
     if include_kshell:
-        elf_val = elf_val + epsilon2_Kshell_E0(E, s)
+        # elf_val = elf_val + epsilon2_Kshell_E0(E, s)
+        elf_val = elf_val + epsilon2_Kshell_E0_fsum_corrected(E, s)
     return elf_val
 
 def plot_Im_epsilon_channel_resolved(

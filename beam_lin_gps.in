@@ -1,17 +1,17 @@
 # Verbosity
 /tracking/verbose 1
 /run/verbose 2
-/control/verbose 2
+/control/verbose 1
 
 # ===== Parameters =====
 # N = number of particles AND threads
-/control/alias N 200
+/control/alias N 100000
 /control/alias EMIN 2       # min energy value (numeric)
 /control/alias EMAX 100      # max energy value (numeric)
 /control/alias EUNIT eV     # unit for energies
 
 # Threads: set equal to N (must be before initialize)
-/run/numberOfThreads {N}
+/run/numberOfThreads 1
 
 # Material
 /dna/test/setMat G4_WATER
