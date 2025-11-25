@@ -130,18 +130,18 @@ void PhysicsList::ConstructProcess()
  G4DNAVibExcitation* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
  G4DNAElastic* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
   G4DNAAttachment* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
-  G4DNAIonisation* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
+  // G4DNAIonisation* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
   
   // theDNAVibProcess->SetEmModel(new G4DNASancheExcitationModel()  );
  theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel()  );
  theDNAElasticProcess->SetEmModel(new G4DNAMichaudElasticModel()  );
   theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel()  );
-  theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglouIonisationModel()  );
+  // theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglouIonisationModel()  );
     
  ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
  ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
   ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
-  ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
+  // ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
 
   //****** END ICE *****
 

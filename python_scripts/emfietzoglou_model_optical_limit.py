@@ -16,9 +16,11 @@ from dataclasses import dataclass
 from typing import List, Literal, Union
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+from pathlib import Path
 
 
-font = 'Gill Sans'
+font = 'Courier'
 hfont = {'fontname': font}
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
@@ -133,7 +135,7 @@ def _d_drude_e1(E: np.ndarray, f: float, E0: float, gamma: float) -> np.ndarray:
 def epsilon_optical(material: Material) -> IceOpticalSet:
     if material == "amorphous":
         Ep = 20.82
-        Bmin = 7.5
+        Bmin = 7.0
         excit = [
             Osc(8.65,  1.6, 0.0090, "excitation"),
             Osc(10.50, 2.5, 0.0096, "excitation"),
@@ -145,12 +147,12 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
             Osc(15.40, 5.7, 0.1250, "ionization", Bth=10.0),
             Osc(18.60, 7.1, 0.1300, "ionization", Bth=13.0),
             Osc(24.50, 15.0, 0.1100, "ionization", Bth=17.0),
-            Osc(38.00, 30.0, 0.4110, "ionization", Bth=32.0),
+            Osc(38.00, 30.0, 0.4110, "ionization", Bth=32.2),
         ]
-        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0)
+        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=540.0)
     elif material == "hexagonal":
         Ep = 20.59
-        Bmin = 7.5
+        Bmin = 7.0
         excit = [
             Osc(8.65,  1.6, 0.0168, "excitation"),
             Osc(10.50, 1.5, 0.0065, "excitation"),
@@ -162,19 +164,148 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
             Osc(15.80, 4.6, 0.1000, "ionization", Bth=10.0),
             Osc(18.00, 7.5, 0.2000, "ionization", Bth=13.0),
             Osc(24.50, 14.0, 0.1100, "ionization", Bth=17.0),
-            Osc(35.00, 30.0, 0.3580, "ionization", Bth=32.0),
+            Osc(35.00, 30.0, 0.3580, "ionization", Bth=32.2),
         ]
-        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0)
+        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=540.0)
     else:
         raise ValueError("material must be 'amorphous' or 'hexagonal'")
 
     return IceOpticalSet(Ep=Ep, Bmin=Bmin, excitations=excit, ionizations=ioniz, kshell=kshell)
 
+# ===== Partitioning / truncation algorithm (Kyriakou et al., MedPhys 2015, Appendix) =====
+import numpy as _np
+
+def _Theta(x):
+    # Θ(0)=1 per Appendix
+    x = _np.asarray(x)
+    out = _np.ones_like(x)
+    out[x < 0] = 0.0
+    return out
+
+def _H(x):
+    # H(0)=0 per Appendix
+    x = _np.asarray(x)
+    out = _np.zeros_like(x)
+    out[x > 0] = 1.0
+    return out
+
+def _safe_div(num, den):
+    eps = 1e-300
+    return num / _np.where(_np.abs(den) < eps, _np.sign(den) * eps + eps, den)
+
+def _apply_partitioning_optical(E, exc_arrays, exc_Ek, ion_arrays, ion_B, Bmin):
+    """
+    Parameters
+    ----------
+    E : (N,) energy grid (ascending)
+    exc_arrays : list of (N,) arrays, Im[ε_k(E)] for excitations
+    exc_Ek : list of Ek (use oscillator E0 for each excitation)
+    ion_arrays : list of (N,) arrays, Im[ε_n(E)] for ionizations
+    ion_B : list of Bn thresholds for ionizations
+    Bmin : float, minimum valence onset (for gating excitations)
+
+    Returns
+    -------
+    exc_mod, ion_mod : lists of arrays after partitioning
+    """
+    E = _np.asarray(E, float)
+    nE = E.size
+
+    IonIm = _np.stack(ion_arrays, axis=0) if ion_arrays else _np.zeros((0, nE))
+    IonB  = _np.array(list(ion_B), dtype=float) if ion_arrays else _np.zeros((0,))
+
+    ExcIm = _np.stack(exc_arrays, axis=0) if exc_arrays else _np.zeros((0, nE))
+    ExcEk = _np.array(list(exc_Ek), dtype=float) if exc_arrays else _np.zeros((0,))
+
+    n_ion = IonIm.shape[0]
+    n_exc = ExcIm.shape[0]
+
+    # Sort ion shells by ascending B
+    if n_ion > 0:
+        order = _np.argsort(IonB)
+        IonIm = IonIm[order]
+        IonB  = IonB[order]
+
+    B1 = IonB[0] if n_ion > 0 else _np.inf
+
+    # ---- Ionizations (A1)-(A5) ----
+    IonIm_mod = _np.zeros_like(IonIm)
+    for n in range(n_ion):
+        Im_n = IonIm[n]
+        Bn   = IonB[n]
+
+        Cn = _H(E - Bn)
+
+        Im_n_Bn = _np.interp(Bn, E, Im_n)
+        Sn = - Im_n_Bn * _np.exp(Bn - E)
+
+        C_greater = _np.zeros_like(E)
+        S_greater = _np.zeros_like(E)
+
+        for j in range(n+1, n_ion):
+            Im_j = IonIm[j]; Bj = IonB[j]
+            den = _np.zeros_like(E)
+            for i in range(0, j):
+                den += IonIm[i] * _H(E - IonB[i])
+
+            C_term = Im_j * _Theta(Bj - E) * _safe_div(Im_n, den)
+            Im_j_Bj = _np.interp(Bj, E, Im_j)
+            S_term = Im_j_Bj * _np.exp(Bj - E) * _H(E - Bj) * _safe_div(Im_n, den)
+
+            C_greater += C_term
+            S_greater += S_term
+
+        IonIm_mod[n] = (Im_n + Sn + S_greater + C_greater) * Cn
+
+    # ---- Excitations (A6)-(A9) ----
+    ExcIm_mod = _np.zeros_like(ExcIm)
+
+    B_gate_exc = Bmin
+
+    if n_exc > 0:
+        Theta_B_gate_minus_Ek = _np.array([1.0 if (B_gate_exc - Ek) >= 0 else 0.0 for Ek in ExcEk], float) if _np.isfinite(B_gate_exc) else _np.zeros((n_exc,), float)
+        Exc_den_Cn = _np.sum(ExcIm * Theta_B_gate_minus_Ek[:, None], axis=0) if n_exc > 0 else _np.zeros_like(E)
+        Exc_den_Sn1 = _np.sum(ExcIm, axis=0)
+
+        Im_n1_B_gate = _np.interp(B_gate_exc, E, IonIm[0]) if n_ion > 0 else 0.0
+
+        Ion_sum = _np.sum(IonIm, axis=0) if n_ion > 0 else _np.zeros_like(E)
+
+        for k in range(n_exc):
+            Im_k = ExcIm[k]; Ek = ExcEk[k]
+
+            # Gate excitations with Bmin instead of B1 so features below the first
+            # ionization threshold (down to Bmin) are retained after partitioning.
+            Ck = _Theta(E - B_gate_exc) if _np.isfinite(B_gate_exc) else _np.ones_like(E)
+
+            Sn1_weight = _safe_div(Im_k, Exc_den_Sn1) if n_exc > 0 else _np.zeros_like(E)
+            Sn1 = Im_n1_B_gate * _np.exp(B_gate_exc - E) * _H(E - B_gate_exc) * Sn1_weight if _np.isfinite(B_gate_exc) else _np.zeros_like(E)
+
+            top_weight = Im_k * (1.0 if (B_gate_exc - Ek) >= 0 else 0.0)
+            weight = _safe_div(top_weight, Exc_den_Cn) if n_exc > 0 else _np.zeros_like(E)
+            Cn_term = Ion_sum * _Theta(B_gate_exc - E) * weight if _np.isfinite(B_gate_exc) else _np.zeros_like(E)
+
+            ExcIm_mod[k] = (Im_k + Sn1 + Cn_term) * Ck
+
+    # Convert back to lists in original ion order
+    exc_mod_list = [ExcIm_mod[i] if n_exc>0 else _np.zeros_like(E) for i in range(n_exc)]
+    ion_mod_list = [IonIm_mod[i] if n_ion>0 else _np.zeros_like(E) for i in range(n_ion)]
+
+    # Conservation check (pointwise)
+    orig = (_np.sum(IonIm, axis=0) if n_ion>0 else 0.0) + (_np.sum(ExcIm, axis=0) if n_exc>0 else 0.0)
+    mod  = (_np.sum(IonIm_mod, axis=0) if n_ion>0 else 0.0) + (_np.sum(ExcIm_mod, axis=0) if n_exc>0 else 0.0)
+    if not _np.allclose(orig, mod, rtol=1e-10, atol=1e-10):
+        # Don't crash production runs; warn via print
+        _max_abs = float(_np.max(_np.abs(orig - mod)))
+        print(f"[partition] WARNING: conservation drift max_abs={_max_abs:.3e}")
+
+    return exc_mod_list, ion_mod_list
+
 # =====================================================================
 # q = 0: VALENCE-ONLY ε2, ε1, and separate K-shell ε2
 # =====================================================================
 
-def epsilon2_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
+def epsilon2_valence_E0(E: np.ndarray, s: IceOpticalSet, partitioned: bool = False) -> dict:
     """
     Imaginary dielectric, optical limit (q=0), valence only.
     Returns a dict with per-channel arrays and the total:
@@ -183,25 +314,49 @@ def epsilon2_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
         "ionizations": [array(...), ...],
         "total": array(...)
       }
+    If partitioned=True, applies the Kyriakou et al. (2015) redistribution algorithm.
     """
     E = np.asarray(E, float)
 
-    # Gating (optical): excitations above Bmin; ionizations above individual Bth
-    g_exc = (E >= s.Bmin).astype(float)
+    if partitioned:
+        # 1. Generate raw, ungated arrays for the partitioning algorithm
+        # Excitations use derivative Drude (_d_drude_e2)
+        exc_arrays = [(s.Ep**2) * _d_drude_e2(E, o.f, o.E0, o.gamma) for o in s.excitations]
+        exc_Ek = [o.E0 for o in s.excitations]
 
-    exc = [(s.Ep**2) * g_exc * _d_drude_e2(E, o.f, o.E0, o.gamma) for o in s.excitations]
-    ion = []
-    for o in s.ionizations:
-        g = (E >= o.Bth).astype(float)
-        ion.append((s.Ep**2) * g * _drude_e2(E, o.f, o.E0, o.gamma))
+        # Ionizations use normal Drude (_drude_e2) - NO threshold gating here
+        ion_arrays = [(s.Ep**2) * _drude_e2(E, o.f, o.E0, o.gamma) for o in s.ionizations]
+        ion_B = [o.Bth for o in s.ionizations]
 
-    total = np.zeros_like(E)
-    for y in exc:
-        total += y
-    for y in ion:
-        total += y
+        # 2. Apply the algorithm
+        exc_mod, ion_mod = _apply_partitioning_optical(E, exc_arrays, exc_Ek, ion_arrays, ion_B, s.Bmin)
 
-    return {"excitations": exc, "ionizations": ion, "total": total}
+        # 3. Sum up
+        total = np.zeros_like(E)
+        for y in exc_mod:
+            total += y
+        for y in ion_mod:
+            total += y
+
+        return {"excitations": exc_mod, "ionizations": ion_mod, "total": total}
+
+    else:
+        # Original Logic: Gating (optical): excitations above Bmin; ionizations above individual Bth
+        g_exc = (E >= s.Bmin).astype(float)
+
+        exc = [(s.Ep**2) * g_exc * _d_drude_e2(E, o.f, o.E0, o.gamma) for o in s.excitations]
+        ion = []
+        for o in s.ionizations:
+            g = (E >= o.Bth).astype(float)
+            ion.append((s.Ep**2) * g * _drude_e2(E, o.f, o.E0, o.gamma))
+
+        total = np.zeros_like(E)
+        for y in exc:
+            total += y
+        for y in ion:
+            total += y
+
+        return {"excitations": exc, "ionizations": ion, "total": total}
 
 def epsilon1_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
     """
@@ -213,6 +368,8 @@ def epsilon1_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
         "ionizations": [array(...), ...],
         "total": array(...)
       }
+    Note: The partitioning algorithm conserves the total Im[eps], so the total Re[eps]
+    calculated here using the original Drude forms remains valid for the total.
     """
     E = np.asarray(E, float)
 
@@ -253,8 +410,8 @@ def epsilon2_Kshell_E0_fsum_corrected(E, s):
 
     E0   = float(getattr(ks, "E0",   450.0))
     gamma= float(getattr(ks, "gamma",360.0))
-    Bth  = float(getattr(ks, "Bth",  532.0))
-    N_K  = 0.178  # Emfietzoglou et al., fixed atomic fraction
+    Bth  = float(getattr(ks, "Bth",  540.0))
+    N_K  = 0.1788  # Emfietzoglou et al., fixed atomic fraction
 
     # Unit-amplitude Drude *shape* for ε2:
     # ε2_shape(E) = (γ E) / [(E0^2 - E^2)^2 + (γ E)^2], zeroed below the edge
@@ -273,11 +430,11 @@ def epsilon2_Kshell_E0_fsum_corrected(E, s):
 
     return A * shape
 
-def elf_E0(E: np.ndarray, s: IceOpticalSet, include_kshell: bool = True) -> np.ndarray:
+def elf_E0(E: np.ndarray, s: IceOpticalSet, include_kshell: bool = True, partitioned: bool = False) -> np.ndarray:
     """ELF at q=0 using valence ε plus optional additive K-shell ε2."""
     E = np.asarray(E, float)
     e1v = epsilon1_valence_E0(E, s)  # dict
-    e2v = epsilon2_valence_E0(E, s)  # dict
+    e2v = epsilon2_valence_E0(E, s, partitioned=partitioned)  # dict
     e1t, e2t = e1v["total"], e2v["total"]
     denom = e1t**2 + e2t**2
     denom = np.where(denom == 0.0, np.finfo(float).tiny, denom)
@@ -298,13 +455,14 @@ def plot_Im_epsilon_channel_resolved(
     linewidth: float = 1.8,
     legend: bool = False,
     also_plot_composite: bool = False,
+    partitioned: bool = False
 ):
     """Overlay per-channel ε₂ at q=0 (valence only)."""
     if ax is None:
         ax = plt.gca()
     E = np.asarray(E, float)
 
-    res = epsilon2_valence_E0(E, s)
+    res = epsilon2_valence_E0(E, s, partitioned=partitioned)
 
     exc_colors = ["#1f77b4", "#2ca02c", "#17becf", "#8c564b", "#9467bd"]
     ion_colors = ["#d62728", "#ff7f0e", "#bcbd22", "#e377c2"]
@@ -335,6 +493,7 @@ def plot_Re_epsilon_channel_resolved(
     legend: bool = False,
     also_plot_composite: bool = False,
     include_baseline_one: bool = False,
+    partitioned: bool = False  # Added for compatibility, though Re is not partitioned per se
 ):
     """Overlay per-channel ε₁ at q=0 (valence only)."""
     if ax is None:
@@ -371,6 +530,7 @@ def plot_ELF_channel_resolved(
     linewidth: float = 1.8,
     also_plot_composite: bool = True,
     legend: bool = True,
+    partitioned: bool = False
 ):
     """Channel-resolved ELF at q=0 from channel-resolved ε1, ε2."""
     if ax is None:
@@ -379,7 +539,7 @@ def plot_ELF_channel_resolved(
 
     # Channel-resolved ε at q=0 (must already be implemented as dicts)
     e1 = epsilon1_valence_E0(E, s)     # {"excitations":[...], "ionizations":[...], "total":...}
-    e2 = epsilon2_valence_E0(E, s)     # {"excitations":[...], "ionizations":[...], "total":...}
+    e2 = epsilon2_valence_E0(E, s, partitioned=partitioned)     # {"excitations":[...], "ionizations":[...], "total":...}
 
     denom = e1["total"]**2 + e2["total"]**2
     if np.any(denom <= 0):
@@ -458,7 +618,7 @@ def plot_Kshell_channel_resolved(
     ax.set_xlabel("Energy (eV)")
     ax.set_ylabel(r"$\epsilon_2(E, q{=}0)$")
 
-def plot_neff_and_I(E_min=0.1, E_max=1.0e5, npts=5000, savepath=None):
+def plot_neff_and_I(E_min=0.1, E_max=1.0e6, npts=50000, savepath=None, partitioned=False):
     r"""
     Plot N_eff(E_max) and I(E_max) at q=0 for amorphous and hexagonal ice,
     reproducing Fig. 3: valence vs total (valence + K-shell).
@@ -488,7 +648,7 @@ def plot_neff_and_I(E_min=0.1, E_max=1.0e5, npts=5000, savepath=None):
     results = {}
     for name, s in sets.items():
         # Valence ELF from the model (q=0), WITHOUT K shell
-        elf_val = elf_E0(E, s, include_kshell=False)
+        elf_val = elf_E0(E, s, include_kshell=False, partitioned=partitioned)
 
         # K-shell ε2 added directly to Im[1/ε] per Eq. (7)
         e2k = epsilon2_Kshell_E0_fsum_corrected(E, s)
@@ -518,8 +678,19 @@ def plot_neff_and_I(E_min=0.1, E_max=1.0e5, npts=5000, savepath=None):
         results[name] = dict(E=E, neff_val=neff_val, neff_tot=neff_tot,
                              I_val=I_val, I_tot=I_tot, s=s)
 
-    # Plot
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10.5, 4.2))
+    # Report maximum Neff values for each material
+    for name, res in results.items():
+        neff_val_max = float(np.nanmax(res["neff_val"]))
+        neff_tot_max = float(np.nanmax(res["neff_tot"]))
+        print(f"[Neff] {name}: max valence = {neff_val_max:.4f}, max total = {neff_tot_max:.4f}")
+
+    # Plot with legend bars underneath each panel
+    from matplotlib.gridspec import GridSpec
+    # Use a taller figure and relatively larger legend row to avoid overlap
+    fig = plt.figure(figsize=(10.5, 6.0))
+    gs = GridSpec(2, 2, height_ratios=[3.5, 2.0], hspace=0.25, wspace=0.25)
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
 
     # Panel (a): N_eff
     ax1.set_xscale("log")
@@ -533,7 +704,12 @@ def plot_neff_and_I(E_min=0.1, E_max=1.0e5, npts=5000, savepath=None):
     ax1.set_xlabel(r"$E_{\max}$ (eV)")
     ax1.set_ylabel(r"$N_{\mathrm{eff}}$")
     ax1.set_title(r"$N_{\mathrm{eff}}$ vs $E_{\max}$")
-    ax1.legend(frameon=False, fontsize=9)
+
+    # Legend bar for panel (a) — stack entries vertically to avoid any overlap
+    ax1_leg = fig.add_subplot(gs[1, 0])
+    ax1_leg.axis("off")
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    ax1_leg.legend(handles1, labels1, loc="center left", ncol=1, frameon=False)
 
     # Panel (b): I(E_max)
     ax2.set_xscale("log")
@@ -544,7 +720,12 @@ def plot_neff_and_I(E_min=0.1, E_max=1.0e5, npts=5000, savepath=None):
     ax2.set_xlabel(r"$E_{\max}$ (eV)")
     ax2.set_ylabel("I-value (eV)")
     ax2.set_title(r"$I(E_{\max})$")
-    ax2.legend(frameon=False, fontsize=9)
+
+    # Legend bar for panel (b) — stack entries vertically to avoid any overlap
+    ax2_leg = fig.add_subplot(gs[1, 1])
+    ax2_leg.axis("off")
+    handles2, labels2 = ax2.get_legend_handles_labels()
+    ax2_leg.legend(handles2, labels2, loc="center left", ncol=1, frameon=False)
 
     fig.tight_layout()
     if savepath:
@@ -553,10 +734,10 @@ def plot_neff_and_I(E_min=0.1, E_max=1.0e5, npts=5000, savepath=None):
 
     return results
 
-# ---- example template (fill with your per-band a_j, b_j, c_j) ----
 if __name__ == "__main__":
-    ice = "hexagonal"
-    # ice = "amorphous"
+
+    # ice = "hexagonal"
+    ice = "amorphous"
     s = epsilon_optical(ice)
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])
@@ -565,37 +746,88 @@ if __name__ == "__main__":
     E = np.linspace(1.0, 60.0, 20000)
     qvals = np.array([0.0, 0.1, 0.3, 0.6, 0.9, 2.0])  # a0^{-1}
 
+    # Enable Partitioning for corrected plots
+    use_partitioning = True
+
     # Valence ε and ELF(+K) at multiple q
     e1q_val = epsilon1_valence_E0(E, s)
-    e2q_val = epsilon2_valence_E0(E, s)
+    e2q_val = epsilon2_valence_E0(E, s, partitioned=use_partitioning)
 
     q = 0.0
 
-    # Separate figure: channel-resolved Im(epsilon) at desired q
-    fig3, ax3 = plt.subplots()
-    plot_Im_epsilon_channel_resolved(E, s, C, q=q, include_kshell=True, legend=True,
-                                     also_plot_composite=True, ax=ax3)
+    # Load experimental data from ice data.xlsx
+
+    ice_data_file = Path(__file__).parent.parent / 'tabular' / 'ice data.xlsx'
+    sheet_name = 'Hexagonal' if ice == "hexagonal" else 'Amorphous'
+    df_exp = pd.read_excel(ice_data_file, sheet_name=sheet_name)
+    # Extract experimental data with valid values
+    mask_e2 = df_exp['eV'].notna() & df_exp['e2'].notna()
+    mask_e1 = df_exp['eV.1'].notna() & df_exp['e1'].notna()
+    mask_elf = df_exp['eV.2'].notna() & df_exp['ELF'].notna()
+    exp_e2_E = df_exp.loc[mask_e2, 'eV'].values
+    exp_e2 = df_exp.loc[mask_e2, 'e2'].values
+    exp_e1_E = df_exp.loc[mask_e1, 'eV.1'].values
+    exp_e1 = df_exp.loc[mask_e1, 'e1'].values
+    exp_elf_E = df_exp.loc[mask_elf, 'eV.2'].values
+    exp_elf = df_exp.loc[mask_elf, 'ELF'].values
+
+    from matplotlib.gridspec import GridSpec
+
+    # Separate figure: channel-resolved Im(epsilon) at desired q, with legend bar underneath
+    fig3 = plt.figure(figsize=(8.0, 7.5))
+    gs3 = GridSpec(2, 1, height_ratios=[3.0, 2.0], hspace=0.30)
+    ax3 = fig3.add_subplot(gs3[0, 0])
+    plot_Im_epsilon_channel_resolved(E, s, C, q=q, include_kshell=True, legend=False,
+                                     also_plot_composite=True, ax=ax3, partitioned=use_partitioning)
+    # Add experimental data
+    ax3.plot(exp_e2_E, exp_e2, 'd-', color='lightgray', linewidth=1.5, markersize=5,
+             label='Experimental data', zorder=10)
     ax3.set_xlabel("Energy (eV)")
     ax3.set_ylabel(r"$\operatorname{Im}(\epsilon)$")
     ax3.set_title(f"Channel-resolved Im($\\epsilon$) at q = {q}; {ice} ice")
+    # Legend bar below main plot (multi-row/column, fully separated from panel)
+    ax3_leg = fig3.add_subplot(gs3[1, 0])
+    ax3_leg.axis('off')
+    handles3, labels3 = ax3.get_legend_handles_labels()
+    ax3_leg.legend(handles3, labels3, loc='center', ncol=3, frameon=False)
     plt.savefig(f"output/Channel_resolved_Im_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
-    # Separate figure: channel-resolved Re(epsilon) at desired q
-    fig4, ax4 = plt.subplots()
-    plot_Re_epsilon_channel_resolved(E, s, C, q=q, include_kshell=True, legend=True,
-                                     also_plot_composite=True, ax=ax4)
+    # Separate figure: channel-resolved Re(epsilon) at desired q, with legend bar underneath
+    fig4 = plt.figure(figsize=(8.0, 7.5))
+    gs4 = GridSpec(2, 1, height_ratios=[3.0, 2.0], hspace=0.30)
+    ax4 = fig4.add_subplot(gs4[0, 0])
+    plot_Re_epsilon_channel_resolved(E, s, C, q=q, include_kshell=True, legend=False,
+                                     also_plot_composite=True, ax=ax4, partitioned=use_partitioning)
+    # Add experimental data
+    ax4.plot(exp_e1_E, exp_e1, 'd-', color='lightgray', linewidth=1.5, markersize=5,
+             label='Experimental data', zorder=10)
     ax4.set_xlabel("Energy (eV)")
     ax4.set_ylabel(r"$\operatorname{Re}(\epsilon)$")
     ax4.set_title(f"Channel-resolved Re($\\epsilon$) at q = {q}; {ice} ice")
+    # Legend bar below main plot (multi-row/column, fully separated from panel)
+    ax4_leg = fig4.add_subplot(gs4[1, 0])
+    ax4_leg.axis('off')
+    handles4, labels4 = ax4.get_legend_handles_labels()
+    ax4_leg.legend(handles4, labels4, loc='center', ncol=3, frameon=False)
     plt.savefig(f"output/Channel_resolved_Re_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
-    # Separate figure: channel-resolved ELF at desired q (optical limit)
-    fig5, ax5 = plt.subplots()
+    # Separate figure: channel-resolved ELF at desired q (optical limit), with legend bar underneath
+    fig5 = plt.figure(figsize=(8.0, 7.5))
+    gs5 = GridSpec(2, 1, height_ratios=[3.0, 2.0], hspace=0.30)
+    ax5 = fig5.add_subplot(gs5[0, 0])
     plot_ELF_channel_resolved(E, s, C, q=q, include_kshell=True,
-                              legend=True, also_plot_composite=True, ax=ax5)
+                              legend=False, also_plot_composite=True, ax=ax5, partitioned=use_partitioning)
+    # Add experimental data
+    ax5.plot(exp_elf_E, exp_elf, 'd-', color='lightgray', linewidth=1.5, markersize=5,
+             label='Experimental data', zorder=10)
     ax5.set_title(f"Channel-resolved ELF at q = {q}; {ice} ice")
+    # Legend bar below main plot (multi-row/column, fully separated from panel)
+    ax5_leg = fig5.add_subplot(gs5[1, 0])
+    ax5_leg.axis('off')
+    handles5, labels5 = ax5.get_legend_handles_labels()
+    ax5_leg.legend(handles5, labels5, loc='center', ncol=3, frameon=False)
     plt.savefig(f"output/Channel_resolved_ELF_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
@@ -608,4 +840,45 @@ if __name__ == "__main__":
     plt.savefig(f"output/Kshell_channel_resolved_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
-    plot_neff_and_I(savepath="output/Neff_I_Fig3_like.pdf")
+    # New figure: Model vs Experimental comparison (single panel, all three quantities)
+    fig_comp, ax_comp = plt.subplots(figsize=(10, 7))
+
+    # Get total model predictions at q=0 (optical limit)
+    e1_dict = epsilon1_valence_E0(E, s)
+    e2_dict = epsilon2_valence_E0(E, s, partitioned=use_partitioning)
+    e1_model = e1_dict["total"]
+    e2_model = e2_dict["total"]
+    # Add K-shell contribution to epsilon2
+    e2_model = e2_model + epsilon2_Kshell_E0_fsum_corrected(E, s)
+    # Compute ELF with K-shell
+    elf_model = elf_E0(E, s, include_kshell=True, partitioned=use_partitioning)
+
+    # Plot all quantities on the same panel
+    # Model predictions (black lines)
+    ax_comp.plot(E, e2_model, 'k-', linewidth=2, label=r'Model: Im($\epsilon$)', zorder=5)
+    ax_comp.plot(E, e1_model, 'k--', linewidth=2, label=r'Model: Re($\epsilon$)', zorder=5)
+    ax_comp.plot(E, elf_model, 'k:', linewidth=2, label='Model: ELF', zorder=5)
+
+    # Experimental data (dark gray with filled shapes)
+    ax_comp.plot(exp_e2_E, exp_e2, 'd-', color='darkgray', linewidth=1.5, markersize=5,
+                markerfacecolor='darkgray', markeredgecolor='darkgray',
+                label=r'Exp: Im($\epsilon$)', zorder=10)
+    ax_comp.plot(exp_e1_E, exp_e1, 's-', color='darkgray', linewidth=1.5, markersize=5,
+                markerfacecolor='darkgray', markeredgecolor='darkgray',
+                label=r'Exp: Re($\epsilon$)', zorder=10)
+    ax_comp.plot(exp_elf_E, exp_elf, '^-', color='darkgray', linewidth=1.5, markersize=5,
+                markerfacecolor='darkgray', markeredgecolor='darkgray',
+                label='Exp: ELF', zorder=10)
+
+    ax_comp.set_xlabel("Energy (eV)")
+    ax_comp.set_ylabel("Dielectric Properties")
+    ax_comp.set_title(f"Model vs Experiment: {ice.capitalize()} Ice (optical limit, q=0)")
+    ax_comp.legend(ncol=2, fontsize=11)
+    ax_comp.grid(True, alpha=0.3)
+    ax_comp.set_xlim(0, 30)
+
+    fig_comp.tight_layout()
+    plt.savefig(f"output/Model_vs_Experiment_{ice}.pdf", bbox_inches="tight")
+    plt.show()
+
+    plot_neff_and_I(savepath="output/Neff_I_Fig3_like.pdf", partitioned=use_partitioning)
