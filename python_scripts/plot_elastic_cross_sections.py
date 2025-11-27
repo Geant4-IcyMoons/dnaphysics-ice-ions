@@ -117,23 +117,29 @@ def plot_elastic_cross_sections():
     except Exception as e:
         print(f"Error loading Michaud: {e}")
     
-    # Generate Screened Rutherford data (100 eV - 1 MeV)
-    E_rutherford = np.logspace(np.log10(100), np.log10(1e6), 200)
-    sigma_rutherford = screened_rutherford_cross_section(E_rutherford)
-    ax.loglog(E_rutherford, sigma_rutherford, color='slategray', linewidth=5,
-             label='SR (GEANT4-DNA)', zorder=3)
-    print(f"SR @ 100 eV: {sigma_rutherford[0]:.6e} cm²")
+    # Load ELSEPA elastic cross-sections (G4EMLOW DNA) to use for high-energy branch
+    try:
+        elsepa_path = Path(__file__).parent.parent / "g4_custom_ice" / "install" / "share" / "Geant4" / "data" / "G4EMLOW8.6.1" / "dna" / "sigma_elastic_e_elsepa_free.dat"
+        data_elsepa = np.loadtxt(elsepa_path)
+        E_elsepa = data_elsepa[:, 0]
+        sigma_elsepa = data_elsepa[:, 1]
+        ax.loglog(E_elsepa, sigma_elsepa, color='slategray', linewidth=5,
+                  label='ELSEPA (Geant4-DNA)', zorder=3)
+        print(f"Loaded ELSEPA elastic data: {len(E_elsepa)} points, {E_elsepa[0]:.1f}-{E_elsepa[-1]:.1f} eV")
+    except Exception as e:
+        E_elsepa = sigma_elsepa = None
+        print(f"Error loading ELSEPA elastic data: {e}")
     
     # Create blended cross-section using C1-smooth smoothstep kernel
     try:
         # Define transition parameters
         E0 = 100.0  # Start of transition
-        t = 1920   # End of transition
+        t = 494   # End of transition
         
         # Create blended cross-section array spanning full range
         E_blend = np.logspace(np.log10(2), np.log10(1e6), 500)
         sigma_blend = np.zeros_like(E_blend)
-        
+
         # Target at 100 eV: regular Michaud
         target_100 = sigma_michaud[-1]
         
@@ -142,15 +148,14 @@ def plot_elastic_cross_sections():
                 # Below 100 eV: Use regular Michaud (interpolate from loaded data)
                 sigma_m = np.interp(E, E_michaud, sigma_michaud)
                 sigma_blend[i] = sigma_m
-            elif E >= t:
-                # Above transition: pure SR
-                sigma_blend[i] = screened_rutherford_cross_section(np.array([E]))[0]
+            elif E >= t and E_elsepa is not None:
+                # Above transition: pure ELSEPA (interpolated/extrapolated)
+                sigma_blend[i] = float(np.interp(E, E_elsepa, sigma_elsepa, left=sigma_elsepa[0], right=sigma_elsepa[-1]))
             else:
                 # Between 100-t eV: smoothstep blend
                 s = (E - E0) / (t - E0)
                 w = s * s * (3 - 2 * s)  # C1-smooth weight function
-                
-                sigma_sr_E = screened_rutherford_cross_section(np.array([E]))[0]
+                sigma_sr_E = float(np.interp(E, E_elsepa, sigma_elsepa, left=sigma_elsepa[0], right=sigma_elsepa[-1])) if E_elsepa is not None else 0.0
                 
                 # Blend: start at Michaud (at 100 eV), end at SR (at t eV)
                 sigma_blend[i] = (1 - w) * target_100 + w * sigma_sr_E
@@ -168,7 +173,7 @@ def plot_elastic_cross_sections():
         
     except Exception as e:
         print(f"Error creating blended cross-section: {e}")
-    
+
     # Mark transition zone
     # ax.axvline(100, color='red', linestyle=':', linewidth=1, alpha=0.7, zorder=1)
     # ax.axvline(t, color='red', linestyle=':', linewidth=1, alpha=0.7, zorder=1)

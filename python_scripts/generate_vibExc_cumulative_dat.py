@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Dict, Tuple
 
-font = 'Gill Sans'
+font = 'Courier'
 hfont = {'fontname': font}
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
