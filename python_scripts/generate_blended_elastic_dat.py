@@ -212,34 +212,47 @@ def main():
     mask_low = E_grid <= 200.0
     mask_high = E_grid >= 200.0
 
+    # Save in units of 1e-16 cm^2 (like Michaud tables)
+    scale_tab = 1.0e16
     out_low_elsepa = DATADIR / "sigma_elastic_e_michaud_elsepa_low.dat"
-    np.savetxt(out_low_elsepa, np.column_stack([E_grid[mask_low], s_bl_elsepa[mask_low]]), fmt="%.8e")
+    np.savetxt(out_low_elsepa, np.column_stack([E_grid[mask_low], s_bl_elsepa[mask_low] * scale_tab]), fmt="%.8e")
     print(f"[saved] {out_low_elsepa} (isotropic angles expected)")
 
     out_high_elsepa = DATADIR / "sigma_elastic_e_michaud_elsepa_high.dat"
-    np.savetxt(out_high_elsepa, np.column_stack([E_grid[mask_high], s_bl_elsepa[mask_high]]), fmt="%.8e")
+    np.savetxt(out_high_elsepa, np.column_stack([E_grid[mask_high], s_bl_elsepa[mask_high] * scale_tab]), fmt="%.8e")
     print(f"[saved] {out_high_elsepa} (use ELSEPA angular CDF)")
 
     out_cdf_elsepa = DATADIR / "sigmadiff_cumulated_elastic_e_michaud_elsepa_high.dat"
     np.savetxt(out_cdf_elsepa, cdf, fmt="%.10e")
     print(f"[saved] {out_cdf_elsepa} (ELSEPA angular CDF)")
 
+    # Isotropic low-energy CDF for Michaud-ELSEPA low branch
+    theta_iso = np.linspace(0.0, 180.0, 181)
+    cos_t = np.cos(np.deg2rad(theta_iso))
+    cdf_iso = 0.5 * (1.0 - cos_t)
+    rows_iso = []
+    for E in E_grid[mask_low]:
+        for cprob, tdeg in zip(cdf_iso, theta_iso):
+            rows_iso.append([E, cprob, tdeg])
+    out_cdf_elsepa_low = DATADIR / "sigmadiff_cumulated_elastic_e_michaud_elsepa_low.dat"
+    np.savetxt(out_cdf_elsepa_low, np.array(rows_iso), fmt="%.10e")
+    print(f"[saved] {out_cdf_elsepa_low} (isotropic CDF)")
+
     out_low_sr = DATADIR / "sigma_elastic_e_michaud_sr_low.dat"
-    np.savetxt(out_low_sr, np.column_stack([E_grid[mask_low], s_bl_sr[mask_low]]), fmt="%.8e")
+    np.savetxt(out_low_sr, np.column_stack([E_grid[mask_low], s_bl_sr[mask_low] * scale_tab]), fmt="%.8e")
     print(f"[saved] {out_low_sr}")
 
     out_high_sr = DATADIR / "sigma_elastic_e_michaud_sr_high.dat"
-    np.savetxt(out_high_sr, np.column_stack([E_grid[mask_high], s_bl_sr[mask_high]]), fmt="%.8e")
+    np.savetxt(out_high_sr, np.column_stack([E_grid[mask_high], s_bl_sr[mask_high] * scale_tab]), fmt="%.8e")
     print(f"[saved] {out_high_sr}")
 
-    # SR angular CDF derived from screened Rutherford differential cross-section
+    # SR angular CDF derived from screened Rutherford differential cross-section (high)
     theta_grid = np.linspace(0.0, 180.0, 361)
     cos_t = np.cos(np.deg2rad(theta_grid))
     rows = []
     for E, n_val in zip(E_grid[mask_high], n_sr[mask_high]):
         A = 1.0 + 2.0 * n_val
         denom0 = 2.0 + 2.0 * n_val
-        # CDF as function of cos(theta)
         cdf_theta = 2.0 * n_val * (n_val + 1.0) * (1.0 / (A - cos_t) - 1.0 / denom0)
         cdf_theta = np.clip(cdf_theta, 0.0, 1.0)
         for t_deg, cprob in zip(theta_grid, cdf_theta):
@@ -247,6 +260,15 @@ def main():
     out_cdf_sr = DATADIR / "sigmadiff_cumulated_elastic_e_michaud_sr_high.dat"
     np.savetxt(out_cdf_sr, np.array(rows), fmt="%.10e")
     print(f"[saved] {out_cdf_sr} (SR angular CDF)")
+
+    # Isotropic low-energy CDF for Michaud-SR low branch
+    rows_iso_sr = []
+    for E in E_grid[mask_low]:
+        for cprob, tdeg in zip(cdf_iso, theta_iso):
+            rows_iso_sr.append([E, cprob, tdeg])
+    out_cdf_sr_low = DATADIR / "sigmadiff_cumulated_elastic_e_michaud_sr_low.dat"
+    np.savetxt(out_cdf_sr_low, np.array(rows_iso_sr), fmt="%.10e")
+    print(f"[saved] {out_cdf_sr_low} (isotropic CDF)")
 
 
 if __name__ == "__main__":

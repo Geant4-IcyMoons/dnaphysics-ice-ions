@@ -56,6 +56,7 @@ class SteppingAction : public G4UserSteppingAction
       double kinE_eV;
       std::string process;
       std::string channel; // optional sub-channel/model if derivable
+      std::string model;
       double sigma_area_cm2; // microscopic cross section (cm^2), -1 if not available
     };
 

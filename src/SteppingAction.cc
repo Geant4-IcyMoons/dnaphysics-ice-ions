@@ -106,6 +106,11 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   G4StepPoint* postStep = step->GetPostStepPoint();
   G4int procID = postStep->GetProcessDefinedStep()->GetProcessSubType();
   const G4String& processName = postStep->GetProcessDefinedStep()->GetProcessName();
+  std::string modelName;
+  if (auto* emProc = dynamic_cast<const G4VEmProcess*>(postStep->GetProcessDefinedStep())) {
+    auto* model = emProc->GetCurrentModel();
+    if (model) modelName = model->GetName();
+  }
 
 
   if (processName == "Capture") flagProcess = 1;
@@ -345,6 +350,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     rec.stepNo = step->GetTrack()->GetCurrentStepNumber();
     rec.kinE_eV = preStep->GetKineticEnergy() / eV;
     rec.process = processName;
+    rec.model = modelName;
     // Derive a channel label for logging/printing:
     // - Vibrational excitation: use vib_<index> when available (or nearest mode).
     // - All other processes: use a descriptive category (elastic, excitation, ionisation, attachment, ...).
@@ -433,6 +439,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     analysisManager->FillNtupleIColumn(15, chanIdx);
     // New: per-channel microscopic XS in cm^2 if available (else -1)
     analysisManager->FillNtupleDColumn(16, chanMicroXS_cm2);
+    analysisManager->FillNtupleSColumn(17, processName);
+    analysisManager->FillNtupleSColumn(18, modelName);
 
     analysisManager->AddNtupleRow();
   }

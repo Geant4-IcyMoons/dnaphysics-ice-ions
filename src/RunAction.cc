@@ -83,6 +83,9 @@ RunAction::RunAction() : G4UserRunAction()
   analysisManager->CreateNtupleIColumn("channelIndex");
   // Optional: per-channel microscopic cross-section (cm^2) if available
   analysisManager->CreateNtupleDColumn("channelMicroXS");
+  // Optional: process/model name strings
+  analysisManager->CreateNtupleSColumn("processName");
+  analysisManager->CreateNtupleSColumn("modelName");
   analysisManager->FinishNtuple();
 
   // Track information ntuple
@@ -140,6 +143,7 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
            << std::setw(8)  << "Step#"
            << std::setw(16) << "E(eV)"
            << std::setw(28) << "Process"
+           << std::setw(28) << "Model"
            << std::setw(16) << "Channel"
            << std::setw(16) << "Sigma(cm^2)"
            << G4endl;
@@ -155,6 +159,7 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
              << std::setw(8)  << r.stepNo
              << std::setw(16) << r.kinE_eV
              << std::left  << ' ' << std::setw(27) << r.process
+             << std::left  << std::setw(27) << (r.model.empty() ? "-" : r.model)
              << std::left  << std::setw(16) << (r.channel.empty() ? "-" : r.channel)
              << std::right << std::setw(16) << r.sigma_area_cm2
              << G4endl;

@@ -5,9 +5,9 @@
 
 # ===== Parameters =====
 # N = number of particles AND threads
-/control/alias N 100000
-/control/alias EMIN 2       # min energy value (numeric)
-/control/alias EMAX 100      # max energy value (numeric)
+/control/alias N 5000000
+/control/alias EMIN 2      # min energy value (numeric)
+/control/alias EMAX 1000000      # max energy value (numeric)
 /control/alias EUNIT eV     # unit for energies
 
 # Threads: set equal to N (must be before initialize)
@@ -31,7 +31,7 @@
 # ===== GPS-based random energies (same scalar setup) =====
 # One primary per event, energies sampled from Lin[EMIN, EMAX]
 /gps/particle e-
-/gps/ene/type Lin
+/gps/ene/type Pow
 /gps/ene/min {EMIN} {EUNIT}
 /gps/ene/max {EMAX} {EUNIT}
 /gps/ene/gradient 0

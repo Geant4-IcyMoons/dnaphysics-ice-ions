@@ -74,6 +74,8 @@
 #include "G4DNAMichaudExcitationModel.hh"
 #include "G4DNAMichaudAttachmentModel.hh"
 #include "G4DNAMichaudElasticModel.hh"
+#include "G4DNAMichaud_ELSEPA_LOW_ElasticModel.hh"
+#include "G4DNAMichaud_ELSEPA_HIGH_ElasticModel.hh"
 #include "G4DNAEmfietzoglouIonisationModel.hh"
 //****** END ICE *****
 
@@ -125,24 +127,54 @@ void PhysicsList::ConstructProcess()
 
   // Vibrational excitation process & model
 
-  G4PhysicsListHelper* ph = G4PhysicsListHelper::GetPhysicsListHelper();
-   
- G4DNAVibExcitation* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
- G4DNAElastic* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
-  G4DNAAttachment* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
-  // G4DNAIonisation* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
-  
-  // theDNAVibProcess->SetEmModel(new G4DNASancheExcitationModel()  );
- theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel()  );
- theDNAElasticProcess->SetEmModel(new G4DNAMichaudElasticModel()  );
-  theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel()  );
-  // theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglouIonisationModel()  );
-    
- ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
- ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
-  ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
-  // ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
+G4PhysicsListHelper* ph = G4PhysicsListHelper::GetPhysicsListHelper();
 
+// ----- Elastic (choose one block) -----
+auto* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
+
+// 1) Michaud only (1.7–100 eV)
+// theDNAElasticProcess->SetEmModel(new G4DNAMichaudElasticModel());
+
+// 2) Blended Michaud–ELSEPA low only (2–199 eV)
+// auto* low = new G4DNAMichaud_ELSEPA_LOW_ElasticModel();
+// low->SetLowEnergyLimit(2.*eV);
+// low->SetHighEnergyLimit(199.*eV);
+// theDNAElasticProcess->SetEmModel(low);
+
+// 3) Blended Michaud–ELSEPA high only (200 eV–1 MeV)
+// auto* high = new G4DNAMichaud_ELSEPA_HIGH_ElasticModel();
+// high->SetLowEnergyLimit(200.*eV);
+// high->SetHighEnergyLimit(1.*MeV);
+// theDNAElasticProcess->SetEmModel(high);
+
+// 4) Blended low + high tiled
+theDNAElasticProcess->SetMinKinEnergy(2.*eV);
+theDNAElasticProcess->SetMaxKinEnergy(1.*MeV);
+auto* low = new G4DNAMichaud_ELSEPA_LOW_ElasticModel();
+low->SetLowEnergyLimit(2.*eV);
+low->SetHighEnergyLimit(199.*eV);
+theDNAElasticProcess->SetEmModel(low); // sets default so SR is not re-inserted
+auto* high = new G4DNAMichaud_ELSEPA_HIGH_ElasticModel();
+high->SetLowEnergyLimit(200.*eV);
+high->SetHighEnergyLimit(1.*MeV);
+theDNAElasticProcess->AddEmModel(2, high);
+
+ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
+
+// ----- Vibrational excitation (uncomment to enable) -----
+auto* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
+theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel());
+ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
+
+// ----- Attachment (uncomment to enable) -----
+auto* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
+theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel());
+ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
+
+// ----- Ionisation (uncomment to enable) -----
+// auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
+// theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglouIonisationModel());
+// ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
   //****** END ICE *****
 
   /*
