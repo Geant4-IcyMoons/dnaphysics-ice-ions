@@ -144,32 +144,33 @@ auto* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
 // 3) Blended Michaud–ELSEPA high only (200 eV–1 MeV)
 // auto* high = new G4DNAMichaud_ELSEPA_HIGH_ElasticModel();
 // high->SetLowEnergyLimit(200.*eV);
-// high->SetHighEnergyLimit(1.*MeV);
+// high->SetHighEnergyLimit(10.*MeV);
 // theDNAElasticProcess->SetEmModel(high);
 
 // 4) Blended low + high tiled
 theDNAElasticProcess->SetMinKinEnergy(2.*eV);
-theDNAElasticProcess->SetMaxKinEnergy(1.*MeV);
+// Allow ELSEPA_HIGH to run up to the table limit (~10 MeV)
+theDNAElasticProcess->SetMaxKinEnergy(9.99999*MeV);
 auto* low = new G4DNAMichaud_ELSEPA_LOW_ElasticModel();
 low->SetLowEnergyLimit(2.*eV);
 low->SetHighEnergyLimit(199.*eV);
 theDNAElasticProcess->SetEmModel(low); // sets default so SR is not re-inserted
 auto* high = new G4DNAMichaud_ELSEPA_HIGH_ElasticModel();
 high->SetLowEnergyLimit(200.*eV);
-high->SetHighEnergyLimit(1.*MeV);
+high->SetHighEnergyLimit(9.99999*MeV);
 theDNAElasticProcess->AddEmModel(2, high);
 
 ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
 
 // ----- Vibrational excitation (uncomment to enable) -----
-auto* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
-theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel());
-ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
+// auto* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
+// theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel());
+// ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
 
 // ----- Attachment (uncomment to enable) -----
-auto* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
-theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel());
-ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
+// auto* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
+// theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel());
+// ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
 
 // ----- Ionisation (uncomment to enable) -----
 // auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");

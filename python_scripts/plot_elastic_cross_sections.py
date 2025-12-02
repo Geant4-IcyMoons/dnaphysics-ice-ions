@@ -117,14 +117,14 @@ def plot_elastic_cross_sections():
     except Exception as e:
         print(f"Error loading Michaud: {e}")
     
-    # Load ELSEPA elastic cross-sections (G4EMLOW DNA) to use for high-energy branch
+    # Load ELSEPA elastic cross-sections (muffin potential) to use for high-energy branch
     try:
-        elsepa_path = Path(__file__).parent.parent / "g4_custom_ice" / "install" / "share" / "Geant4" / "data" / "G4EMLOW8.6.1" / "dna" / "sigma_elastic_e_elsepa_free.dat"
+        elsepa_path = Path(__file__).parent.parent / "cross_sections" / "sigma_elastic_e_elsepa_muffin.dat"
         data_elsepa = np.loadtxt(elsepa_path)
         E_elsepa = data_elsepa[:, 0]
         sigma_elsepa = data_elsepa[:, 1]
         ax.loglog(E_elsepa, sigma_elsepa, color='slategray', linewidth=5,
-                  label='ELSEPA (Geant4-DNA)', zorder=3)
+                  label='ELSEPA (muffin)', zorder=3)
         print(f"Loaded ELSEPA elastic data: {len(E_elsepa)} points, {E_elsepa[0]:.1f}-{E_elsepa[-1]:.1f} eV")
     except Exception as e:
         E_elsepa = sigma_elsepa = None
@@ -137,7 +137,7 @@ def plot_elastic_cross_sections():
         t = 494   # End of transition
         
         # Create blended cross-section array spanning full range
-        E_blend = np.logspace(np.log10(2), np.log10(1e6), 500)
+        E_blend = np.logspace(np.log10(2), np.log10(1e7), 500)
         sigma_blend = np.zeros_like(E_blend)
 
         # Target at 100 eV: regular Michaud
@@ -185,7 +185,7 @@ def plot_elastic_cross_sections():
     # ax.set_title('Electron Elastic Scattering Cross-Sections in Ice')
     ax.legend(loc='best')
     # ax.grid(True, which='both', alpha=0.3, linestyle=':')
-    ax.set_xlim(1, 1e6)
+    ax.set_xlim(1, 1e7)
     
     plt.tight_layout()
     

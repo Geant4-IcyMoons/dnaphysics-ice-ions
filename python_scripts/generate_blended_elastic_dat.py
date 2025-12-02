@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Generate the six .dat files needed for two models:
-  Michaud/ELSEPA: low (2–200 eV), high (200 eV–1 MeV), and high-energy DCS/CDF (ELSEPA angles).
-  Michaud/SR:     low (2–200 eV), high (200 eV–1 MeV), and high-energy DCS/CDF.
+  Michaud/ELSEPA (muffin potential): low (1.7–200 eV), high (200 eV–10 MeV), and high-energy DCS/CDF.
+  Michaud/SR:                      low (1.7–200 eV), high (200 eV–10 MeV), and high-energy DCS/CDF.
 
 Diagnostics are also produced for both models.
 """
@@ -49,12 +49,16 @@ plt.rcParams.update({
 })
 
 ROOT = Path(__file__).resolve().parent.parent
-G4DATA = ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data" / "G4EMLOW8.6.1"
 OUTDIR = Path(__file__).resolve().parent / "output"  # diagnostics
 OUTDIR.mkdir(parents=True, exist_ok=True)
 # Save final .dat files in the shared cross_sections folder at project root
 DATADIR = ROOT / "cross_sections"
 DATADIR.mkdir(parents=True, exist_ok=True)
+ELSEPA_MUFFIN_TOTAL = DATADIR / "sigma_elastic_e_elsepa_muffin.dat"
+ELSEPA_MUFFIN_CDF = DATADIR / "sigmadiff_cumulated_elastic_e_elsepa_muffin.dat"
+E_MIN_LOW = 1.7
+E_SPLIT = 200.0
+E_MAX = 1.0e7 + 1.0  # extend a hair above 10 MeV
 
 
 def load_michaud():
@@ -66,15 +70,13 @@ def load_michaud():
     return e[mask], sigma_raw[mask] * 1e-16  # cm^2
 
 
-def load_elsepa_total():
-    path = G4DATA / "dna" / "sigma_elastic_e_elsepa_free.dat"
-    data = np.loadtxt(path)
+def load_elsepa_muffin_total():
+    data = np.loadtxt(ELSEPA_MUFFIN_TOTAL)
     return data[:, 0], data[:, 1]
 
 
-def load_elsepa_cdf():
-    path = G4DATA / "dna" / "sigmadiff_cumulated_elastic_e_elsepa_free.dat"
-    return np.loadtxt(path)
+def load_elsepa_muffin_cdf():
+    return np.loadtxt(ELSEPA_MUFFIN_CDF)
 
 def _sr_sigma_and_n(energy_eV: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -136,7 +138,7 @@ def _diag_set(tag: str, E_grid: np.ndarray, s_bl: np.ndarray, s_ref: np.ndarray,
     ax0.axvline(200.0, color="0.6", ls=":", lw=1.5)
     ax0.set_xlabel("Energy (eV)")
     ax0.set_ylabel(r"$\sigma_{\mathrm{elastic}}$ (cm$^2$)")
-    ax0.set_xlim(1.0, 1e6)
+    ax0.set_xlim(1.0, E_MAX)
     ax0.set_title(rf"Total $\sigma_{{\mathrm{{elastic}}}}$ (Michaud/{ref_label})")
     ax0.legend()
     fig0.tight_layout()
@@ -182,7 +184,7 @@ def _diag_set(tag: str, E_grid: np.ndarray, s_bl: np.ndarray, s_ref: np.ndarray,
                 continue
             ax.plot(block[:, 2], block[:, 1], color="k", label="ELSEPA CDF")
             ax.plot(block[:, 2], block[:, 1], color="0.5", ls="--", label="Blended CDF (same)")
-            ax.set_title(f"CDF at {nearest_E:.0f} eV\nmax Δ=0.00e+00")
+            ax.set_title(rf"CDF at {nearest_E:.0f} eV\nmax $\Delta=0.00e+00$")
             ax.set_xlabel("Theta (deg)")
             ax.legend()
         axes[0].set_ylabel("Cumulative probability")
@@ -192,39 +194,58 @@ def _diag_set(tag: str, E_grid: np.ndarray, s_bl: np.ndarray, s_ref: np.ndarray,
 
 
 def diagnostics(E_grid, s_bl_elsepa, s_bl_sr, E_m, s_m, E_e, s_e, s_sr, cdf):
-    _diag_set("elsepa", E_grid, s_bl_elsepa, s_e, "ELSEPA", E_m, s_m, E_e, s_e, cdf)
+    _diag_set("elsepa_muffin", E_grid, s_bl_elsepa, s_e, "ELSEPA (muffin)", E_m, s_m, E_e, s_e, cdf)
     _diag_set("sr", E_grid, s_bl_sr, s_sr, "SR", E_m, s_m, E_grid, s_sr, None)
 
 
 def main():
     E_m, s_m = load_michaud()
-    E_e, s_e = load_elsepa_total()
-    cdf = load_elsepa_cdf()
+    E_e, s_e = load_elsepa_muffin_total()
+    # Extend ELSEPA total to E_MAX with a flat tail if needed
+    if E_e[-1] < E_MAX:
+        E_e = np.append(E_e, E_MAX)
+        s_e = np.append(s_e, s_e[-1])
 
-    E_grid = np.logspace(np.log10(2.0), np.log10(1e6), 500)
+    cdf_raw = load_elsepa_muffin_cdf()
+    # Keep only high branch energies >= split and extend to E_MAX
+    cdf_hi = cdf_raw[cdf_raw[:, 0] >= E_SPLIT]
+    if cdf_hi.size == 0:
+        raise RuntimeError("ELSEPA muffin CDF has no energies >= split energy.")
+    last_E = cdf_hi[-1, 0]
+    if last_E < E_MAX:
+        block_last = cdf_hi[cdf_hi[:, 0] == last_E]
+        block_extended = block_last.copy()
+        block_extended[:, 0] = E_MAX
+        cdf_hi = np.vstack([cdf_hi, block_extended])
+
+    # Ensure the grid hits the boundaries exactly: 1.7, 200 eV, and E_MAX without duplicates.
+    E_base = np.logspace(np.log10(E_MIN_LOW), np.log10(E_MAX), 500)
+    E_base[0] = E_MIN_LOW
+    E_base[-1] = E_MAX
+    E_grid = np.unique(np.sort(np.concatenate([E_base, [E_SPLIT]])))
     s_sr, n_sr = _sr_sigma_and_n(E_grid)
     s_bl_elsepa = blend_sigma(E_grid, E_m, s_m, E_e, s_e)
     s_bl_sr = blend_sigma(E_grid, E_m, s_m, E_grid, s_sr)
 
-    diagnostics(E_grid, s_bl_elsepa, s_bl_sr, E_m, s_m, E_e, s_e, s_sr, cdf)
+    diagnostics(E_grid, s_bl_elsepa, s_bl_sr, E_m, s_m, E_e, s_e, s_sr, cdf_hi)
 
     # Save ONLY the six requested files:
-    mask_low = E_grid <= 200.0
-    mask_high = E_grid >= 200.0
+    mask_low = E_grid <= E_SPLIT
+    mask_high = E_grid >= E_SPLIT
 
     # Save in units of 1e-16 cm^2 (like Michaud tables)
     scale_tab = 1.0e16
     out_low_elsepa = DATADIR / "sigma_elastic_e_michaud_elsepa_low.dat"
     np.savetxt(out_low_elsepa, np.column_stack([E_grid[mask_low], s_bl_elsepa[mask_low] * scale_tab]), fmt="%.8e")
-    print(f"[saved] {out_low_elsepa} (isotropic angles expected)")
+    print(f"[saved] {out_low_elsepa} (isotropic angles expected; ELSEPA muffin high branch)")
 
     out_high_elsepa = DATADIR / "sigma_elastic_e_michaud_elsepa_high.dat"
     np.savetxt(out_high_elsepa, np.column_stack([E_grid[mask_high], s_bl_elsepa[mask_high] * scale_tab]), fmt="%.8e")
-    print(f"[saved] {out_high_elsepa} (use ELSEPA angular CDF)")
+    print(f"[saved] {out_high_elsepa} (use ELSEPA muffin angular CDF)")
 
     out_cdf_elsepa = DATADIR / "sigmadiff_cumulated_elastic_e_michaud_elsepa_high.dat"
-    np.savetxt(out_cdf_elsepa, cdf, fmt="%.10e")
-    print(f"[saved] {out_cdf_elsepa} (ELSEPA angular CDF)")
+    np.savetxt(out_cdf_elsepa, cdf_hi, fmt="%.10e")
+    print(f"[saved] {out_cdf_elsepa} (ELSEPA muffin angular CDF)")
 
     # Isotropic low-energy CDF for Michaud-ELSEPA low branch
     theta_iso = np.linspace(0.0, 180.0, 181)

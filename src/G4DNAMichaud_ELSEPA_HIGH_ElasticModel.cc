@@ -42,7 +42,7 @@ G4DNAMichaud_ELSEPA_HIGH_ElasticModel(const G4ParticleDefinition*, const G4Strin
 {
   // Tables start just above 200 eV and extend to ~1 MeV
   SetLowEnergyLimit(200. * eV);
-  SetHighEnergyLimit(1.0 * MeV);
+  SetHighEnergyLimit(10.0 * MeV);
 
   verboseLevel = 2;
 
@@ -95,10 +95,10 @@ void G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Initialise(const G4ParticleDefinitio
     SetLowEnergyLimit(200.*eV);
   }
 
-  if (HighEnergyLimit() > 1.*MeV)
+  if (HighEnergyLimit() > 10.*MeV)
   {
     G4cout << "G4DNAMichaud_ELSEPA_HIGH_ElasticModel: high energy limit decreased from "
-           << HighEnergyLimit()/eV << " eV to " << 1e6 << " eV"
+           << HighEnergyLimit()/eV << " eV to " << 1e7 << " eV"
            << G4endl;
     SetHighEnergyLimit(1.*MeV);
   }
@@ -285,16 +285,24 @@ G4double G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Theta(G4double k,
   G4double xs22 = 0;
 
   auto t2 = std::upper_bound(eTdummyVec.begin(), eTdummyVec.end(), k);
+  if (t2 == eTdummyVec.begin())
+  {
+    t2 = eTdummyVec.begin() + 1;
+  }
+  else if (t2 == eTdummyVec.end())
+  {
+    t2 = eTdummyVec.end() - 1; // clamp to last interval (e.g., k at upper bound)
+  }
   auto t1 = t2 - 1;
 
-  auto e12 = std::upper_bound(eVecm[(*t1)].begin(),
-                                                         eVecm[(*t1)].end(),
-                                                         integrDiff);
+  auto &vec1 = eVecm[(*t1)];
+  auto e12 = std::upper_bound(vec1.begin(), vec1.end(), integrDiff);
+  if (e12 == vec1.end()) { e12 = vec1.end() - 1; }
   auto e11 = e12 - 1;
 
-  auto e22 = std::upper_bound(eVecm[(*t2)].begin(),
-                                                         eVecm[(*t2)].end(),
-                                                         integrDiff);
+  auto &vec2 = eVecm[(*t2)];
+  auto e22 = std::upper_bound(vec2.begin(), vec2.end(), integrDiff);
+  if (e22 == vec2.end()) { e22 = vec2.end() - 1; }
   auto e21 = e22 - 1;
 
   valueT1 = *t1;

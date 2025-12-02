@@ -81,7 +81,7 @@ OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Roots for locating data
 GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent  # .../geant4_projects
-CUSTOM_DATA_ROOT = PROJECT_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
+CUSTOM_DATA_ROOT = GEANT4_PROJECTS_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
 TABULAR_DIR = PROJECT_ROOT / "tabular"
 
 MICHAUD_TABLE2 = str(TABULAR_DIR / "michaud_table2.csv")
