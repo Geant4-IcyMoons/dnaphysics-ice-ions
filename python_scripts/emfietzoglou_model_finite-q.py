@@ -504,63 +504,15 @@ def _gamma_q(g0, q, C):
 # ============================================================
 def epsilon2_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs, partitioned: bool = True) -> dict:
     """
-    Imaginary dielectric at finite q, valence only (excitations + ionizations), channel-resolved.
-    Partitioning:
-      - Kyriakou redistribution is applied once at q=0 to the optical Drude
-        decomposition (no q-dependence).
-      - The resulting modified Im[ε_j] and Im[ε_i] are used to define
-        energy-dependent correction factors, which are then applied to the
-        finite-q oscillator contributions for all q.
-
-    Gating: excitations for E >= Bmin; ionizations for E >= Bth per channel.
-    Returns dict with arrays shaped:
-      'excitations': [ (nq, nE), ... n_exc ],
-      'ionizations': [ (nq, nE), ... n_ion ],
-      'total': (nq, nE)
+    Imaginary dielectric at finite q, valence only.
+    CORRECTED: Applies Kyriakou partitioning dynamically to the q-dispersed
+    Drude functions, ensuring redistribution respects the shifted peaks E_i(q).
     """
     E = np.asarray(E, float)
     q = _ensure_1d(q)
     nE, nq = E.size, q.size
 
-    # Optional partitioning at q=0, then apply dispersion via correction factors
-    corr_exc = None
-    corr_ion = None
-    if partitioned:
-        # Optical (q=0) unpartitioned Drude components (no gating here)
-        fj0 = np.array([o.f for o in s.excitations], float)
-        Ej0 = np.array([o.E0 for o in s.excitations], float)
-        gj0 = np.array([o.gamma for o in s.excitations], float)
-        fi0 = np.array([o.f for o in s.ionizations], float)
-        Ei0 = np.array([o.E0 for o in s.ionizations], float)
-        gi0 = np.array([o.gamma for o in s.ionizations], float)
-
-        exc_raw = [(s.Ep**2) * _d_drude_e2(E, fj0[j], Ej0[j], gj0[j]) for j in range(fj0.size)]
-        ion_raw = [(s.Ep**2) * _drude_e2(E, fi0[k], Ei0[k], gi0[k]) for k in range(fi0.size)]
-
-        # Apply Kyriakou optical partition (q=0 only)
-        part_exc, part_ion = _apply_partitioning_optical(
-            E,
-            exc_raw,
-            Ej0,
-            ion_raw,
-            [o.Bth for o in s.ionizations],
-            s.Bmin,
-        )
-
-        # Baseline optical with thresholds, for defining correction factors
-        base_exc = [
-            (s.Ep**2) * (E >= s.Bmin).astype(float) * _d_drude_e2(E, fj0[j], Ej0[j], gj0[j])
-            for j in range(fj0.size)
-        ]
-        base_ion = []
-        for k, ok in enumerate(s.ionizations):
-            g = (E >= ok.Bth).astype(float)
-            base_ion.append((s.Ep**2) * g * _drude_e2(E, fi0[k], Ei0[k], gi0[k]))
-
-        corr_exc = [_safe_div(part_exc[j], base_exc[j]) for j in range(len(base_exc))]
-        corr_ion = [_safe_div(part_ion[k], base_ion[k]) for k in range(len(base_ion))]
-
-    # Params @ q
+    # 1. Pre-calculate dispersed parameters for all q
     # Excitations: f, gamma disperse; E0 fixed
     fj0 = np.array([o.f for o in s.excitations], float)
     Ej0 = np.array([o.E0 for o in s.excitations], float)
@@ -578,28 +530,50 @@ def epsilon2_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: Disper
     Eiq = _Ei_q(Ei0, q, C)                        # (nq, n_ion)
     giq = _gamma_q(gi0, q, C)                     # (nq, n_ion)
 
-    # Build channels
-    exc_list = []
-    for j in range(fj0.size):
-        y = np.empty((nq, nE), float)
-        for iq in range(nq):
-            y[iq, :] = (s.Ep**2) * _d_drude_e2(E, fjq[iq, j], Ej0[j], gjq[iq, j])
-        # gate by Bmin
-        y[:, E < s.Bmin] = 0.0
-        if corr_exc is not None:
-            y *= corr_exc[j][None, :]
-        exc_list.append(y)
+    # Thresholds are fixed physical constants
+    ion_B = [o.Bth for o in s.ionizations]
 
-    ion_list = []
-    for k, ok in enumerate(s.ionizations):
-        y = np.empty((nq, nE), float)
-        for iq in range(nq):
-            y[iq, :] = (s.Ep**2) * _drude_e2(E, fiq[iq, k], Eiq[iq, k], giq[iq, k])
-        # gate by Bth per ionization
-        y[:, E < ok.Bth] = 0.0
-        if corr_ion is not None:
-            y *= corr_ion[k][None, :]
-        ion_list.append(y)
+    # Containers for results
+    # We build them as (n_channels, nq, nE) first for easier slicing
+    exc_results = np.zeros((len(s.excitations), nq, nE))
+    ion_results = np.zeros((len(s.ionizations), nq, nE))
+
+    # 2. Loop over q to apply partitioning at each step
+    for i in range(nq):
+        # A. Calculate Raw Drude for this q
+        # Excitations (Derivative Drude)
+        exc_raw = []
+        for j in range(len(s.excitations)):
+            y = (s.Ep**2) * _d_drude_e2(E, fjq[i, j], Ej0[j], gjq[i, j])
+            exc_raw.append(y)
+
+        # Ionizations (Normal Drude)
+        ion_raw = []
+        for k in range(len(s.ionizations)):
+            y = (s.Ep**2) * _drude_e2(E, fiq[i, k], Eiq[i, k], giq[i, k])
+            ion_raw.append(y)
+
+        # B. Apply Partitioning (Dynamic)
+        if partitioned:
+            # Pass the DISPERSED functions to the algorithm
+            # Note: Ej0 is used for excitation step functions (fixed for exc)
+            part_exc, part_ion = _apply_partitioning_optical(
+                E, exc_raw, Ej0, ion_raw, ion_B, s.Bmin
+            )
+        else:
+            # Fallback: Just apply standard gating if not partitioned
+            part_exc = [(y * (E >= s.Bmin).astype(float)) for y in exc_raw]
+            part_ion = [(y * (E >= ion_B[k]).astype(float)) for k, y in enumerate(ion_raw)]
+
+        # Store results
+        for j, y in enumerate(part_exc):
+            exc_results[j, i, :] = y
+        for k, y in enumerate(part_ion):
+            ion_results[k, i, :] = y
+
+    # 3. Format output as list of (nq, nE) arrays
+    exc_list = [exc_results[j] for j in range(len(s.excitations))]
+    ion_list = [ion_results[k] for k in range(len(s.ionizations))]
 
     total = np.zeros((nq, nE), float)
     for y in exc_list:
@@ -994,7 +968,7 @@ def plot_Re_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
 if __name__ == "__main__":
 
     # ice = "hexagonal"
-    ice = "amorphous"
+    ice = "hexagonal"
     s = epsilon_optical(ice)
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])

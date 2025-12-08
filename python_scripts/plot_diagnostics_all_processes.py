@@ -199,7 +199,6 @@ def _sanitize_label(label: str) -> str:
         safe = safe.replace("__", "_")
     return safe.strip("_")
 
-
 def _select_sim_cross_section(arrs, mask, nH2O_cm3: float) -> tuple[np.ndarray, np.ndarray]:
     """Return (ke, xs_micro_cm2) for a given boolean mask."""
     ke = np.asarray(arrs["kineticEnergy"], dtype=float)[mask]
@@ -216,7 +215,6 @@ def _select_sim_cross_section(arrs, mask, nH2O_cm3: float) -> tuple[np.ndarray, 
         xs_micro = np.asarray(arrs["channelMicroXS"], dtype=float)[mask]
         xs_micro_cm2 = np.where(xs_micro > 0.0, xs_micro, xs_micro_cm2)
     return ke, xs_micro_cm2
-
 
 def print_root_processes(arrs) -> None:
     """Print unique processes present in the ROOT file."""
@@ -246,7 +244,6 @@ def print_root_processes(arrs) -> None:
         models_str = f" | modelName: {', '.join(models)}" if models else ""
         print(f"  {int(code):>4d}  {label:<12} steps={cnt}{names_str}{models_str}")
 
-
 # -------- Data I/O --------
 def load_arrays(path: str, tree_name: str = "step"):
     """Load ROOT ntuple arrays from the given file, selecting known columns."""
@@ -273,7 +270,6 @@ def load_arrays(path: str, tree_name: str = "step"):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="overflow encountered in scalar add", category=RuntimeWarning)
             return t.arrays(available, library="np")
-
 
 def load_reference_from_path(fpath: str):
     """Load reference partial XS from a .dat file.
@@ -315,12 +311,10 @@ def load_reference_from_path(fpath: str):
         ref_by_ch.append(col)
     return E_arr, ref_by_ch
 
-
 # -------- Physics helpers --------
 def _to_micro_cm2(xs_macro_mm_inv_subset: np.ndarray, nH2O_cm3: float) -> np.ndarray:
     """Convert macroscopic mm^-1 to microscopic cm^2 using number density."""
     return (xs_macro_mm_inv_subset * 10.0) / float(nH2O_cm3)
-
 
 # HG helpers for deflection overlays
 def _hg_p_per_deg(theta_deg: np.ndarray, g: np.ndarray) -> np.ndarray:
@@ -333,7 +327,6 @@ def _hg_p_per_deg(theta_deg: np.ndarray, g: np.ndarray) -> np.ndarray:
     p_per_rad = p_cos * sin_t
     return p_per_rad / (np.pi / 180.0)
 
-
 def _hg_forward_fraction(g: float) -> float:
     g = float(np.clip(g, -0.999999, 0.999999))
     if abs(g) < 1e-12:
@@ -341,7 +334,6 @@ def _hg_forward_fraction(g: float) -> float:
     A0 = 1.0 + g*g
     term = (1.0 - g) / np.sqrt(A0)
     return (1.0 + g) / (2.0 * g) * (1.0 - term)
-
 
 def _invert_forward_fraction_to_g(Y: float, tol: float = 1e-10, maxit: int = 100) -> float:
     Y = float(np.clip(Y, 0.0, 1.0))
@@ -364,7 +356,6 @@ def _invert_forward_fraction_to_g(Y: float, tol: float = 1e-10, maxit: int = 100
         else:
             lo = mid; f_lo = f_mid
     return float(np.clip(0.5 * (lo + hi), -0.999999, 0.999999))
-
 
 def _load_michaud_gamma_for_channel(idx: int):
     import pandas as pd
@@ -389,7 +380,6 @@ def _load_michaud_gamma_for_channel(idx: int):
         return None, None
     order = np.argsort(e)
     return e[order], g[order]
-
 
 # -------- Plotters --------
 def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
@@ -571,7 +561,6 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
     plt.close(fig)
     return outpath
 
-
 def plot_elastic_reference_vs_sim(arrs, ncols: int, scale: float, nH2O_cm3: float,
                                   out_path: str, dat_path: str | None = None):
     """Multi-panel elastic XS comparison: reference (black) vs simulation (blue dashed)."""
@@ -740,7 +729,6 @@ def plot_elastic_reference_vs_sim(arrs, ncols: int, scale: float, nH2O_cm3: floa
     plt.close(fig)
     return outpath
 
-
 def plot_vib_energy_loss_hist(arrs, ncols: int, out_path: str):
     """Plot energy-loss histograms per vib channel using kineticEnergyDifference."""
     if arrs is None or "kineticEnergyDifference" not in arrs or "channelIndex" not in arrs:
@@ -801,7 +789,6 @@ def plot_vib_energy_loss_hist(arrs, ncols: int, out_path: str):
     print(f"Wrote {outpath}")
     plt.close(fig)
     return outpath
-
 
 def plot_summary(arrs, out_path: str, fontsize: float):
     """Create a compact 4-panel summary of the simulation arrays."""
@@ -864,7 +851,6 @@ def plot_summary(arrs, out_path: str, fontsize: float):
     plt.close(fig)
     return outpath
 
-
 def _born_angular_distribution(theta_deg, E_kin_eV, E_sec_eV):
     """
     Compute theoretical Born approximation angular distribution for ionisation.
@@ -913,7 +899,6 @@ def _born_angular_distribution(theta_deg, E_kin_eV, E_sec_eV):
         pdf /= integral
     
     return pdf
-
 
 def plot_deflection_angles_all(arrs, out_path: str, fontsize: float = FONTSIZE):
     """Plot deflection-angle histograms per (process, model) pair (channels aggregated), one figure each."""
@@ -975,7 +960,6 @@ def plot_deflection_angles_all(arrs, out_path: str, fontsize: float = FONTSIZE):
         print(f"Wrote {out_resolved}")
         plt.close(fig)
     return out_path
-
 
 # -------- CLI --------
 def main():

@@ -634,7 +634,7 @@ def plot_Im_epsilon_channel_resolved(
     if legend:
         ax.legend(loc='upper right')
 
-    ax.set_xlabel("Energy (eV)")
+    ax.set_xlabel("Electron Energy (eV)")
     ax.set_ylabel(r"$\epsilon_2(E, q{=}0)$")
 
 def plot_Re_epsilon_channel_resolved(
@@ -672,7 +672,7 @@ def plot_Re_epsilon_channel_resolved(
     if legend:
         ax.legend(loc='upper right')
 
-    ax.set_xlabel("Energy (eV)")
+    ax.set_xlabel("Electron Energy (eV)")
     ax.set_ylabel(r"$\epsilon_1(E, q{=}0)$")
 
 def plot_ELF_channel_resolved(
@@ -730,7 +730,7 @@ def plot_ELF_channel_resolved(
     if legend:
         ax.legend(loc='upper right')
 
-    ax.set_xlabel("Energy (eV)")
+    ax.set_xlabel("Electron Energy (eV)")
     ax.set_ylabel(r"$\mathrm{ELF}=\mathrm{Im}\!\left[\frac{1}{\epsilon}\right]$ at $q=0$")
 
 def plot_Kshell_channel_resolved(
@@ -757,7 +757,7 @@ def plot_Kshell_channel_resolved(
 
     if not include_kshell:
         # Keep interface behavior consistent: do nothing but keep axes labeled.
-        ax.set_xlabel("Energy (eV)")
+        ax.set_xlabel("Electron Energy (eV)")
         ax.set_ylabel(r"$\epsilon_2(E, q{=}0)$")
         if legend:
             ax.legend(loc='upper right')
@@ -771,7 +771,7 @@ def plot_Kshell_channel_resolved(
     if legend:
         ax.legend(loc='upper right')
 
-    ax.set_xlabel("Energy (eV)")
+    ax.set_xlabel("Electron Energy (eV)")
     ax.set_ylabel(r"$\epsilon_2(E, q{=}0)$")
 
 def plot_neff_and_I(E_min=0.1, E_max=1.0e6, npts=50000, savepath=None, partitioned=False):
@@ -951,7 +951,7 @@ def plot_model_vs_experiment_two_panel(use_partitioning: bool = True, savepath: 
 
         ax.set_xlim(0, 30)
         ax.set_ylim(0, 2.9)
-        ax.set_xlabel("Energy (eV)")
+        ax.set_xlabel("Electron Energy (eV)")
         if ice == "amorphous":
             ax.set_ylabel("Dielectric Properties")
         else:
@@ -1042,7 +1042,7 @@ if __name__ == "__main__":
     # Add experimental data
     ax3.plot(exp_e2_E, exp_e2, 'd-', color='lightgray', linewidth=1.5, markersize=5,
              label='Experimental data', zorder=10)
-    ax3.set_xlabel("Energy (eV)")
+    ax3.set_xlabel("Electron Energy (eV)")
     ax3.set_ylabel(r"$\operatorname{Im}(\epsilon)$")
     ax3.set_title(f"Channel-resolved Im($\\epsilon$) at q = {q}; {ice} ice")
     # Legend bar below main plot (multi-row/column, fully separated from panel)
@@ -1062,7 +1062,7 @@ if __name__ == "__main__":
     # Add experimental data
     ax4.plot(exp_e1_E, exp_e1, 'd-', color='lightgray', linewidth=1.5, markersize=5,
              label='Experimental data', zorder=10)
-    ax4.set_xlabel("Energy (eV)")
+    ax4.set_xlabel("Electron Energy (eV)")
     ax4.set_ylabel(r"$\operatorname{Re}(\epsilon)$")
     ax4.set_title(f"Channel-resolved Re($\\epsilon$) at q = {q}; {ice} ice")
     # Legend bar below main plot (multi-row/column, fully separated from panel)
@@ -1130,7 +1130,7 @@ if __name__ == "__main__":
                 markerfacecolor='darkgray', markeredgecolor='darkgray',
                 label='Exp: ELF', zorder=10)
 
-    ax_comp.set_xlabel("Energy (eV)")
+    ax_comp.set_xlabel("Electron Energy (eV)")
     ax_comp.set_ylabel("Dielectric Properties")
     ax_comp.set_title(f"{ice.capitalize()} Ice")
     ax_comp.legend(ncol=2)
