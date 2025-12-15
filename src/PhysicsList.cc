@@ -163,14 +163,14 @@ theDNAElasticProcess->AddEmModel(2, high);
 ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
 
 // ----- Vibrational excitation (uncomment to enable) -----
-// auto* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
-// theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel());
-// ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
+auto* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
+theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel());
+ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
 
 // ----- Attachment (uncomment to enable) -----
-// auto* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
-// theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel());
-// ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
+auto* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
+theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel());
+ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
 
 // ----- Ionisation (uncomment to enable) -----
 // auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");

@@ -965,6 +965,147 @@ def plot_Re_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
     fig.tight_layout(rect=[0, 0.06, 1, 0.92])
     return fig
 
+
+def plot_model_vs_experiment_multiq(
+    E: np.ndarray | None,
+    qvals: ArrayLike,
+    s: IceOpticalSet,
+    C: DispersionCoeffs,
+    ice: str,
+    use_partitioning: bool = True,
+    savepath: str | Path | None = "output/Model_vs_Experiment_multiq.pdf",
+) -> Path | None:
+    """
+    Multi-panel comparison of model ELF vs. q-resolved tabular data for
+    q in qvals (one panel per q). Each integer-q panel overlays its matching
+    ELFmodel_*_q#.dat file (q=0 -> q0.dat, q=1 -> q1.dat, etc.) labeled as
+    "Experimental data".
+    """
+    from matplotlib.gridspec import GridSpec
+    import pandas as pd
+
+    E = np.asarray(E if E is not None else np.linspace(1.0, 60.0, 20000), float)
+    qvals = np.asarray(qvals, float).ravel()
+    script_dir = Path(__file__).parent
+    ice_data_file = script_dir.parent / "tabular" / "ice data.xlsx"
+    sheet_name = "Hexagonal" if ice == "hexagonal" else "Amorphous"
+    df_exp = pd.read_excel(ice_data_file, sheet_name=sheet_name)
+    mask_e2 = df_exp["eV"].notna() & df_exp["e2"].notna()
+    mask_e1 = df_exp["eV.1"].notna() & df_exp["e1"].notna()
+    mask_elf = df_exp["eV.2"].notna() & df_exp["ELF"].notna()
+    exp_e2_E = df_exp.loc[mask_e2, "eV"].values
+    exp_e2 = df_exp.loc[mask_e2, "e2"].values
+    exp_e1_E = df_exp.loc[mask_e1, "eV.1"].values
+    exp_e1 = df_exp.loc[mask_e1, "e1"].values
+    exp_elf_E = df_exp.loc[mask_elf, "eV.2"].values
+    exp_elf = df_exp.loc[mask_elf, "ELF"].values
+
+    ncols = 2
+    nrows = int(np.ceil(qvals.size / ncols))
+    fig = plt.figure(figsize=(7 * ncols, 3.6 * nrows + 1.2))
+    gs = GridSpec(nrows + 1, ncols, height_ratios=[*([3.0] * nrows), 0.9], hspace=0.32, wspace=0.25)
+    fig.suptitle(f"{ice.capitalize()} ice", y=0.95)
+    legend_ax = fig.add_subplot(gs[-1, :])
+    legend_ax.axis("off")
+
+    # Preload tabular ELF by integer q for quick lookup
+    tabular_by_q: dict[int, np.ndarray] = {}
+    for q in qvals:
+        q_int = int(round(q))
+        if np.isclose(q, q_int):
+            tag = "amo" if ice == "amorphous" else ice
+            dat_path = script_dir.parent / "tabular" / f"ELFmodel_{tag}_ice_q{q_int}.dat"
+            if dat_path.exists():
+                try:
+                    dat = np.loadtxt(dat_path)
+                    if dat.ndim == 2 and dat.shape[1] >= 2:
+                        tabular_by_q[q_int] = dat
+                except OSError:
+                    pass
+
+    handles_all: list = []
+    labels_all: list = []
+    for i, q in enumerate(qvals):
+        r, c = divmod(i, ncols)
+        ax = fig.add_subplot(gs[r, c])
+
+        elf_model = elf_Eq(E, np.array([q], float), s, C, include_kshell=True, partitioned=use_partitioning)[0]
+        ln_model = ax.plot(E, elf_model, "k-", linewidth=2, label="Model: ELF", zorder=5)[0]
+
+        # Overlay tabulated ELF model data for this specific integer q (q0->q0.dat, etc.)
+        q_int = int(round(q))
+        if np.isclose(q, q_int) and q_int in tabular_by_q:
+            dat = tabular_by_q[q_int]
+            tab_handle = ax.plot(
+                dat[:, 0],
+                dat[:, 1],
+                "s-",
+                color="gray",
+                linewidth=1.4,
+                markersize=6,
+                markerfacecolor="gray",
+                markeredgecolor="gray",
+                markevery=50,  # show a diamond every 8th point (tune as needed)
+                label="Experimental data",
+                zorder=11,
+            )[0]
+
+        ax.set_xlim(0, 100)
+        if r == nrows - 1:
+            ax.set_xlabel("Electron Energy (eV)")
+        else:
+            ax.set_xlabel("")
+        if c == 0:
+            ax.set_ylabel("ELF")
+        else:
+            ax.set_ylabel("")
+        ax.text(
+            0.98,
+            0.95,
+            rf"q = {q:.2f}",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+        )
+
+        handles_all.append(ln_model)
+        labels_all.append("Model")
+        if tab_handle is not None:
+            handles_all.append(tab_handle)
+            labels_all.append("Experimental data")
+
+    for j in range(qvals.size, nrows * ncols):
+        r, c = divmod(j, ncols)
+        fig.add_subplot(gs[r, c]).set_visible(False)
+
+    unique = []
+    seen = set()
+    for h, lbl in zip(handles_all, labels_all):
+        if lbl not in seen:
+            unique.append((h, lbl))
+            seen.add(lbl)
+    handles_u, labels_u = zip(*unique)
+    legend_ax.legend(
+        handles_u,
+        labels_u,
+        loc="center",
+        ncol=3,
+        frameon=False,
+        columnspacing=1.5,
+        handlelength=2.5,
+        borderpad=1.5,
+        labelspacing=0.8,
+    )
+
+    fig.tight_layout()
+    out_path = Path(savepath) if savepath is not None else None
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, bbox_inches="tight")
+        print(f"[saved] {out_path}")
+    plt.show()
+    return out_path
+
 if __name__ == "__main__":
 
     # ice = "hexagonal"
@@ -979,6 +1120,19 @@ if __name__ == "__main__":
     use_partitioning = True
     # Finite-q: ensure optical limit is recovered when partitioning is off
     check_q0_convergence(E, s, C, partitioned=False)
+
+    # Model vs. experiment: optical data overlaid for q = 0, 1, 2, 3
+    qvals_compare = np.array([0.0, 1.0, 2.0, 3.0])
+    plot_model_vs_experiment_multiq(
+        E,
+        qvals_compare,
+        s,
+        C,
+        ice="amorphous",
+        use_partitioning=use_partitioning,
+        savepath=f"output/Model_vs_Experiment_multiq_amorphous.pdf",
+    )
+    exit()
 
     # Pick a q to show channel-resolved finite-q curves
     q_sel = 0.0  # a0^{-1}
