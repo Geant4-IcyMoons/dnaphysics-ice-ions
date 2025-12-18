@@ -290,7 +290,7 @@ def _d_drude_e1(E: np.ndarray, f: float, E0: float, gamma: float) -> np.ndarray:
 def epsilon_optical(material: Material) -> IceOpticalSet:
     if material == "amorphous":
         Ep = 20.82
-        Bmin = 7.5
+        Bmin = 7.0
         excit = [
             Osc(8.65,  1.6, 0.0090, "excitation"),
             Osc(10.50, 2.5, 0.0096, "excitation"),
@@ -302,12 +302,12 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
             Osc(15.40, 5.7, 0.1250, "ionization", Bth=10.0),
             Osc(18.60, 7.1, 0.1300, "ionization", Bth=13.0),
             Osc(24.50, 15.0, 0.1100, "ionization", Bth=17.0),
-            Osc(38.00, 30.0, 0.4110, "ionization", Bth=32.0),
+            Osc(38.00, 30.0, 0.4110, "ionization", Bth=32.2),
         ]
-        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0)
+        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=540.0)
     elif material == "hexagonal":
         Ep = 20.59
-        Bmin = 7.5
+        Bmin = 7.0
         excit = [
             Osc(8.65,  1.6, 0.0168, "excitation"),
             Osc(10.50, 1.5, 0.0065, "excitation"),
@@ -319,9 +319,9 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
             Osc(15.80, 4.6, 0.1000, "ionization", Bth=10.0),
             Osc(18.00, 7.5, 0.2000, "ionization", Bth=13.0),
             Osc(24.50, 14.0, 0.1100, "ionization", Bth=17.0),
-            Osc(35.00, 30.0, 0.3580, "ionization", Bth=32.0),
+            Osc(35.00, 30.0, 0.3580, "ionization", Bth=32.2),
         ]
-        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0)
+        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=540.0)
     else:
         raise ValueError("material must be 'amorphous' or 'hexagonal'")
 
@@ -412,8 +412,8 @@ def epsilon2_Kshell_E0_fsum_corrected(E, s):
 
     E0   = float(getattr(ks, "E0",   450.0))
     gamma= float(getattr(ks, "gamma",360.0))
-    Bth  = float(getattr(ks, "Bth",  532.0))
-    N_K  = 0.178  # Emfietzoglou et al., fixed atomic fraction
+    Bth  = float(getattr(ks, "Bth",  540.0))
+    N_K  = 0.1788  # Emfietzoglou et al., fixed atomic fraction
 
     # Unit-amplitude Drude *shape* for ε2:
     # ε2_shape(E) = (γ E) / [(E0^2 - E^2)^2 + (γ E)^2], zeroed below the edge
@@ -973,6 +973,7 @@ def plot_model_vs_experiment_multiq(
     C: DispersionCoeffs,
     ice: str,
     use_partitioning: bool = True,
+    overlay_optical_q0: bool = False,
     savepath: str | Path | None = "output/Model_vs_Experiment_multiq.pdf",
 ) -> Path | None:
     """
@@ -1049,8 +1050,22 @@ def plot_model_vs_experiment_multiq(
                 label="Experimental data",
                 zorder=11,
             )[0]
+        else:
+            tab_handle = None
 
-        ax.set_xlim(0, 100)
+        opt_handle = None
+        if overlay_optical_q0 and np.isclose(q, 0.0) and exp_elf.size:
+            opt_handle = ax.plot(
+                exp_elf_E,
+                exp_elf,
+                color="red",
+                linestyle=":",
+                linewidth=1.8,
+                label="Optical data (q=0)",
+                zorder=12,
+            )[0]
+
+        ax.set_xlim(0, E[-1])
         if r == nrows - 1:
             ax.set_xlabel("Electron Energy (eV)")
         else:
@@ -1073,6 +1088,9 @@ def plot_model_vs_experiment_multiq(
         if tab_handle is not None:
             handles_all.append(tab_handle)
             labels_all.append("Experimental data")
+        if opt_handle is not None:
+            handles_all.append(opt_handle)
+            labels_all.append("Optical data (q=0)")
 
     for j in range(qvals.size, nrows * ncols):
         r, c = divmod(j, ncols)
@@ -1109,13 +1127,13 @@ def plot_model_vs_experiment_multiq(
 if __name__ == "__main__":
 
     # ice = "hexagonal"
-    ice = "hexagonal"
+    ice = "amorphous"
     s = epsilon_optical(ice)
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])
     c_vec = np.array([0.098, 0.075, 0.074, 0.765, 0.425])
     C = DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)  # RR2017 defaults for c_disp,d_disp,b1,b2
-    E = np.linspace(1.0, 90.0, 20000)
+    E = np.linspace(1.0, 200.0, 20000)
     qvals = np.array([0.0, 0.1, 0.3, 0.6, 0.9, 2.0])  # a0^{-1}
     use_partitioning = True
     # Finite-q: ensure optical limit is recovered when partitioning is off
