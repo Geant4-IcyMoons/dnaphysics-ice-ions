@@ -4,6 +4,7 @@ Diagnostics plotting utilities for dnaphysics-ice.
 
 Features
 - Per-process cross-section plots (one panel per process; optional reference overlay).
+- Excitation/ionisation overlays (one panel each; all channels + cumulative, sim vs reference).
 - Elastic XS reference vs simulation multi-panel (one panel per elastic process found).
 - Vibrational energy-loss histograms per channel (for process 15).
 - Deflection-angle distributions for all (process, channel) pairs.
@@ -83,9 +84,13 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent  # .../geant4_projects
 CUSTOM_DATA_ROOT = GEANT4_PROJECTS_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
 TABULAR_DIR = PROJECT_ROOT / "tabular"
+CROSS_SECTIONS_DIR = PROJECT_ROOT / "cross_sections"
 
 MICHAUD_TABLE2 = str(TABULAR_DIR / "michaud_table2.csv")
 MICHAUD_TABLE3 = str(TABULAR_DIR / "michaud_table3.csv")
+
+# Emfietzoglou tables use G4DNA scale: (1e-22/3.343) * m^2; convert to 1e-16 cm^2
+EMFIETZOGLOU_SCALE_1E16 = (1e-22 / 3.343) * 1e4 / 1e-16
 
 # -------- Small helpers --------
 def _resolve_path(p: str) -> str:
@@ -106,6 +111,9 @@ def _find_g4ledata_file(basename: str) -> str | None:
       2) <TOP_ROOT>/g4_custom_ice/install/share/Geant4/data/G4EMLOW*/dna/<basename>
     Returns a string path if found, else None.
     """
+    p = CROSS_SECTIONS_DIR / basename
+    if p.exists():
+        return str(p)
     led = os.environ.get("G4LEDATA")
     if led:
         p = Path(led) / "dna" / basename
@@ -125,6 +133,15 @@ def _find_backup_dat(basename: str) -> str | None:
     """Fallback: look for reference .dat in backup/geant4_icyMoons."""
     p = GEANT4_PROJECTS_ROOT / "backup" / "geant4_icyMoons" / basename
     return str(p) if p.exists() else None
+
+def _scale_reference_if_needed(path: str | None, ref_by_ch: list[np.ndarray]) -> list[np.ndarray]:
+    """Apply unit fixes for known table formats (e.g., Emfietzoglou)."""
+    if not path or not ref_by_ch:
+        return ref_by_ch
+    base = os.path.basename(path).lower()
+    if "emfietzoglou" in base:
+        return [arr * EMFIETZOGLOU_SCALE_1E16 for arr in ref_by_ch]
+    return ref_by_ch
 
 
 def _clean_string(val: object) -> str:
@@ -285,6 +302,7 @@ def load_reference_from_path(fpath: str):
     Returns (E_eV, ref_by_channel) where len(ref_by_channel)=M and each
     element is a NumPy array of the same length as E_eV.
     """
+    fpath = _resolve_path(fpath)
     E: list[float] = []
     rows: list[list[float]] = []
     max_cols = 0
@@ -312,9 +330,99 @@ def load_reference_from_path(fpath: str):
     return E_arr, ref_by_ch
 
 # -------- Physics helpers --------
+EMFI_EXCITATION_EEV = np.array([8.22, 10.00, 11.24, 12.61, 13.77], dtype=float)
+EMFI_ION_BINDING_EEV = np.array([10.0, 13.0, 17.0, 32.2, 539.7], dtype=float)
+EMFI_EXCITATION_TOL_EEV = 2.0
+
 def _to_micro_cm2(xs_macro_mm_inv_subset: np.ndarray, nH2O_cm3: float) -> np.ndarray:
     """Convert macroscopic mm^-1 to microscopic cm^2 using number density."""
     return (xs_macro_mm_inv_subset * 10.0) / float(nH2O_cm3)
+
+def _infer_channel_indices(pcode: int, dE_eV: np.ndarray) -> np.ndarray:
+    """Infer channel indices from energy loss for excitation/ionisation."""
+    if dE_eV.size == 0:
+        return np.asarray([], dtype=int)
+    dE = np.asarray(dE_eV, dtype=float)
+    out = np.full(dE.shape, -1, dtype=int)
+    valid = np.isfinite(dE) & (dE > 0.0)
+    if not np.any(valid):
+        return out
+    dE_valid = dE[valid]
+    if int(pcode) == 12:
+        diff = np.abs(dE_valid[:, None] - EMFI_EXCITATION_EEV[None, :])
+        best = np.argmin(diff, axis=1)
+        best_diff = diff[np.arange(diff.shape[0]), best]
+        out_valid = np.where(best_diff <= EMFI_EXCITATION_TOL_EEV, best, -1)
+        out[valid] = out_valid
+        return out
+    if int(pcode) == 13:
+        bind = EMFI_ION_BINDING_EEV[None, :]
+        diff = np.where(dE_valid[:, None] >= bind, dE_valid[:, None] - bind, np.inf)
+        diff = np.where(diff < 1000.0, diff, np.inf)
+        best = np.argmin(diff, axis=1)
+        best_diff = diff[np.arange(diff.shape[0]), best]
+        out_valid = np.where(np.isfinite(best_diff), best, -1)
+        out[valid] = out_valid
+        return out
+    return out
+
+def _estimate_partial_xs_by_counts(
+    ke_eV: np.ndarray,
+    total_xs_cm2: np.ndarray,
+    chan_idx: np.ndarray,
+    n_channels: int,
+    nbins: int = 60,
+) -> tuple[dict[int, tuple[np.ndarray, np.ndarray]], tuple[np.ndarray, np.ndarray]]:
+    """Estimate per-channel microscopic XS by channel fractions in energy bins."""
+    ke = np.asarray(ke_eV, dtype=float)
+    xs = np.asarray(total_xs_cm2, dtype=float)
+    ch = np.asarray(chan_idx, dtype=int)
+    valid = np.isfinite(ke) & np.isfinite(xs) & (ke > 0.0) & (xs >= 0.0) & (ch >= 0)
+    if not np.any(valid):
+        return {}, (np.asarray([]), np.asarray([]))
+    ke = ke[valid]
+    xs = xs[valid]
+    ch = ch[valid]
+    e_min = float(np.nanmin(ke))
+    e_max = float(np.nanmax(ke))
+    if e_max <= e_min:
+        return {}, (np.asarray([]), np.asarray([]))
+    if e_max / max(e_min, 1e-30) > 1.2:
+        bins = np.geomspace(e_min, e_max, nbins + 1)
+    else:
+        bins = np.linspace(e_min, e_max, nbins + 1)
+    bin_idx = np.digitize(ke, bins) - 1
+    in_range = (bin_idx >= 0) & (bin_idx < nbins)
+    bin_idx = bin_idx[in_range]
+    ke = ke[in_range]
+    xs = xs[in_range]
+    ch = ch[in_range]
+    centers = 0.5 * (bins[:-1] + bins[1:])
+
+    series_by_ch: dict[int, tuple[list[float], list[float]]] = {
+        c: ([], []) for c in range(n_channels)
+    }
+    total_x = []
+    total_y = []
+    for b in range(nbins):
+        m = (bin_idx == b)
+        if not np.any(m):
+            continue
+        mean_total = float(np.nanmean(xs[m]))
+        counts = np.bincount(ch[m], minlength=n_channels).astype(float)
+        count_total = float(counts.sum())
+        if count_total <= 0.0:
+            continue
+        total_x.append(centers[b])
+        total_y.append(mean_total)
+        for c in range(n_channels):
+            series_by_ch[c][0].append(centers[b])
+            series_by_ch[c][1].append(mean_total * (counts[c] / count_total))
+
+    series_out: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    for c, (xs_list, ys_list) in series_by_ch.items():
+        series_out[c] = (np.asarray(xs_list, dtype=float), np.asarray(ys_list, dtype=float))
+    return series_out, (np.asarray(total_x, dtype=float), np.asarray(total_y, dtype=float))
 
 # HG helpers for deflection overlays
 def _hg_p_per_deg(theta_deg: np.ndarray, g: np.ndarray) -> np.ndarray:
@@ -416,11 +524,13 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
     ref_label = None
     if dat_path:
         ref_E, ref_by_ch = load_reference_from_path(dat_path)
+        ref_by_ch = _scale_reference_if_needed(dat_path, ref_by_ch)
         ref_label = "Reference"
     elif int(pcode) == 11 and model_hints:
         p = _resolve_elastic_reference_path(model_hints)
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
             ref_label = Path(p).name
     elif int(pcode) == 15:
         p = _find_g4ledata_file("sigma_excitationvib_e_michaud.dat")
@@ -428,6 +538,23 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
             p = _find_backup_dat("sigma_excitationvib_e_michaud.dat")
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_label = Path(p).name
+    elif int(pcode) == 12:
+        p = _find_g4ledata_file("sigma_excitation_e_emfietzoglou.dat")
+        if not p:
+            p = _find_backup_dat("sigma_excitation_e_emfietzoglou.dat")
+        if p:
+            ref_E, ref_by_ch = load_reference_from_path(p)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_label = Path(p).name
+    elif int(pcode) == 13:
+        p = _find_g4ledata_file("sigma_ionisation_e_emfietzoglou.dat")
+        if not p:
+            p = _find_backup_dat("sigma_ionisation_e_emfietzoglou.dat")
+        if p:
+            ref_E, ref_by_ch = load_reference_from_path(p)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
             ref_label = Path(p).name
 
     channels: List[int] = []
@@ -553,6 +680,167 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
             ax.tick_params(labelbottom=True)
 
     fig.align_ylabels([axes[r][0] for r in range(nrows) if axes[r][0].get_visible()])
+    fig.tight_layout()
+    outpath = _resolve_output(out_path)
+    plt.show()
+    fig.savefig(outpath, bbox_inches="tight")
+    print(f"Wrote {outpath}")
+    plt.close(fig)
+    return outpath
+
+def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
+                                     nH2O_cm3: float, out_path: str,
+                                     dat_path: str | None = None):
+    """Plot all channels + cumulative in a single panel for excitation/ionisation."""
+    if arrs is None:
+        return None
+    flag_proc = np.asarray(arrs["flagProcess"], dtype=float)
+    mask_proc = (flag_proc == float(pcode))
+    if not np.any(mask_proc):
+        return None
+
+    ke_all = np.asarray(arrs["kineticEnergy"], dtype=float)[mask_proc]
+    macro_keys = ["vibCrossSection", "macroCrossSection", "processCrossSection"]
+    xs_macro = None
+    for k in macro_keys:
+        if k in arrs:
+            xs_macro = np.asarray(arrs[k], dtype=float)[mask_proc]
+            break
+    if xs_macro is None:
+        return None
+    total_xs_micro = _to_micro_cm2(xs_macro, nH2O_cm3)
+
+    chan_idx = None
+    if "channelIndex" in arrs:
+        chan_idx = np.asarray(arrs["channelIndex"], dtype=int)[mask_proc]
+    if chan_idx is None or not np.any(chan_idx >= 0):
+        if "kineticEnergyDifference" in arrs:
+            dE = np.asarray(arrs["kineticEnergyDifference"], dtype=float)[mask_proc]
+            chan_idx = _infer_channel_indices(int(pcode), dE)
+    if chan_idx is None:
+        chan_idx = np.full_like(ke_all, -1, dtype=int)
+
+    chan_micro = None
+    if "channelMicroXS" in arrs:
+        chan_micro = np.asarray(arrs["channelMicroXS"], dtype=float)[mask_proc]
+    use_chan_micro = chan_micro is not None and np.any(chan_micro > 0.0)
+
+    # Reference data
+    ref_E = None
+    ref_by_ch = None
+    ref_path = None
+    if dat_path:
+        ref_path = dat_path
+    elif int(pcode) == 12:
+        ref_path = _find_g4ledata_file("sigma_excitation_e_emfietzoglou.dat")
+        if not ref_path:
+            ref_path = _find_backup_dat("sigma_excitation_e_emfietzoglou.dat")
+    elif int(pcode) == 13:
+        ref_path = _find_g4ledata_file("sigma_ionisation_e_emfietzoglou.dat")
+        if not ref_path:
+            ref_path = _find_backup_dat("sigma_ionisation_e_emfietzoglou.dat")
+    if ref_path:
+        ref_E, ref_by_ch = load_reference_from_path(ref_path)
+        ref_by_ch = _scale_reference_if_needed(ref_path, ref_by_ch)
+
+    sim_channels = np.unique(chan_idx[chan_idx >= 0]) if chan_idx is not None else np.array([], dtype=int)
+    n_ref = len(ref_by_ch) if ref_by_ch else 0
+    channels = sorted(set(range(n_ref)) | set(sim_channels.tolist()))
+    if not channels:
+        channels = [0]
+    n_channels = max(channels) + 1
+
+    if use_chan_micro:
+        series_by_ch = {}
+        for ch in channels:
+            m = (chan_idx == ch) & (chan_micro > 0.0)
+            if not np.any(m):
+                continue
+            x = ke_all[m]
+            y = chan_micro[m]
+            order = np.argsort(x)
+            series_by_ch[ch] = (x[order], y[order])
+        total_series = (ke_all, total_xs_micro)
+    else:
+        series_by_ch, total_series = _estimate_partial_xs_by_counts(
+            ke_all, total_xs_micro, chan_idx, n_channels
+        )
+        if total_series[0].size == 0 and ke_all.size:
+            total_series = (ke_all, total_xs_micro)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
+    cmap = plt.cm.tab10 if len(channels) <= 10 else plt.cm.tab20
+    colors = cmap(np.linspace(0, 1, len(channels)))
+
+    # Reference per-channel
+    if ref_E is not None and ref_by_ch:
+        for i, ch in enumerate(channels):
+            if ch >= len(ref_by_ch):
+                continue
+            ax.plot(
+                ref_E,
+                ref_by_ch[ch],
+                color=colors[i],
+                linewidth=2.0,
+                label=f"ch{ch} ref",
+            )
+
+    # Simulation per-channel
+    for i, ch in enumerate(channels):
+        if ch not in series_by_ch:
+            continue
+        x_sim, y_sim = series_by_ch[ch]
+        if x_sim.size == 0:
+            continue
+        ax.plot(
+            x_sim,
+            y_sim * scale,
+            linestyle="--",
+            marker="o",
+            markersize=3,
+            color=colors[i],
+            label=f"ch{ch} sim",
+        )
+
+    # Cumulative totals
+    if ref_E is not None and ref_by_ch:
+        ref_cum = np.sum(np.vstack(ref_by_ch), axis=0)
+        ax.plot(ref_E, ref_cum, color="gray", linewidth=4, label="total ref")
+    if total_series[0].size:
+        x_tot, y_tot = total_series
+        order = np.argsort(x_tot)
+        ax.plot(
+            x_tot[order],
+            y_tot[order] * scale,
+            color="black",
+            linestyle="--",
+            linewidth=2.0,
+            label="total sim",
+        )
+
+    ax.set_xlabel("Kinetic Energy (eV)")
+    ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
+    ax.set_title(pname)
+
+    span_vals = []
+    if ref_E is not None and ref_E.size:
+        pos_ref = ref_E[ref_E > 0]
+        if pos_ref.size:
+            span_vals.append(np.nanmin(pos_ref))
+            span_vals.append(np.nanmax(pos_ref))
+    if ke_all.size:
+        kpos = ke_all[ke_all > 0]
+        if kpos.size:
+            span_vals.append(np.nanmin(kpos))
+            span_vals.append(np.nanmax(kpos))
+    if span_vals:
+        e_min = float(np.nanmin(span_vals))
+        e_max = float(np.nanmax(span_vals))
+        if e_max / max(e_min, 1e-30) > 1e3:
+            ax.set_xscale("log")
+
+    ax.legend(loc="best", frameon=True, ncol=2)
     fig.tight_layout()
     outpath = _resolve_output(out_path)
     plt.show()
@@ -1001,6 +1289,17 @@ def main():
     pname_map = _process_name_map()
     for pcode in proc_list:
         suffix = pname_map.get(int(pcode), str(int(pcode)))
+        if int(pcode) in (12, 13):
+            outname = f"{base}_{suffix}{ext or '.png'}"
+            plot_channel_overlay_for_process(
+                arrs=arrs,
+                pcode=int(pcode),
+                scale=args.scale,
+                nH2O_cm3=args.nH2O_cm3,
+                out_path=outname,
+                dat_path=args.dat,
+            )
+            continue
         # If elastic has multiple models, emit one plot per model
         if int(pcode) == 11 and arrs is not None and "modelName" in arrs:
             models_all = _decode_to_str_array(arrs["modelName"])

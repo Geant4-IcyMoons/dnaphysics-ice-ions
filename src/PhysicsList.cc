@@ -68,6 +68,7 @@
 #include "G4DNAVibExcitation.hh"
 #include "G4DNAElastic.hh"
 #include "G4DNAAttachment.hh"
+#include "G4DNAExcitation.hh"
 #include "G4DNAIonisation.hh"
 #include "G4Electron.hh"
 #include "G4DNASancheExcitationModel.hh"
@@ -76,6 +77,7 @@
 #include "G4DNAMichaudElasticModel.hh"
 #include "G4DNAMichaud_ELSEPA_LOW_ElasticModel.hh"
 #include "G4DNAMichaud_ELSEPA_HIGH_ElasticModel.hh"
+#include "G4DNAEmfietzoglou_iceExcitationModel.hh"
 #include "G4DNAEmfietzoglou_iceIonisationModel.hh"
 //****** END ICE *****
 
@@ -170,6 +172,11 @@ auto* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
 // auto* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
 // theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel());
 // ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
+
+// ----- Excitation -----
+// auto* theDNAExcitationProcess = new G4DNAExcitation("e-_G4DNAExcitation_ICE");
+// theDNAExcitationProcess->SetEmModel(new G4DNAEmfietzoglou_iceExcitationModel());
+// ph->RegisterProcess(theDNAExcitationProcess, G4Electron::ElectronDefinition());
 
 // ----- Ionisation -----
 auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
