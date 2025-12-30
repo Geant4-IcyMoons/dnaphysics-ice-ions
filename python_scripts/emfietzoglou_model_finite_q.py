@@ -1,11 +1,11 @@
-"""
+r"""
 Dielectric model for water ice (amorphous, hexagonal) with q-dispersion.
 
 What this implements
 - 5 excitation bands with per-band dispersion parameters (a_j, b_j, c_j) applied to f_j(q)
 - 4 ionization shells with global dispersion for E_i(q) and gamma_i(q)
 - Optional O K-shell kept optical
-- Returns \epsilon_1(E,q), \epsilon_2(E,q), and ELF(E,q) = Im[-1/\\epsilon(E,q)]
+- Returns \epsilon_1(E,q), \epsilon_2(E,q), and ELF(E,q) = Im[-1/\epsilon(E,q)]
 
 Units
 - Energies in eV
@@ -16,8 +16,9 @@ from dataclasses import dataclass
 from typing import List, Literal, Union
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
-font = 'DejaVu Sans'
+font = 'Courier'
 hfont = {'fontname': font}
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
@@ -59,6 +60,164 @@ RY = 13.605693009     # eV, Rydberg
 
 Material = Literal["amorphous", "hexagonal"]
 ArrayLike = Union[float, np.ndarray]
+
+# ---- partitioning helpers (Kyriakou et al.) ----
+def _Theta(x):
+    # Θ(0)=1 per Appendix
+    x = np.asarray(x)
+    out = np.ones_like(x)
+    out[x < 0] = 0.0
+    return out
+
+def _H(x):
+    # H(0)=0 per Appendix
+    x = np.asarray(x)
+    out = np.zeros_like(x)
+    out[x > 0] = 1.0
+    return out
+
+def _safe_div(num, den):
+    eps = 1e-300
+    return num / np.where(np.abs(den) < eps, np.sign(den) * eps + eps, den)
+
+def _apply_partitioning_optical(E, exc_arrays, exc_Ek, ion_arrays, ion_B, Bmin):
+    """
+    Apply Kyriakou et al. redistribution at q=0 only (optical limit).
+    Indices:
+      - ionization shells: i
+      - excitation channels: j
+    Returns modified lists in the same order as input.
+    """
+    E = np.asarray(E, float)
+    nE = E.size
+
+    IonIm = np.stack(ion_arrays, axis=0) if ion_arrays else np.zeros((0, nE))
+    IonB  = np.array(list(ion_B), dtype=float) if ion_arrays else np.zeros((0,))
+
+    ExcIm = np.stack(exc_arrays, axis=0) if exc_arrays else np.zeros((0, nE))
+    ExcEk = np.array(list(exc_Ek), dtype=float) if exc_arrays else np.zeros((0,))
+
+    n_ion = IonIm.shape[0]
+    n_exc = ExcIm.shape[0]
+
+    # Sort ion shells by ascending Bi
+    if n_ion > 0:
+        order = np.argsort(IonB)
+        IonIm = IonIm[order]
+        IonB  = IonB[order]
+
+    B1 = IonB[0] if n_ion > 0 else np.inf
+
+    # -------------------------
+    # Ionizations (Eqs. A1–A5)
+    # -------------------------
+    IonIm_mod = np.zeros_like(IonIm)
+
+    for idx_i in range(n_ion):
+        Im_i = IonIm[idx_i]
+        Bi   = IonB[idx_i]
+
+        # C_i(E) = H(E - Bi)
+        C_i = _H(E - Bi)
+
+        # S_i(E) = -Im_i(Bi) * exp(Bi - E)
+        Im_i_Bi = np.interp(Bi, E, Im_i, left=0.0, right=0.0)
+        S_i = - Im_i_Bi * np.exp(Bi - E)
+
+        C_greater = np.zeros_like(E)
+        S_greater = np.zeros_like(E)
+
+        # Redistribution from higher shells j > i
+        for idx_j in range(idx_i + 1, n_ion):
+            Im_j = IonIm[idx_j]
+            Bj   = IonB[idx_j]
+
+            # denominator: sum_{m <= j-1} Im_m(E) H(E - B_m)
+            den = np.zeros_like(E)
+            for m in range(0, idx_j):
+                den += IonIm[m] * _H(E - IonB[m])
+
+            # C>i term
+            C_term = Im_j * _Theta(Bj - E) * _safe_div(Im_i, den)
+
+            # S>i term
+            Im_j_Bj = np.interp(Bj, E, Im_j, left=0.0, right=0.0)
+            S_term  = Im_j_Bj * np.exp(Bj - E) * _H(E - Bj) * _safe_div(Im_i, den)
+
+            C_greater += C_term
+            S_greater += S_term
+
+        IonIm_mod[idx_i] = (Im_i + S_i + S_greater + C_greater) * C_i
+
+    # -------------------------
+    # Excitations (Eqs. A6–A9)
+    # -------------------------
+    ExcIm_mod = np.zeros_like(ExcIm)
+    B_gap = Bmin
+
+    if n_exc > 0:
+        # For C_j: denominator sum_j Im_j(E) Θ(B1 − E_j)
+        if np.isfinite(B1):
+            Theta_B1_minus_Ej = np.array(
+                [1.0 if (B1 - Ej) >= 0.0 else 0.0 for Ej in ExcEk],
+                float
+            )
+        else:
+            Theta_B1_minus_Ej = np.zeros((n_exc,), float)
+
+        Exc_den_Cj = np.sum(
+            ExcIm * Theta_B1_minus_Ej[:, None],
+            axis=0
+        ) if n_exc > 0 else np.zeros_like(E)
+
+        # For S_{1j}: denominator sum_j Im_j(E)
+        Exc_den_S1 = np.sum(ExcIm, axis=0)
+
+        # Ion sum for C_j
+        if n_ion > 0:
+            Ion_sum = np.sum(IonIm, axis=0)
+        else:
+            Ion_sum = np.zeros_like(E)
+
+        Theta_B1_minus_E = _Theta(B1 - E) if np.isfinite(B1) else np.zeros_like(E)
+
+        # Im_1(B1) for S_{1j}
+        if n_ion > 0 and np.isfinite(B1):
+            Im_1_B1 = np.interp(B1, E, IonIm[0], left=0.0, right=0.0)
+        else:
+            Im_1_B1 = 0.0
+
+        for j in range(n_exc):
+            Im_j = ExcIm[j]
+            Ej   = ExcEk[j]
+
+            # Gate at B_min (valence onset)
+            if np.isfinite(B_gap):
+                C_j_gate = _Theta(E - B_gap)
+            else:
+                C_j_gate = np.ones_like(E)
+
+            # S_{1j}(E): redistribution of the low-energy tail of shell 1
+            if n_ion > 0 and np.isfinite(B1):
+                S1_weight = _safe_div(Im_j, Exc_den_S1)
+                S_1j = Im_1_B1 * np.exp(B1 - E) * _H(E - B1) * S1_weight
+            else:
+                S_1j = np.zeros_like(E)
+
+            # C_j(E): redistribution of ionization strength below B1 into excitations with Ej <= B1
+            if n_ion > 0 and np.isfinite(B1):
+                top_weight_j = Im_j * (1.0 if (B1 - Ej) >= 0.0 else 0.0)
+                weight_j     = _safe_div(top_weight_j, Exc_den_Cj)
+                C_j = Ion_sum * Theta_B1_minus_E * weight_j
+            else:
+                C_j = np.zeros_like(E)
+
+            ExcIm_mod[j] = (Im_j + S_1j + C_j) * C_j_gate
+
+    exc_mod_list = [ExcIm_mod[j] if n_exc > 0 else np.zeros_like(E) for j in range(n_exc)]
+    ion_mod_list = [IonIm_mod[i] if n_ion > 0 else np.zeros_like(E) for i in range(n_ion)]
+
+    return exc_mod_list, ion_mod_list
 
 # ---- data containers ----
 @dataclass(frozen=True)
@@ -132,7 +291,7 @@ def _d_drude_e1(E: np.ndarray, f: float, E0: float, gamma: float) -> np.ndarray:
 def epsilon_optical(material: Material) -> IceOpticalSet:
     if material == "amorphous":
         Ep = 20.82
-        Bmin = 7.5
+        Bmin = 7.0
         excit = [
             Osc(8.65,  1.6, 0.0090, "excitation"),
             Osc(10.50, 2.5, 0.0096, "excitation"),
@@ -149,7 +308,7 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
         kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0)
     elif material == "hexagonal":
         Ep = 20.59
-        Bmin = 7.5
+        Bmin = 7.0
         excit = [
             Osc(8.65,  1.6, 0.0168, "excitation"),
             Osc(10.50, 1.5, 0.0065, "excitation"),
@@ -182,6 +341,8 @@ def epsilon2_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
         "ionizations": [array(...), ...],
         "total": array(...)
       }
+    This is the unpartitioned optical ε2; Kyriakou partition is applied
+    separately in the q-dependent code to derive correction factors.
     """
     E = np.asarray(E, float)
 
@@ -229,8 +390,48 @@ def epsilon1_valence_E0(E: np.ndarray, s: IceOpticalSet) -> dict:
 def epsilon2_Kshell_E0(E: np.ndarray, s: IceOpticalSet) -> np.ndarray:
     E = np.asarray(E, float)
     o = s.kshell
-    y = _drude_e2(E, o.f, o.E0, o.gamma)
+    y = (s.Ep**2) * _drude_e2(E, o.f, o.E0, o.gamma)
     return np.where(E >= o.Bth, y, 0.0)
+
+def epsilon2_Kshell_E0_fsum_corrected(E, s):
+    r"""
+    Oxygen K-shell ε2^(K)(E, q=0) normalized by the f-sum so that
+        ∫_0^∞ E * ε2^(K)(E) dE = (π/2) * Ep^2 * N_K,   with N_K = 0.178.
+    This enforces Neff^(K) = 0.178 and makes Neff_total → 1, Neff_valence → 0.822.
+
+    Uses a single (normal) Drude shape with onset at the O K edge.
+    Requires in 's.kshell' at least: E0, gamma, Bth. Uses s.Ep for Ep.
+    """
+    import numpy as np
+
+    E   = np.asarray(E, dtype=float)
+    Ep  = float(s.Ep)
+    ks  = getattr(s, "kshell", None)
+    if ks is None:
+        # No K-shell parameters present
+        return np.zeros_like(E)
+
+    E0   = float(getattr(ks, "E0",   450.0))
+    gamma= float(getattr(ks, "gamma",360.0))
+    Bth  = float(getattr(ks, "Bth",  540.0))
+    N_K  = 0.1788  # Emfietzoglou et al., fixed atomic fraction
+
+    # Unit-amplitude Drude *shape* for ε2:
+    # ε2_shape(E) = (γ E) / [(E0^2 - E^2)^2 + (γ E)^2], zeroed below the edge
+    num   = gamma * E
+    den   = (E0*E0 - E*E)**2 + (gamma * E)**2
+    shape = np.where(E >= Bth, np.where(den > 0.0, num / den, 0.0), 0.0)
+
+    # Target area for ∫ E * ε2^(K)(E) dE
+    target = 0.5 * np.pi * (Ep**2) * N_K
+
+    # Cumulative trapezoid; last value is the area
+    dE     = np.diff(E)
+    midE   = 0.5 * (E[1:] + E[:-1])
+    area_shape = np.sum(0.5 * (shape[1:] + shape[:-1]) * dE * midE)
+    A = target / area_shape if np.isfinite(area_shape) and area_shape > 0.0 else 0.0
+
+    return A * shape
 
 def elf_E0(E: np.ndarray, s: IceOpticalSet, include_kshell: bool = True) -> np.ndarray:
     """ELF at q=0 using valence ε plus optional additive K-shell ε2."""
@@ -295,26 +496,24 @@ def _Ei_q(Ei0: np.ndarray, q: np.ndarray, C: DispersionCoeffs) -> np.ndarray:
 
 def _gamma_q(g0, q, C):
     q = _ensure_1d(q)
-    lin = (RY * q)[:, None]          # b1 * (Ry q)
-    quad = (RY * (q ** 2))[:, None]    # b2 * (Ry q^2)  <-- this was the bug
+    lin = (RY * q)[:, None]            # b1 * (Ry q)
+    quad = (RY * (q ** 2))[:, None]    # b2 * (Ry q^2)
     return g0[None, :] + C.b1 * lin + C.b2 * quad
 
 # ============================================================
 # Finite-q ε₂ and ε₁ (valence only), channel-resolved
 # ============================================================
-def epsilon2_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs) -> dict:
+def epsilon2_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs, partitioned: bool = True) -> dict:
     """
-    Imaginary dielectric at finite q, valence only (excitations + ionizations), channel-resolved.
-    Gating: excitations for E >= Bmin; ionizations for E >= Bth per channel.
-    Returns dict with arrays shaped:
-      'excitations': [ (nq, nE), ... n_exc ],
-      'ionizations': [ (nq, nE), ... n_ion ],
-      'total': (nq, nE)
+    Imaginary dielectric at finite q, valence only.
+    CORRECTED: Applies Kyriakou partitioning dynamically to the q-dispersed
+    Drude functions, ensuring redistribution respects the shifted peaks E_i(q).
     """
     E = np.asarray(E, float)
     q = _ensure_1d(q)
     nE, nq = E.size, q.size
-    # Params @ q
+
+    # 1. Pre-calculate dispersed parameters for all q
     # Excitations: f, gamma disperse; E0 fixed
     fj0 = np.array([o.f for o in s.excitations], float)
     Ej0 = np.array([o.E0 for o in s.excitations], float)
@@ -332,24 +531,50 @@ def epsilon2_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: Disper
     Eiq = _Ei_q(Ei0, q, C)                        # (nq, n_ion)
     giq = _gamma_q(gi0, q, C)                     # (nq, n_ion)
 
-    # Build channels
-    exc_list = []
-    for j in range(fj0.size):
-        y = np.empty((nq, nE), float)
-        for iq in range(nq):
-            y[iq, :] = (s.Ep**2) * _d_drude_e2(E, fjq[iq, j], Ej0[j], gjq[iq, j])
-        # gate by Bmin
-        y[:, E < s.Bmin] = 0.0
-        exc_list.append(y)
+    # Thresholds are fixed physical constants
+    ion_B = [o.Bth for o in s.ionizations]
 
-    ion_list = []
-    for k, ok in enumerate(s.ionizations):
-        y = np.empty((nq, nE), float)
-        for iq in range(nq):
-            y[iq, :] = (s.Ep**2) * _drude_e2(E, fiq[iq, k], Eiq[iq, k], giq[iq, k])
-        # gate by Bth per ionization
-        y[:, E < ok.Bth] = 0.0
-        ion_list.append(y)
+    # Containers for results
+    # We build them as (n_channels, nq, nE) first for easier slicing
+    exc_results = np.zeros((len(s.excitations), nq, nE))
+    ion_results = np.zeros((len(s.ionizations), nq, nE))
+
+    # 2. Loop over q to apply partitioning at each step
+    for i in range(nq):
+        # A. Calculate Raw Drude for this q
+        # Excitations (Derivative Drude)
+        exc_raw = []
+        for j in range(len(s.excitations)):
+            y = (s.Ep**2) * _d_drude_e2(E, fjq[i, j], Ej0[j], gjq[i, j])
+            exc_raw.append(y)
+
+        # Ionizations (Normal Drude)
+        ion_raw = []
+        for k in range(len(s.ionizations)):
+            y = (s.Ep**2) * _drude_e2(E, fiq[i, k], Eiq[i, k], giq[i, k])
+            ion_raw.append(y)
+
+        # B. Apply Partitioning (Dynamic)
+        if partitioned:
+            # Pass the DISPERSED functions to the algorithm
+            # Note: Ej0 is used for excitation step functions (fixed for exc)
+            part_exc, part_ion = _apply_partitioning_optical(
+                E, exc_raw, Ej0, ion_raw, ion_B, s.Bmin
+            )
+        else:
+            # Fallback: Just apply standard gating if not partitioned
+            part_exc = [(y * (E >= s.Bmin).astype(float)) for y in exc_raw]
+            part_ion = [(y * (E >= ion_B[k]).astype(float)) for k, y in enumerate(ion_raw)]
+
+        # Store results
+        for j, y in enumerate(part_exc):
+            exc_results[j, i, :] = y
+        for k, y in enumerate(part_ion):
+            ion_results[k, i, :] = y
+
+    # 3. Format output as list of (nq, nE) arrays
+    exc_list = [exc_results[j] for j in range(len(s.excitations))]
+    ion_list = [ion_results[k] for k in range(len(s.ionizations))]
 
     total = np.zeros((nq, nE), float)
     for y in exc_list:
@@ -369,6 +594,7 @@ def epsilon1_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: Disper
     E = np.asarray(E, float)
     q = _ensure_1d(q)
     nE, nq = E.size, q.size
+
     # Params @ q
     fj0 = np.array([o.f for o in s.excitations], float)
     Ej0 = np.array([o.E0 for o in s.excitations], float)
@@ -411,26 +637,30 @@ def epsilon1_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: Disper
 # ============================================================
 # Finite-q ELF (valence + optional optical K-shell)
 # ============================================================
-def elf_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs, include_kshell: bool = True) -> np.ndarray:
+def elf_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs, include_kshell: bool = True, partitioned: bool = True) -> np.ndarray:
     """
     ELF(E,q) = ε2^(m)/(ε1^(m)^2 + ε2^(m)^2)  +  ε2^(K)(E,0).
     Returns array (nq, nE). K-shell is optical and hard-gated at its edge.
+
+    If partitioned=True, the Kyriakou optical partition is used to define
+    energy-dependent correction factors that are applied to the finite-q
+    oscillator contributions.
     """
     E = np.asarray(E, float)
     q = _ensure_1d(q)
     e1 = epsilon1_valence_Eq(E, q, s, C)["total"]  # (nq, nE)
-    e2 = epsilon2_valence_Eq(E, q, s, C)["total"]  # (nq, nE)
+    e2 = epsilon2_valence_Eq(E, q, s, C, partitioned=partitioned)["total"]  # (nq, nE)
     denom = e1**2 + e2**2
     denom = np.where(denom == 0.0, np.finfo(float).tiny, denom)
     elf = e2 / denom
     if include_kshell:
-        ks = epsilon2_Kshell_E0(E, s)             # (nE,)
+        ks = epsilon2_Kshell_E0_fsum_corrected(E, s)             # (nE,)
         elf = elf + ks[None, :]
     return elf
 
 
 # ============================================================
-# Plotting helpers for finite-q (new; existing ones untouched)
+# Plotting helpers for finite-q
 # ============================================================
 def plot_Im_epsilon_channel_resolved_Eq(
     E: np.ndarray,
@@ -442,12 +672,13 @@ def plot_Im_epsilon_channel_resolved_Eq(
     linewidth: float = 1.8,
     legend: bool = False,
     also_plot_composite: bool = True,
+    partitioned: bool = True,
 ):
     """Per-channel ε₂ at a single finite q."""
     if ax is None:
         ax = plt.gca()
     E = np.asarray(E, float)
-    res = epsilon2_valence_Eq(E, np.array([q], float), s, C)
+    res = epsilon2_valence_Eq(E, np.array([q], float), s, C, partitioned=partitioned)
     exc_colors = ["#1f77b4", "#2ca02c", "#17becf", "#8c564b", "#9467bd"]
     ion_colors = ["#d62728", "#ff7f0e", "#bcbd22", "#e377c2"]
     for j, y in enumerate(res["excitations"]):
@@ -499,6 +730,7 @@ def plot_ELF_channel_resolved_Eq(
     C: DispersionCoeffs,
     q: float,
     include_kshell: bool = True,
+    partitioned: bool = True,
     ax=None,
     alpha: float = 0.95,
     linewidth: float = 1.8,
@@ -509,7 +741,7 @@ def plot_ELF_channel_resolved_Eq(
     if ax is None:
         ax = plt.gca()
     E = np.asarray(E, float)
-    elf = elf_Eq(E, np.array([q], float), s, C, include_kshell=include_kshell)[0]
+    elf = elf_Eq(E, np.array([q], float), s, C, include_kshell=include_kshell, partitioned=partitioned)[0]
     ax.plot(E, elf, color="k", lw=2.2, alpha=alpha, label=fr"ELF (q={q:.2f})")
     if include_kshell:
         ks = epsilon2_Kshell_E0(E, s)
@@ -527,6 +759,7 @@ def plot_ELF_totals_multiq(
     s: IceOpticalSet,
     C: DispersionCoeffs,
     include_kshell: bool = True,
+    partitioned: bool = True,
     ax=None,
     y_log: bool = False,
     linewidth: float = 1.8,
@@ -536,7 +769,7 @@ def plot_ELF_totals_multiq(
         ax = plt.gca()
     E = np.asarray(E, float)
     qvals = _ensure_1d(qvals)
-    elf = elf_Eq(E, qvals, s, C, include_kshell=include_kshell)  # (nq, nE)
+    elf = elf_Eq(E, qvals, s, C, include_kshell=include_kshell, partitioned=partitioned)  # (nq, nE)
     for i, q in enumerate(qvals):
         ax.plot(E, elf[i], lw=linewidth, label=fr"q = {q:.2f}")
     if y_log:
@@ -550,15 +783,21 @@ def plot_ELF_totals_multiq(
 # Consistency check (q→0) — optional but recommended
 # ============================================================
 def check_q0_convergence(E: np.ndarray, s: IceOpticalSet, C: DispersionCoeffs,
-                         rtol: float = 1e-10, atol: float = 1e-12) -> None:
+                         rtol: float = 1e-10, atol: float = 1e-12, partitioned: bool = False) -> None:
     """
     Verifies that ε(E,q→0) reproduces the optical ε(E,0).
-    Raises if mismatch exceeds tolerances.
+
+    If partitioned=False, uses the unpartitioned optical ε(E,0) as reference.
+    If partitioned=True, the q→0 limit of the finite-q model is already built
+    from the partitioned optical decomposition, so the strict comparison to
+    epsilon*_valence_E0 is skipped.
     """
+    if partitioned:
+        return
     E = np.asarray(E, float)
     q0 = np.array([0.0], float)
     e1_q0 = epsilon1_valence_Eq(E, q0, s, C)["total"][0]
-    e2_q0 = epsilon2_valence_Eq(E, q0, s, C)["total"][0]
+    e2_q0 = epsilon2_valence_Eq(E, q0, s, C, partitioned=partitioned)["total"][0]
     e1_opt = epsilon1_valence_E0(E, s)["total"]
     e2_opt = epsilon2_valence_E0(E, s)["total"]
     if not np.allclose(e1_q0, e1_opt, rtol=rtol, atol=atol):
@@ -624,27 +863,20 @@ def plot_ELF_channel_resolved_multiq(E, qvals, s, C, include_kshell=True, ncols=
         # Capture legend from the first (top-left) panel only
         if i == 0:
             legend_handles, legend_labels = ax.get_legend_handles_labels()
-        # Remove per-panel legends
-        # ax.legend(fontsize=10, loc='upper right')
         if r == nrows - 1:
             ax.set_xlabel("Energy (eV)")
-        # Only leftmost column gets a y-label; hide y tick labels for others
         if c == 0:
             ax.set_ylabel(r"$ELF(E,q)$")
         else:
             ax.set_ylabel("")
             ax.tick_params(labelleft=False)
-        # enforce common y range across panels
         ax.set_ylim(0.0, y_max)
     for j in range(nG, nrows * ncols):
         r, c = divmod(j, ncols)
         axes[r][c].set_visible(False)
-    # Add a single shared legend below all panels if we captured handles
     if legend_handles and legend_labels:
-        # Make space at bottom for legend bar
         fig.subplots_adjust(bottom=0.16)
         fig.legend(legend_handles, legend_labels, loc='lower center', ncol=min(5, len(legend_labels)), frameon=False)
-    # Leave extra headroom for a super-title above panels
     fig.tight_layout(rect=[0, 0.06, 1, 0.92])
     return fig
 
@@ -688,7 +920,6 @@ def plot_Im_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
     if legend_handles and legend_labels:
         fig.subplots_adjust(bottom=0.16)
         fig.legend(legend_handles, legend_labels, loc='lower center', ncol=min(5, len(legend_labels)), frameon=False)
-    # Leave extra headroom for a super-title above panels
     fig.tight_layout(rect=[0, 0.06, 1, 0.92])
     return fig
 
@@ -732,28 +963,200 @@ def plot_Re_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, figsize=Non
     if legend_handles and legend_labels:
         fig.subplots_adjust(bottom=0.16)
         fig.legend(legend_handles, legend_labels, loc='lower center', ncol=min(5, len(legend_labels)), frameon=False)
-    # Leave extra headroom for a super-title above panels
     fig.tight_layout(rect=[0, 0.06, 1, 0.92])
     return fig
 
+
+def plot_model_vs_experiment_multiq(
+    E: np.ndarray | None,
+    qvals: ArrayLike,
+    s: IceOpticalSet,
+    C: DispersionCoeffs,
+    ice: str,
+    use_partitioning: bool = True,
+    overlay_optical_q0: bool = False,
+    savepath: str | Path | None = "output/Model_vs_Experiment_multiq.pdf",
+) -> Path | None:
+    """
+    Multi-panel comparison of model ELF vs. q-resolved tabular data for
+    q in qvals (one panel per q). Each integer-q panel overlays its matching
+    ELFmodel_*_q#.dat file (q=0 -> q0.dat, q=1 -> q1.dat, etc.) labeled as
+    "Experimental data".
+    """
+    from matplotlib.gridspec import GridSpec
+    import pandas as pd
+
+    E = np.asarray(E if E is not None else np.linspace(1.0, 60.0, 20000), float)
+    qvals = np.asarray(qvals, float).ravel()
+    script_dir = Path(__file__).parent
+    ice_data_file = script_dir.parent / "tabular" / "ice data.xlsx"
+    sheet_name = "Hexagonal" if ice == "hexagonal" else "Amorphous"
+    df_exp = pd.read_excel(ice_data_file, sheet_name=sheet_name)
+    mask_e2 = df_exp["eV"].notna() & df_exp["e2"].notna()
+    mask_e1 = df_exp["eV.1"].notna() & df_exp["e1"].notna()
+    mask_elf = df_exp["eV.2"].notna() & df_exp["ELF"].notna()
+    exp_e2_E = df_exp.loc[mask_e2, "eV"].values
+    exp_e2 = df_exp.loc[mask_e2, "e2"].values
+    exp_e1_E = df_exp.loc[mask_e1, "eV.1"].values
+    exp_e1 = df_exp.loc[mask_e1, "e1"].values
+    exp_elf_E = df_exp.loc[mask_elf, "eV.2"].values
+    exp_elf = df_exp.loc[mask_elf, "ELF"].values
+
+    ncols = 2
+    nrows = int(np.ceil(qvals.size / ncols))
+    fig = plt.figure(figsize=(7 * ncols, 3.6 * nrows + 1.2))
+    gs = GridSpec(nrows + 1, ncols, height_ratios=[*([3.0] * nrows), 0.9], hspace=0.32, wspace=0.25)
+    fig.suptitle(f"{ice.capitalize()} ice", y=0.95)
+    legend_ax = fig.add_subplot(gs[-1, :])
+    legend_ax.axis("off")
+
+    # Preload tabular ELF by integer q for quick lookup
+    tabular_by_q: dict[int, np.ndarray] = {}
+    for q in qvals:
+        q_int = int(round(q))
+        if np.isclose(q, q_int):
+            tag = "amo" if ice == "amorphous" else ice
+            dat_path = script_dir.parent / "tabular" / f"ELFmodel_{tag}_ice_q{q_int}.dat"
+            if dat_path.exists():
+                try:
+                    dat = np.loadtxt(dat_path)
+                    if dat.ndim == 2 and dat.shape[1] >= 2:
+                        tabular_by_q[q_int] = dat
+                except OSError:
+                    pass
+
+    handles_all: list = []
+    labels_all: list = []
+    for i, q in enumerate(qvals):
+        r, c = divmod(i, ncols)
+        ax = fig.add_subplot(gs[r, c])
+
+        elf_model = elf_Eq(E, np.array([q], float), s, C, include_kshell=True, partitioned=use_partitioning)[0]
+        ln_model = ax.plot(E, elf_model, "k-", linewidth=2, label="Model: ELF", zorder=5)[0]
+
+        # Overlay tabulated ELF model data for this specific integer q (q0->q0.dat, etc.)
+        q_int = int(round(q))
+        if np.isclose(q, q_int) and q_int in tabular_by_q:
+            dat = tabular_by_q[q_int]
+            tab_handle = ax.plot(
+                dat[:, 0],
+                dat[:, 1],
+                "s-",
+                color="gray",
+                linewidth=1.4,
+                markersize=6,
+                markerfacecolor="gray",
+                markeredgecolor="gray",
+                markevery=50,  # show a diamond every 8th point (tune as needed)
+                label="Experimental data",
+                zorder=11,
+            )[0]
+        else:
+            tab_handle = None
+
+        opt_handle = None
+        if overlay_optical_q0 and np.isclose(q, 0.0) and exp_elf.size:
+            opt_handle = ax.plot(
+                exp_elf_E,
+                exp_elf,
+                color="red",
+                linestyle=":",
+                linewidth=1.8,
+                label="Optical data (q=0)",
+                zorder=12,
+            )[0]
+
+        ax.set_xlim(0, E[-1])
+        if r == nrows - 1:
+            ax.set_xlabel("Electron Energy (eV)")
+        else:
+            ax.set_xlabel("")
+        if c == 0:
+            ax.set_ylabel("ELF")
+        else:
+            ax.set_ylabel("")
+        ax.text(
+            0.98,
+            0.95,
+            rf"q = {q:.2f}",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+        )
+
+        handles_all.append(ln_model)
+        labels_all.append("Model")
+        if tab_handle is not None:
+            handles_all.append(tab_handle)
+            labels_all.append("Experimental data")
+        if opt_handle is not None:
+            handles_all.append(opt_handle)
+            labels_all.append("Optical data (q=0)")
+
+    for j in range(qvals.size, nrows * ncols):
+        r, c = divmod(j, ncols)
+        fig.add_subplot(gs[r, c]).set_visible(False)
+
+    unique = []
+    seen = set()
+    for h, lbl in zip(handles_all, labels_all):
+        if lbl not in seen:
+            unique.append((h, lbl))
+            seen.add(lbl)
+    handles_u, labels_u = zip(*unique)
+    legend_ax.legend(
+        handles_u,
+        labels_u,
+        loc="center",
+        ncol=3,
+        frameon=False,
+        columnspacing=1.5,
+        handlelength=2.5,
+        borderpad=1.5,
+        labelspacing=0.8,
+    )
+
+    fig.tight_layout()
+    out_path = Path(savepath) if savepath is not None else None
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, bbox_inches="tight")
+        print(f"[saved] {out_path}")
+    plt.show()
+    return out_path
+
 if __name__ == "__main__":
 
-    ice = "hexagonal"
-    # ice = "amorphous"
+    # ice = "hexagonal"
+    ice = "amorphous"
     s = epsilon_optical(ice)
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])
     c_vec = np.array([0.098, 0.075, 0.074, 0.765, 0.425])
     C = DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)  # RR2017 defaults for c_disp,d_disp,b1,b2
-    E = np.linspace(1.0, 90.0, 20000)
+    E = np.linspace(1.0, 200.0, 20000)
     qvals = np.array([0.0, 0.1, 0.3, 0.6, 0.9, 2.0])  # a0^{-1}
-    # Finite-q: ensure optical limit is recovered
-    check_q0_convergence(E, s, C)
+    use_partitioning = True
+    # Finite-q: ensure optical limit is recovered when partitioning is off
+    check_q0_convergence(E, s, C, partitioned=False)
+
+    # Model vs. experiment: optical data overlaid for q = 0, 1, 2, 3
+    qvals_compare = np.array([0.0, 1.0, 2.0, 3.0])
+    plot_model_vs_experiment_multiq(
+        E,
+        qvals_compare,
+        s,
+        C,
+        ice="amorphous",
+        use_partitioning=use_partitioning,
+        savepath=f"output/Model_vs_Experiment_multiq_amorphous.pdf",
+    )
+    exit()
 
     # Pick a q to show channel-resolved finite-q curves
-    q_sel = 0. # a0^{-1}
+    q_sel = 0.0  # a0^{-1}
     figA, axA = plt.subplots()
-    plot_Im_epsilon_channel_resolved_Eq(E, s, C, q=q_sel, legend=True, ax=axA)
+    plot_Im_epsilon_channel_resolved_Eq(E, s, C, q=q_sel, legend=True, ax=axA, partitioned=use_partitioning)
     axA.set_title(f"Channel-resolved Im($\\epsilon$) at q = {q_sel:.2f}; {ice} ice")
     plt.savefig(f"output/Channel_resolved_Im_finiteq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
     plt.show()
@@ -784,7 +1187,7 @@ if __name__ == "__main__":
 
     # Single-q ELF (with K-shell overlay)
     figD, axD = plt.subplots()
-    plot_ELF_channel_resolved_Eq(E, s, C, q=q_sel, include_kshell=True, legend=True, ax=axD)
+    plot_ELF_channel_resolved_Eq(E, s, C, q=q_sel, include_kshell=True, legend=True, ax=axD, partitioned=use_partitioning)
     axD.set_title(f"ELF at q = {q_sel:.2f} with O K-shell; {ice} ice")
     plt.savefig(f"output/ELF_singleq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
     plt.show()

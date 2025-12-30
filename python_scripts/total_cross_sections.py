@@ -411,14 +411,14 @@ def main():
 
     # Energy grid (eV)
     # NOTE: original snippet used logspace(1, 6, 20)
-    T_list = np.logspace(1, 6, 200)
+    T_list = np.logspace(1, 6, 20)
 
     sigma_list = []
     print("Computing double-integrated cross sections...")
     for T in tqdm(T_list):
         sigma = integrate_elf_double_integral(
             s, C, T,
-            NE=100, Nq=100,
+            NE=10, Nq=10,
             include_kshell=True
         )
         sigma_list.append(sigma)
