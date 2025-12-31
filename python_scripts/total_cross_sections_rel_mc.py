@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 
+import os, sys
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import emfietzoglou_model_finite_q as model
 
@@ -31,12 +37,11 @@ def beta2_rel(Tj):
 
 def Q_q(q_au):
     """
-    Q(q) in eV.
+    Q(q) in AU.
     """
     q_au = np.asarray(q_au, dtype=float)
     Q_Ha = np.sqrt((C_AU * q_au)**2 + (MC2_HA)**2) - MC2_HA
-    Q_eV = Q_Ha / EV_TO_HA
-    return Q_eV
+    return Q_Ha
 
 # ----------------------------------------------------------------------
 # Helper: q-bounds for scalar Ei, Tj (eV)
@@ -148,22 +153,22 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     else:
         vals = e2["ionizations"][idx][:, 0] / denom
 
-    # Q(q) in eV
-    QeV = Q_q(qvals)
-    QeV = np.where(QeV == 0.0, np.finfo(float).tiny, QeV)
+    # Q(q) in AU
+    Q_HA = Q_q(qvals)
+    Q_HA = np.where(Q_HA == 0.0, np.finfo(float).tiny, Q_HA)
 
     factor1 = (C_AU * qvals) / np.sqrt((C_AU * qvals)**2 + (MC2_HA**2))
-    factor2 = (1.0 + QeV / MC2_eV) / (1.0 + QeV / (2.0 * MC2_eV))
-    factor3 = 1 / QeV
+    factor2 = (1.0 + Q_HA / MC2_HA) / (1.0 + Q_HA / (2.0 * MC2_HA))
+    factor3 = 1 / Q_HA
     kernel = factor1 * factor2 * factor3
 
     integrand = vals * kernel
     accum = float(np.trapezoid(integrand, qvals))
 
-    b = beta2_rel(Tj)
-    b = max(b, np.finfo(float).tiny)
+    b2 = beta2_rel(Tj)
+    b2 = max(b2, np.finfo(float).tiny)
 
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * (b**2))
+    int_cons = 1.0 / (np.pi * a0 * N * MC2_HA * b2)
     return float(int_cons * accum)
 
 def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
@@ -195,7 +200,7 @@ def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
 
     elf0 = float(np.asarray(elf0).ravel()[0])
 
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * (b2**2))
+    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
     return float(int_cons * elf0 * bracket)
 
 # ----------------------------------------------------------------------
@@ -215,10 +220,10 @@ def _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=400, use_rel=False):
     """Mott–Coulomb exchange-style correction for *ionization* shells. """
     osc = s.ionizations[j]
     B = float(getattr(osc, "Bth"))
-    U = float(getattr(osc, "U", 0.0))
+    U = float(getattr(osc, "U"))
 
     Tprime = float(Tj + B + U)
-    E2 = float(Tj + 2.0*(B + U) - Ei)
+    E2 = float(Tj + 2.0*B + U - Ei)
 
     a = _dsigma_pwba_dE(Ei, Tprime, j, "ionization", s, C, Nq=Nq, use_rel=use_rel)
     b = _dsigma_pwba_dE(E2, Tprime, j, "ionization", s, C, Nq=Nq, use_rel=use_rel)
@@ -231,7 +236,7 @@ def _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=400, use_rel=False):
 
 def _sigma_pwba_excitation_shifted_T(s, C, Tshift, k, NE=400, Nq=400, use_rel=False):
     """σ_PWBA for excitation k, evaluated at shifted incident energy Tshift."""
-    Emin = float(s.excitations[k].E0)
+    Emin = float(s.excitations[k].Bth)
     Emax = float(Tshift)
     if Emin >= Emax:
         return 0.0
@@ -240,16 +245,18 @@ def _sigma_pwba_excitation_shifted_T(s, C, Tshift, k, NE=400, Nq=400, use_rel=Fa
     vals = np.empty_like(Egrid)
     for i, Ei in enumerate(Egrid):
         vals[i] = _dsigma_pwba_dE(Ei, Tshift, k, "excitation", s, C, Nq=Nq, use_rel=use_rel)
+
+    vals = np.where(vals < 0.0, 0.0, vals)
     return float(np.trapezoid(vals, Egrid))
 
 def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
     """σ_MC(T) for ionization shell j: integrate dσ_MC/dE over E."""
     osc = s.ionizations[j]
     B = float(getattr(osc, "Bth"))
-    U = float(getattr(osc, "U", 0.0))
+    U = float(getattr(osc, "U"))
 
     Emin = B
-    Emax = 0.5 * (Tj + 2.0*(B + U))
+    Emax = 0.5 * (Tj + 2.0*B + U)
     if Emin >= Emax:
         return 0.0
 
@@ -258,7 +265,6 @@ def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
     for i, Ei in enumerate(Egrid):
         vals[i] = _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=Nq, use_rel=use_rel)
 
-    # Enforce non-negativity in case of rounding producing tiny negative tails
     vals = np.where(vals < 0.0, 0.0, vals)
     return float(np.trapezoid(vals, Egrid))
 
@@ -309,25 +315,25 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     qvals = np.linspace(qlo, qhi, Nq)
 
     # Q(q) in eV
-    QeV = Q_q(qvals)
-    QeV = np.where(QeV == 0.0, np.finfo(float).tiny, QeV)
+    Q_HA = Q_q(qvals)
+    Q_HA = np.where(Q_HA == 0.0, np.finfo(float).tiny, Q_HA)
 
     factor1 = (C_AU * qvals) / np.sqrt((C_AU * qvals) ** 2 + (MC2_HA ** 2))
-    factor2 = (1.0 + QeV / MC2_eV) / (1.0 + QeV / (2.0 * MC2_eV))
-    factor3 = 1 / QeV
+    factor2 = (1.0 + Q_HA / MC2_HA) / (1.0 + Q_HA / (2.0 * MC2_HA))
+    factor3 = 1 / Q_HA
     kernel = factor1 * factor2 * factor3
 
     integrand = ks_val * kernel
     accum = float(np.trapezoid(integrand, qvals))
 
-    b = beta2_rel(Tj)
-    b = max(b, np.finfo(float).tiny)
+    b2 = beta2_rel(Tj)
+    b2 = max(b2, np.finfo(float).tiny)
 
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * (b ** 2))
+    int_cons = 1.0 / (np.pi * a0 * N * MC2_HA * b2)
     return float(int_cons * accum)
 
 # ----------------------------------------------------------------------
-# Main: q-integrated ELF per channel, on its own E-grid
+# Q-integrated ELF per channel, on its own E-grid
 # ----------------------------------------------------------------------
 def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell=True):
     """
@@ -337,7 +343,7 @@ def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell
     """
 
     # --- Channel energy windows ---
-    exc_Emin = np.array([osc.E0 for osc in s.excitations], float)
+    exc_Emin = np.array([osc.Bth for osc in s.excitations], float)
     exc_Emax = np.array([T for _ in s.excitations], float)
 
     ion_Emin = np.array([osc.Bth for osc in s.ionizations], float)
@@ -474,7 +480,6 @@ def integrate_elf_double_integral(s, C, T,
     use_mc_here = bool(use_mott_coulomb) and (float(T) <= float(mc_T_max_eV))
     use_rel_in_mc = bool(use_mc_here) and (float(T) >= float(REL_T_THRESHOLD_eV))
 
-
     # ------------- Excitations -------------
     for k in range(len(s.excitations)):
         E_k = integ["excitation_E"][k]
@@ -523,11 +528,11 @@ def integrate_elf_double_integral(s, C, T,
         # Excitations: σ_MC(T) = Σ_k σ_PWBA(T + 2*B_k)
         exc_sigma_mc = []
         for k in range(len(s.excitations)):
-            Bk = float(s.excitations[k].E0)
+            Bk = float(s.excitations[k].Bth)
             Tshift = float(T + 2.0 * Bk)
             exc_sigma_mc.append(_sigma_pwba_excitation_shifted_T(s, C, Tshift, k, NE=NE, Nq=Nq, use_rel=use_rel_in_mc))
 
-        # Ionizations: integrate the user-specified MC differential form
+        # Ionizations: integrate the specified MC differential form
         ion_sigma_mc = []
         for j in range(len(s.ionizations)):
             ion_sigma_mc.append(_sigma_mc_ionization(s, C, T, j, NE=NE, Nq=Nq, use_rel=use_rel_in_mc))
@@ -636,11 +641,8 @@ def integrate_elf_double_integral(s, C, T,
             total_sigma = valence_sigma
 
     # Optional convenience: combined
-    # >>> MOD >>> keep "plus rel" convenience relative to PWBA baseline to avoid double-counting after replacement
     total_sigma_plus_rel = total_sigma_pwba + total_sigma_rel  # Long Only (PWBA + long)
-    # <<< MOD <<<
     total_sigma_plus_rel_total = total_sigma_pwba + total_sigma_rel_total  # (PWBA + long + trans)
-
 
     return {
         # PWBA Baseline
@@ -871,13 +873,13 @@ def plot_relativistic_component_per_channel(
             Tm, y_long,
             color=ion_colors[j % len(ion_colors)],
             lw=linewidth, alpha=alpha,
-            label=f"Ion {j+1} L",
+            label=f"Ion {j+1} Long",
         )
         ax_ion.loglog(
             Tm, y_trans,
             color=ion_colors[j % len(ion_colors)],
             lw=linewidth, alpha=alpha, ls="--",
-            label=f"Ion {j+1} T",
+            label=f"Ion {j+1} Trans",
         )
 
     ax_ion.set_xlabel("Incident energy T (eV)")
@@ -900,13 +902,13 @@ def plot_relativistic_component_per_channel(
             Tm, y_long,
             color=exc_colors[k % len(exc_colors)],
             lw=linewidth, alpha=alpha,
-            label=f"Exc {k+1} L",
+            label=f"Exc {k+1} Long",
         )
         ax_exc.loglog(
             Tm, y_trans,
             color=exc_colors[k % len(exc_colors)],
             lw=linewidth, alpha=alpha, ls="--",
-            label=f"Exc {k+1} T",
+            label=f"Exc {k+1} Trans",
         )
 
     ax_exc.set_xlabel("Incident energy T (eV)")
@@ -964,6 +966,38 @@ def plot_total_cross_section(
     ax.legend(loc="best", fontsize=9)
     return ax
 
+# ----------------------------------------------------------------------
+# Workers for parallel computing
+# ----------------------------------------------------------------------
+# Globals set once per worker process
+_WORKER_S = None
+_WORKER_C = None
+_WORKER_KW = None
+
+def _init_worker(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb, mc_T_max_eV):
+    """
+    Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
+    """
+    global _WORKER_S, _WORKER_C, _WORKER_KW
+
+    import emfietzoglou_model_finite_q as model
+    _WORKER_S = model.epsilon_optical('amorphous')
+    _WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
+    _WORKER_KW = dict(
+        NE=NE,
+        Nq=Nq,
+        include_kshell=include_kshell,
+        use_mott_coulomb=use_mott_coulomb,
+        mc_T_max_eV=mc_T_max_eV,
+    )
+
+def _compute_for_T(T):
+    """
+    Compute sigma dict for one T.
+    Returns (T, sigma_dict)
+    """
+    sigma = integrate_elf_double_integral(_WORKER_S, _WORKER_C, float(T), **_WORKER_KW)
+    return float(T), sigma
 
 def main():
     # Optical model / dispersion coefficients
@@ -978,17 +1012,34 @@ def main():
     # Energy grid (eV)
     T_list = np.logspace(1, 6, 40)
 
-    sigma_list = []
-    print("Computing double-integrated cross sections...")
-    for T in tqdm(T_list):
-        sigma = integrate_elf_double_integral(
-            s, C, float(T),
-            NE=100, Nq=100,
-            include_kshell=True,
-            use_mott_coulomb=True,
-            mc_T_max_eV=1.0e5
-        )
-        sigma_list.append(sigma)
+    print("Computing double-integrated cross sections (parallel over T)...")
+
+    # Computing Choices
+    NE = 100
+    Nq = 100
+    include_kshell = True
+    use_mott_coulomb = True
+    mc_T_max_eV = 1.0e5
+
+    # Use ~ (CPU cores) workers;
+    max_workers = max(1, (os.cpu_count() or 4) - 1)
+    print("Using %i workers" %(max_workers))
+
+    results_by_T = {}
+
+    with ProcessPoolExecutor(
+            max_workers=max_workers,
+            initializer=_init_worker,
+            initargs=(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb, mc_T_max_eV),
+    ) as ex:
+        futures = [ex.submit(_compute_for_T, T) for T in T_list]
+
+        for fut in tqdm(as_completed(futures), total=len(futures)):
+            T_val, sigma = fut.result()
+            results_by_T[T_val] = sigma
+
+    # Restore original T order
+    sigma_list = [results_by_T[float(T)] for T in T_list]
 
     # ----------------- Plot 1: comparison per channel (PWBA vs selected corrections) -----------------
     fig_ion, ax_ion = plt.subplots(figsize=(14, 9))

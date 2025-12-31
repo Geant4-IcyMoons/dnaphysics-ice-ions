@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-font = 'Courier'
+font = 'DejaVu Sans'
 hfont = {'fontname': font}
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
@@ -293,11 +293,11 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
         Ep = 20.82
         Bmin = 7.0
         excit = [
-            Osc(8.65,  1.6, 0.0090, "excitation"),
-            Osc(10.50, 2.5, 0.0096, "excitation"),
-            Osc(12.60, 3.5, 0.0210, "excitation"),
-            Osc(14.10, 3.0, 0.0040, "excitation"),
-            Osc(14.50, 2.5, 0.0030, "excitation"),
+            Osc(8.65,  1.6, 0.0090, "excitation", Bth=8.22),
+            Osc(10.50, 2.5, 0.0096, "excitation", Bth=10.00),
+            Osc(12.60, 3.5, 0.0210, "excitation", Bth=11.24),
+            Osc(14.10, 3.0, 0.0040, "excitation", Bth=12.61),
+            Osc(14.50, 2.5, 0.0030, "excitation", Bth=13.77),
         ]
         ioniz = [
             Osc(15.40, 5.7, 0.1250, "ionization", Bth=10.0, U=61.91),
@@ -305,24 +305,24 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
             Osc(24.50, 15.0, 0.1100, "ionization", Bth=17.0, U=48.36),
             Osc(38.00, 30.0, 0.4110, "ionization", Bth=32.0, U=70.71),
         ]
-        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0)
+        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0, U=794.75)
     elif material == "hexagonal":
         Ep = 20.59
         Bmin = 7.0
         excit = [
-            Osc(8.65,  1.6, 0.0168, "excitation"),
-            Osc(10.50, 1.5, 0.0065, "excitation"),
-            Osc(12.60, 3.0, 0.0190, "excitation"),
-            Osc(14.10, 2.7, 0.0110, "excitation"),
-            Osc(14.50, 1.5, 0.0044, "excitation"),
+            Osc(8.65,  1.6, 0.0168, "excitation", Bth=8.22),
+            Osc(10.50, 1.5, 0.0065, "excitation", Bth=10.00),
+            Osc(12.60, 3.0, 0.0190, "excitation", Bth=11.24),
+            Osc(14.10, 2.7, 0.0110, "excitation", Bth=12.61),
+            Osc(14.50, 1.5, 0.0044, "excitation", Bth=13.77),
         ]
         ioniz = [
             Osc(15.80, 4.6, 0.1000, "ionization", Bth=10.0, U=61.91),
             Osc(18.00, 7.5, 0.2000, "ionization", Bth=13.0, U=59.52),
             Osc(24.50, 14.0, 0.1100, "ionization", Bth=17.0, U=48.36),
-            Osc(35.00, 30.0, 0.3580, "ionization", Bth=32.0, U=70.71),
+            Osc(35.00, 30.0, 0.3580, "ionization", Bth=32.2, U=70.71),
         ]
-        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=532.0, U=794.75)
+        kshell = Osc(450.0, 360.0, 0.3143, "k_shell", Bth=539.7, U=794.75)
     else:
         raise ValueError("material must be 'amorphous' or 'hexagonal'")
 
