@@ -12,21 +12,24 @@ from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from constants import (
+    C_AU,
+    EH,
+    EV_TO_HA,
+    MC2_HA,
+    MC2_eV,
+    MC_T_THRESHOLD_eV,
+    N,
+    REL_T_THRESHOLD_eV,
+    TRANS_T_THRESHOLD_eV,
+    a0,
+    mass,
+)
 import emfietzoglou_model_finite_q as model
 
 # ----------------------------------------------------------------------
-# Constants for integration
+# Constants for integration (from constants.py)
 # ----------------------------------------------------------------------
-a0 = 5.291e-11
-N = 3.06e28
-mass = 1.0
-EV_TO_HA = 1.0 / 27.211386245988
-C_AU = 137.035999084          # Speed of light in atomic units
-MC2_eV = 510998.95            # Electron rest energy (eV)
-MC2_HA = MC2_eV * EV_TO_HA
-MC_T_THRESHOLD_eV = 1.0e5     # Mott–Coulomb Corrections Threshold <= 100 keV
-REL_T_THRESHOLD_eV = 1.0e3    # Relativistic Corrections Threshold >= 1 keV
-TRANS_T_THRESHOLD_eV = 1.0e5  # Transverse term threshold >= 100 keV
 
 # ----------------------------------------------------------------------
 # Helpers: Relativistic corrections
@@ -37,11 +40,11 @@ def beta2_rel(Tj):
 
 def Q_q(q_au):
     """
-    Q(q) in AU.
+    Q(q) in eV.
     """
     q_au = np.asarray(q_au, dtype=float)
     Q_Ha = np.sqrt((C_AU * q_au)**2 + (MC2_HA)**2) - MC2_HA
-    return Q_Ha
+    return Q_Ha * EH
 
 # ----------------------------------------------------------------------
 # Helper: q-bounds for scalar Ei, Tj (eV)
@@ -95,7 +98,7 @@ def _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=400):
 
     for one excitation or ionization channel, at fixed Ei, Tj.
     """
-    qlo, qhi = _q_bounds_scalar(Ei, Tj, mass)
+    qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
     if qhi <= qlo:
         return 0.0
 
@@ -153,13 +156,14 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     else:
         vals = e2["ionizations"][idx][:, 0] / denom
 
-    # Q(q) in AU
-    Q_HA = Q_q(qvals)
-    Q_HA = np.where(Q_HA == 0.0, np.finfo(float).tiny, Q_HA)
+    # Q(q) in eV
+    Q_eV = Q_q(qvals)
+    Q_eV = np.where(Q_eV == 0.0, np.finfo(float).tiny, Q_eV)
 
-    factor1 = (C_AU * qvals) / np.sqrt((C_AU * qvals)**2 + (MC2_HA**2))
-    factor2 = (1.0 + Q_HA / MC2_HA) / (1.0 + Q_HA / (2.0 * MC2_HA))
-    factor3 = 1 / Q_HA
+    factor1 = (C_AU**2 * qvals) / np.sqrt((C_AU * qvals)**2 + (MC2_HA**2))
+    factor1 *= EH  # dQ/dq in eV per a0^-1
+    factor2 = (1.0 + Q_eV / MC2_eV) / (1.0 + Q_eV / (2.0 * MC2_eV))
+    factor3 = 1 / Q_eV
     kernel = factor1 * factor2 * factor3
 
     integrand = vals * kernel
@@ -168,7 +172,7 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
 
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_HA * b2)
+    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
     return float(int_cons * accum)
 
 def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
@@ -176,12 +180,12 @@ def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
     if Tj < TRANS_T_THRESHOLD_eV:
         return 0.0
 
-    # β^2 and transverse bracket
+    # beta^2 and transverse bracket
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
     bracket = np.log(1.0 / max(1.0 - b2, np.finfo(float).tiny)) - b2
 
-    # Optical (q=0) channel-resolved ELF via ε2_channel / (ε1_total^2 + ε2_total^2)
+    # Optical (q=0) channel-resolved ELF via epsilon2_channel / (epsilon1_total^2 + epsilon2_total^2)
     E_arr = np.array([Ei], float)
     e1 = model.epsilon1_valence_E0(E_arr, s)
     e2 = model.epsilon2_valence_E0(E_arr, s)
@@ -208,7 +212,7 @@ def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
 # ----------------------------------------------------------------------
 def _dsigma_pwba_dE(Ei, Tj, idx, channel_type, s, C, Nq=400, use_rel=False):
     """
-    Return the differential cross section dσ/dE at (Ei,Tj) for one channel.
+    Return the differential cross section d sigma/dE at (Ei,Tj) for one channel.
     If use_rel=True (and Tj >= REL_T_THRESHOLD_eV), this uses the longitudinal relativistic
     kernel; otherwise it uses the nonrelativistic PWBA kernel.
     """
@@ -234,10 +238,10 @@ def _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=400, use_rel=False):
 
     return float(a + b - np.sqrt(a*b))
 
-def _sigma_pwba_excitation_shifted_T(s, C, Tshift, k, NE=400, Nq=400, use_rel=False):
-    """σ_PWBA for excitation k, evaluated at shifted incident energy Tshift."""
+def _sigma_pwba_excitation_shifted_T(s, C, Tshift, Tj, k, NE=400, Nq=400, use_rel=False):
+    """sigma_PWBA for excitation k, with shifted kernel but kinematic E-window from Tj."""
     Emin = float(s.excitations[k].Bth)
-    Emax = float(Tshift)
+    Emax = float(Tj)
     if Emin >= Emax:
         return 0.0
 
@@ -250,13 +254,13 @@ def _sigma_pwba_excitation_shifted_T(s, C, Tshift, k, NE=400, Nq=400, use_rel=Fa
     return float(np.trapezoid(vals, Egrid))
 
 def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
-    """σ_MC(T) for ionization shell j: integrate dσ_MC/dE over E."""
+    """sigma_MC(T) for ionization shell j: integrate d sigma_MC/dE over E."""
     osc = s.ionizations[j]
     B = float(getattr(osc, "Bth"))
     U = float(getattr(osc, "U"))
 
     Emin = B
-    Emax = 0.5 * (Tj + 2.0*B + U)
+    Emax = 0.5 * (Tj + B)
     if Emin >= Emax:
         return 0.0
 
@@ -302,7 +306,7 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     if not include_kshell or (s.kshell is None):
         return 0.0
 
-    qlo, qhi = _q_bounds_scalar(Ei, Tj, mass)
+    qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
     if qhi <= qlo:
         return 0.0
 
@@ -315,12 +319,13 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     qvals = np.linspace(qlo, qhi, Nq)
 
     # Q(q) in eV
-    Q_HA = Q_q(qvals)
-    Q_HA = np.where(Q_HA == 0.0, np.finfo(float).tiny, Q_HA)
+    Q_eV = Q_q(qvals)
+    Q_eV = np.where(Q_eV == 0.0, np.finfo(float).tiny, Q_eV)
 
-    factor1 = (C_AU * qvals) / np.sqrt((C_AU * qvals) ** 2 + (MC2_HA ** 2))
-    factor2 = (1.0 + Q_HA / MC2_HA) / (1.0 + Q_HA / (2.0 * MC2_HA))
-    factor3 = 1 / Q_HA
+    factor1 = (C_AU**2 * qvals) / np.sqrt((C_AU * qvals) ** 2 + (MC2_HA ** 2))
+    factor1 *= EH  # dQ/dq in eV per a0^-1
+    factor2 = (1.0 + Q_eV / MC2_eV) / (1.0 + Q_eV / (2.0 * MC2_eV))
+    factor3 = 1 / Q_eV
     kernel = factor1 * factor2 * factor3
 
     integrand = ks_val * kernel
@@ -329,7 +334,7 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
 
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_HA * b2)
+    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
     return float(int_cons * accum)
 
 # ----------------------------------------------------------------------
@@ -454,15 +459,15 @@ def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell
     return results
 
 # ----------------------------------------------------------------------
-# Full double integral over E and q: σ(T) per channel and totals
+# Full double integral over E and q: sigma(T) per channel and totals
 # ----------------------------------------------------------------------
 def integrate_elf_double_integral(s, C, T,
-                                  NE=400, Nq=400,
+                                  NE=1000, Nq=1000,
                                   include_kshell=True,
                                   use_mott_coulomb=False,
                                   mc_T_max_eV=MC_T_THRESHOLD_eV):
     """
-    Compute full double integral σ(T) per channel and totals.
+    Compute full double integral sigma(T) per channel and totals.
     """
 
     # 1) Inner q-integrals as functions of E
@@ -525,12 +530,12 @@ def integrate_elf_double_integral(s, C, T,
     total_sigma_mc = None
 
     if use_mc_here:
-        # Excitations: σ_MC(T) = Σ_k σ_PWBA(T + 2*B_k)
+        # Excitations: sigma_MC(T) = sum_k sigma_PWBA(T + 2*B_k)
         exc_sigma_mc = []
         for k in range(len(s.excitations)):
             Bk = float(s.excitations[k].Bth)
             Tshift = float(T + 2.0 * Bk)
-            exc_sigma_mc.append(_sigma_pwba_excitation_shifted_T(s, C, Tshift, k, NE=NE, Nq=Nq, use_rel=use_rel_in_mc))
+            exc_sigma_mc.append(_sigma_pwba_excitation_shifted_T(s, C, Tshift, T, k, NE=NE, Nq=Nq, use_rel=use_rel_in_mc))
 
         # Ionizations: integrate the specified MC differential form
         ion_sigma_mc = []
@@ -762,7 +767,7 @@ def plot_full_cross_sections_per_channel(
         )
 
     ax_ion.set_xlabel("Incident energy T (eV)")
-    ax_ion.set_ylabel("Cross section σ(T)")
+    ax_ion.set_ylabel("Cross section sigma(T)")
     ax_ion.set_title("Ionizations: PWBA baseline vs Default model")
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
     ax_ion.legend(loc="best", fontsize=8)
@@ -810,7 +815,7 @@ def plot_full_cross_sections_per_channel(
         )
 
     ax_exc.set_xlabel("Incident energy T (eV)")
-    ax_exc.set_ylabel("Cross section σ(T)")
+    ax_exc.set_ylabel("Cross section sigma(T)")
     ax_exc.set_title("Excitations: PWBA baseline vs Default model")
     ax_exc.grid(True, which="both", ls="--", alpha=0.3)
     ax_exc.legend(loc="best", fontsize=8)
@@ -883,7 +888,7 @@ def plot_relativistic_component_per_channel(
         )
 
     ax_ion.set_xlabel("Incident energy T (eV)")
-    ax_ion.set_ylabel("Relativistic component σ_rel(T)")
+    ax_ion.set_ylabel("Relativistic component sigma_rel(T)")
     ax_ion.legend(loc="best", fontsize=8)
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
 
@@ -912,7 +917,7 @@ def plot_relativistic_component_per_channel(
         )
 
     ax_exc.set_xlabel("Incident energy T (eV)")
-    ax_exc.set_ylabel("Relativistic component σ_rel(T)")
+    ax_exc.set_ylabel("Relativistic component sigma_rel(T)")
     ax_exc.legend(loc="best", fontsize=8)
     ax_exc.grid(True, which="both", ls="--", alpha=0.3)
 
@@ -960,7 +965,7 @@ def plot_total_cross_section(
     ax.loglog(T_arr, y_corr, lw=linewidth+1, alpha=alpha, ls="-", label="Total (all corrections)")
 
     ax.set_xlabel("Incident energy T (eV)")
-    ax.set_ylabel("Total cross section σ(T)")
+    ax.set_ylabel("Total cross section sigma(T)")
     ax.set_title("Total cross section: PWBA vs all corrections")
     ax.grid(True, which="both", ls="--", alpha=0.3)
     ax.legend(loc="best", fontsize=9)

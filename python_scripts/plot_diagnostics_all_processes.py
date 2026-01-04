@@ -41,56 +41,41 @@ import numpy as np
 import matplotlib.pyplot as plt
 import uproot
 
-font = 'Courier'
-hfont = {'fontname': font}
+from constants import (
+    CROSS_SECTIONS_DIR,
+    CUSTOM_DATA_ROOT_GEANT4,
+    EMFIETZOGLOU_SCALE_1E16,
+    EMFI_EXCITATION_EEV,
+    EMFI_EXCITATION_TOL_EEV,
+    EMFI_ION_BINDING_EEV,
+    FONT_COURIER,
+    FONTSIZE_16,
+    GEANT4_PROJECTS_ROOT,
+    HFONT_COURIER,
+    MICHAUD_TABLE2_PATH,
+    MICHAUD_TABLE3_PATH,
+    OUTPUT_DIR,
+    PROJECT_ROOT,
+    RC_BASE_STANDARD,
+    rcparams_with_fontsize,
+)
+
+font = FONT_COURIER
+hfont = HFONT_COURIER
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
-FONTSIZE = 16
-
-plt.rcParams.update({
-    'axes.linewidth': 1.5,
-    'lines.linewidth': 1.5,
-    'lines.markersize': 6,
-    'lines.markerfacecolor': 'white',
-    'lines.markeredgecolor': 'k',
-    'xtick.major.size': 0,
-    'xtick.major.width': 1.5,
-    'xtick.minor.size': 0,
-    'xtick.minor.width': 1.5,
-    'xtick.direction': 'in',
-    'xtick.major.pad': 5,
-    'ytick.major.size': 0,
-    'ytick.major.width': 1.5,
-    'ytick.minor.size': 0,
-    'ytick.minor.width': 1.5,
-    'ytick.direction': 'in',
-    'axes.titleweight': 'normal',
-    'axes.titlepad': 20,
-    'font.size': FONTSIZE,
-    'axes.titlesize': FONTSIZE,
-    'axes.labelsize': FONTSIZE,
-    'xtick.labelsize': FONTSIZE,
-    'ytick.labelsize': FONTSIZE,
-    'legend.fontsize': FONTSIZE,
-})
+FONTSIZE = FONTSIZE_16
+plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
 
 # -------- Paths and data locations --------
 # This script lives under dnaphysics-ice/python_scripts
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Roots for locating data
-GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent  # .../geant4_projects
-CUSTOM_DATA_ROOT = GEANT4_PROJECTS_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
-TABULAR_DIR = PROJECT_ROOT / "tabular"
-CROSS_SECTIONS_DIR = PROJECT_ROOT / "cross_sections"
+CUSTOM_DATA_ROOT = CUSTOM_DATA_ROOT_GEANT4
 
-MICHAUD_TABLE2 = str(TABULAR_DIR / "michaud_table2.csv")
-MICHAUD_TABLE3 = str(TABULAR_DIR / "michaud_table3.csv")
-
-# Emfietzoglou tables use G4DNA scale: (1e-22/3.343) * m^2; convert to 1e-16 cm^2
-EMFIETZOGLOU_SCALE_1E16 = (1e-22 / 3.343) * 1e4 / 1e-16
+MICHAUD_TABLE2 = str(MICHAUD_TABLE2_PATH)
+MICHAUD_TABLE3 = str(MICHAUD_TABLE3_PATH)
 
 # -------- Small helpers --------
 def _resolve_path(p: str) -> str:
@@ -330,9 +315,6 @@ def load_reference_from_path(fpath: str):
     return E_arr, ref_by_ch
 
 # -------- Physics helpers --------
-EMFI_EXCITATION_EEV = np.array([8.22, 10.00, 11.24, 12.61, 13.77], dtype=float)
-EMFI_ION_BINDING_EEV = np.array([10.0, 13.0, 17.0, 32.2, 539.7], dtype=float)
-EMFI_EXCITATION_TOL_EEV = 2.0
 
 def _to_micro_cm2(xs_macro_mm_inv_subset: np.ndarray, nH2O_cm3: float) -> np.ndarray:
     """Convert macroscopic mm^-1 to microscopic cm^2 using number density."""

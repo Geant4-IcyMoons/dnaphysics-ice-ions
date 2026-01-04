@@ -10,64 +10,59 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from pathlib import Path
 
-font = 'Courier'
-hfont = {'fontname': font}
+from constants import (
+    BLEND_E_MAX,
+    BLEND_E_MIN_LOW as E_MIN_LOW,
+    BLEND_E_SPLIT as E_SPLIT,
+    CROSS_SECTIONS_DIR,
+    ELASTIC_BLEND_E0,
+    ELASTIC_BLEND_T,
+    ELSEPA_MUFFIN_CDF,
+    ELSEPA_MUFFIN_TOTAL,
+    EV_TO_MEV,
+    FM2_TO_CM2,
+    FONT_COURIER,
+    FONTSIZE_16,
+    HFONT_COURIER,
+    MICHAUD_SIGMA_SCALE_CM2,
+    MICHAUD_TABLE2_PATH,
+    OUTPUT_DIR,
+    PROJECT_ROOT,
+    RC_BASE_STANDARD,
+    SR_ALPHA_1,
+    SR_BETA_1,
+    SR_CONST_K,
+    SR_E_SQUARED_MEV_FM,
+    SR_ELECTRON_MASS_MEV,
+    SR_Z_WATER,
+    rcparams_with_fontsize,
+)
+
+font = FONT_COURIER
+hfont = HFONT_COURIER
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
 
-FONTSIZE = 16
-plt.rcParams.update({
-    'axes.linewidth': 1.5,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'lines.linewidth': 1.5,
-    'lines.markersize': 6,
-    'lines.markerfacecolor': 'white',
-    'lines.markeredgecolor': 'k',
-    'xtick.major.size': 0,
-    'xtick.major.width': 1.5,
-    'xtick.minor.size': 0,
-    'xtick.minor.width': 1.5,
-    'xtick.direction': 'in',
-    'xtick.major.pad': 5,
-    'ytick.major.size': 0,
-    'ytick.major.width': 1.5,
-    'ytick.minor.size': 0,
-    'ytick.minor.width': 1.5,
-    'ytick.direction': 'in',
-    'axes.titleweight': 'normal',
-    'axes.titlepad': 20,
-    'font.size': FONTSIZE,
-    'axes.titlesize': FONTSIZE,
-    'axes.labelsize': FONTSIZE,
-    'xtick.labelsize': FONTSIZE,
-    'ytick.labelsize': FONTSIZE,
-    'legend.fontsize': FONTSIZE,
-})
+FONTSIZE = FONTSIZE_16
+plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
 
-ROOT = Path(__file__).resolve().parent.parent
-OUTDIR = Path(__file__).resolve().parent / "output"  # diagnostics
+ROOT = PROJECT_ROOT
+OUTDIR = OUTPUT_DIR  # diagnostics
 OUTDIR.mkdir(parents=True, exist_ok=True)
 # Save final .dat files in the shared cross_sections folder at project root
-DATADIR = ROOT / "cross_sections"
+DATADIR = CROSS_SECTIONS_DIR
 DATADIR.mkdir(parents=True, exist_ok=True)
-ELSEPA_MUFFIN_TOTAL = DATADIR / "sigma_elastic_e_elsepa_muffin.dat"
-ELSEPA_MUFFIN_CDF = DATADIR / "sigmadiff_cumulated_elastic_e_elsepa_muffin.dat"
-E_MIN_LOW = 1.7
-E_SPLIT = 200.0
-E_MAX = 1.0e7 + 1.0  # extend a hair above 10 MeV
+E_MAX = BLEND_E_MAX  # extend a hair above 10 MeV
 
 
 def load_michaud():
-    csv_path = ROOT / "tabular" / "michaud_table2.csv"
-    df = pd.read_csv(csv_path, skiprows=3, header=None)
+    df = pd.read_csv(MICHAUD_TABLE2_PATH, skiprows=3, header=None)
     e = pd.to_numeric(df[0], errors="coerce").to_numpy()
     sigma_raw = pd.to_numeric(df[1], errors="coerce").to_numpy()
     mask = np.isfinite(e) & np.isfinite(sigma_raw)
-    return e[mask], sigma_raw[mask] * 1e-16  # cm^2
+    return e[mask], sigma_raw[mask] * MICHAUD_SIGMA_SCALE_CM2  # cm^2
 
 
 def load_elsepa_muffin_total():
@@ -85,28 +80,28 @@ def _sr_sigma_and_n(energy_eV: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         sigma_cm2 : total cross section [cm^2]
         n         : screening parameter used in angular distribution
     """
-    e_squared = 1.4399764  # MeV * fm
-    electron_mass_c2 = 0.510998928  # MeV
-    z = 10.0
-    k_MeV = np.asarray(energy_eV, float) * 1e-6
+    e_squared = SR_E_SQUARED_MEV_FM
+    electron_mass_c2 = SR_ELECTRON_MASS_MEV
+    z = SR_Z_WATER
+    k_MeV = np.asarray(energy_eV, float) * EV_TO_MEV
     length_fm = (e_squared * (k_MeV + electron_mass_c2)) / (k_MeV * (k_MeV + 2 * electron_mass_c2))
     sigma_ruth_fm2 = z * (z + 1) * length_fm**2
-    alpha_1 = 1.64
-    beta_1 = -0.0825
-    constK = 1.7e-5
+    alpha_1 = SR_ALPHA_1
+    beta_1 = SR_BETA_1
+    constK = SR_CONST_K
     numerator = (alpha_1 + beta_1 * np.log(energy_eV)) * constK * (z ** (2.0 / 3.0))
     k_ratio = k_MeV / electron_mass_c2
     denominator = k_ratio * (2 + k_ratio)
     n = np.where(denominator > 0, numerator / denominator, 0)
     sigma_fm2 = np.pi * sigma_ruth_fm2 / (n * (n + 1.0))
-    return sigma_fm2 * 1e-26, n  # fm^2 -> cm^2
+    return sigma_fm2 * FM2_TO_CM2, n  # fm^2 -> cm^2
 
 
 def screened_rutherford_cross_section(energy_eV: np.ndarray) -> np.ndarray:
     sigma, _ = _sr_sigma_and_n(energy_eV)
     return sigma
 
-def blend_sigma(E_grid, E_mich, s_mich, E_elsepa, s_elsepa, E0=100.0, t=494.0):
+def blend_sigma(E_grid, E_mich, s_mich, E_elsepa, s_elsepa, E0=ELASTIC_BLEND_E0, t=ELASTIC_BLEND_T):
     s_bl = np.zeros_like(E_grid)
     target_100 = s_mich[-1]
     for i, E in enumerate(E_grid):

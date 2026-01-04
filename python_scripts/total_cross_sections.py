@@ -5,14 +5,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 import emfietzoglou_model_finite_q as model
-
-# ----------------------------------------------------------------------
-# Constants for integration
-# ----------------------------------------------------------------------
-a0 = 5.291e-11
-N = 3.06e28
-mass = 1.0
-EV_TO_HA = 1.0 / 27.211386245988
+from constants import EV_TO_HA, N, a0, mass
 
 
 # ----------------------------------------------------------------------

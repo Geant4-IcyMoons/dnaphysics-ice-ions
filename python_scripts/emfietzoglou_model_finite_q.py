@@ -18,45 +18,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-font = 'DejaVu Sans'
-hfont = {'fontname': font}
+from constants import (
+    EH,
+    FONT_COURIER,
+    FONTSIZE_16,
+    HFONT_COURIER,
+    ICE_DATA_XLSX_PATH,
+    PROJECT_ROOT,
+    RC_BASE_STANDARD,
+    RY,
+    rcparams_with_fontsize,
+)
+
+font = FONT_COURIER
+hfont = HFONT_COURIER
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
 
-FONTSIZE = 16
-plt.rcParams.update({
-    'axes.linewidth': 1.5,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'lines.linewidth': 1.5,
-    'lines.markersize': 6,
-    'lines.markerfacecolor': 'white',
-    'lines.markeredgecolor': 'k',
-    'xtick.major.size': 0,
-    'xtick.major.width': 1.5,
-    'xtick.minor.size': 0,
-    'xtick.minor.width': 1.5,
-    'xtick.direction': 'in',
-    'xtick.major.pad': 5,
-    'ytick.major.size': 0,
-    'ytick.major.width': 1.5,
-    'ytick.minor.size': 0,
-    'ytick.minor.width': 1.5,
-    'ytick.direction': 'in',
-    'axes.titleweight': 'normal',
-    'axes.titlepad': 20,
-    'font.size': FONTSIZE,
-    'axes.titlesize': FONTSIZE,
-    'axes.labelsize': FONTSIZE,
-    'xtick.labelsize': FONTSIZE,
-    'ytick.labelsize': FONTSIZE,
-    'legend.fontsize': FONTSIZE,
-})
-
-# ---- constants ----
-EH = 27.211386245988  # eV, Hartree
-RY = 13.605693009     # eV, Rydberg
+FONTSIZE = FONTSIZE_16
+plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
 
 Material = Literal["amorphous", "hexagonal"]
 ArrayLike = Union[float, np.ndarray]
@@ -988,8 +969,7 @@ def plot_model_vs_experiment_multiq(
 
     E = np.asarray(E if E is not None else np.linspace(1.0, 60.0, 20000), float)
     qvals = np.asarray(qvals, float).ravel()
-    script_dir = Path(__file__).parent
-    ice_data_file = script_dir.parent / "tabular" / "ice data.xlsx"
+    ice_data_file = ICE_DATA_XLSX_PATH
     sheet_name = "Hexagonal" if ice == "hexagonal" else "Amorphous"
     df_exp = pd.read_excel(ice_data_file, sheet_name=sheet_name)
     mask_e2 = df_exp["eV"].notna() & df_exp["e2"].notna()
@@ -1016,7 +996,7 @@ def plot_model_vs_experiment_multiq(
         q_int = int(round(q))
         if np.isclose(q, q_int):
             tag = "amo" if ice == "amorphous" else ice
-            dat_path = script_dir.parent / "tabular" / f"ELFmodel_{tag}_ice_q{q_int}.dat"
+            dat_path = PROJECT_ROOT / "tabular" / f"ELFmodel_{tag}_ice_q{q_int}.dat"
             if dat_path.exists():
                 try:
                     dat = np.loadtxt(dat_path)

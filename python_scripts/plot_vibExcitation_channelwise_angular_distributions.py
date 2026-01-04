@@ -29,47 +29,37 @@ import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import os
 import pathlib
-from pathlib import Path
+
+from constants import (
+    CUSTOM_DATA_ROOT_PROJECT,
+    FONTSIZE_12,
+    MICHAUD_TABLE2_PATH,
+    MICHAUD_TABLE3_PATH,
+    OUTPUT_DIR,
+    PROJECT_ROOT,
+    RC_BASE_MINIMAL,
+    VIB_CHANNEL_MAPPING,
+    VIB_TARGET_NAMES,
+    rcparams_with_fontsize,
+)
 
 # Absolute paths used elsewhere in this repo
 # Resolve paths relative to project root (dnaphysics-ice)
 # This script will live under dnaphysics-ice/python_scripts
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = SCRIPT_DIR / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-TOP_ROOT = PROJECT_ROOT.parent.parent  # .../geant4_projects
-GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent  # .../geant4_projects
-CUSTOM_DATA_ROOT = PROJECT_ROOT / "g4_custom_ice" / "install" / "share" / "Geant4" / "data"
-TABULAR_DIR = PROJECT_ROOT / "tabular"
+CUSTOM_DATA_ROOT = CUSTOM_DATA_ROOT_PROJECT
 
-TABLE2_PATH = str(TABULAR_DIR / "michaud_table2.csv")
-TABLE3_PATH = str(TABULAR_DIR / "michaud_table3.csv")
+TABLE2_PATH = str(MICHAUD_TABLE2_PATH)
+TABLE3_PATH = str(MICHAUD_TABLE3_PATH)
 
 # Unified font size for all plots
-fontsize = 12
-plt.rcParams.update({
-    'font.size': fontsize,
-    'axes.titlesize': fontsize,
-    'axes.labelsize': fontsize,
-    'xtick.labelsize': fontsize,
-    'ytick.labelsize': fontsize,
-    'legend.fontsize': fontsize,
-})
+fontsize = FONTSIZE_12
+plt.rcParams.update(rcparams_with_fontsize(RC_BASE_MINIMAL, fontsize))
 
 # Mapping from channel index to (which table, sigma_col, gamma_col)
-CHANNEL_MAPPING = [
-    ("table2", 5, 6),   # 0: vT2 = v''(T)
-    ("table2", 7, 8),   # 1: vL1 = v'(L)
-    ("table2", 9, 10),  # 2: vL2 = v''(L)
-    ("table3", 1, 2),   # 3: v2
-    ("table3", 3, 4),   # 4: v1,3
-    ("table3", 5, 6),   # 5: v3
-    ("table3", 7, 8),   # 6: v1,3+vL
-    ("table3", 9, 10),  # 7: 2(v1,3)
-]
+CHANNEL_MAPPING = VIB_CHANNEL_MAPPING
 
-TARGET_NAMES = ["vT2", "vL1", "vL2", "v2", "v1,3", "v3", "v1,3+vL", "2(v1,3)"]
+TARGET_NAMES = VIB_TARGET_NAMES
 
 # Consistent typography across plots is set above
 

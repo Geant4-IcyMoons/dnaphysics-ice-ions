@@ -25,69 +25,52 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Dict, Tuple
 
-font = 'Courier'
-hfont = {'fontname': font}
+from constants import (
+    BACKUP_MICHAUD_TABLE2_PATH,
+    BACKUP_MICHAUD_TABLE3_PATH,
+    FMT_C,
+    FMT_E,
+    FMT_T,
+    FMT_XS,
+    FONT_COURIER,
+    FONTSIZE_12,
+    HFONT_COURIER,
+    OUTPUT_DIR as OUTPUT_DIR_PATH,
+    RC_BASE_STANDARD,
+    VIB_E_MAX,
+    VIB_E_MIN,
+    VIB_N_E,
+    VIB_N_TH,
+    VIB_TARGETS,
+    VIB_THETA_MAX,
+    VIB_THETA_MIN,
+    rcparams_with_fontsize,
+)
+
+font = FONT_COURIER
+hfont = HFONT_COURIER
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
 
-plt.rcParams.update({
-    'axes.linewidth': 1.5,
-    'lines.linewidth': 1.5,
-    'lines.markersize': 6,
-    'lines.markerfacecolor': 'white',
-    'lines.markeredgecolor': 'k',
-    'xtick.major.size': 0,
-    'xtick.major.width': 1.5,
-    'xtick.minor.size': 0,
-    'xtick.minor.width': 1.5,
-    'xtick.direction': 'in',
-    'xtick.major.pad': 5,
-    'ytick.major.size': 0,
-    'ytick.major.width': 1.5,
-    'ytick.minor.size': 0,
-    'ytick.minor.width': 1.5,
-    'ytick.direction': 'in',
-    'axes.titleweight': 'normal',
-    'axes.titlepad': 20
-})
-
 # Resolve paths; always write outputs under python_scripts/output
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR_PATH = SCRIPT_DIR / "output"
 OUTPUT_DIR_PATH.mkdir(parents=True, exist_ok=True)
-TOP_ROOT = PROJECT_ROOT.parent.parent  # .../geant4_projects
-TABULAR_DIR = TOP_ROOT / "backup" / "geant4_icyMoons" / "tabular"
-
-TABLE2_PATH = str(TABULAR_DIR / "michaud_table2.csv")
-TABLE3_PATH = str(TABULAR_DIR / "michaud_table3.csv")
+TABLE2_PATH = str(BACKUP_MICHAUD_TABLE2_PATH)
+TABLE3_PATH = str(BACKUP_MICHAUD_TABLE3_PATH)
 OUTPUT_DIR  = str(OUTPUT_DIR_PATH)
 
 # Unified font size
-fontsize=fontsize
-plt.rcParams.update({
-    'font.size': fontsize,
-    'axes.titlesize': fontsize,
-    'axes.labelsize': fontsize,
-    'xtick.labelsize': fontsize,
-    'ytick.labelsize': fontsize,
-    'legend.fontsize': fontsize,
-})
+fontsize = FONTSIZE_12
+plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, fontsize))
 
-E_MIN, E_MAX, N_E = 1.7, 100.0, 201
-THETA_MIN, THETA_MAX, N_TH = 0.0, 180.0, 181
-
-FMT_E  = "%.8f"
-FMT_XS = "%.10e"
-FMT_T  = "%.8f"
-FMT_C  = "%.10f"
+E_MIN, E_MAX, N_E = VIB_E_MIN, VIB_E_MAX, VIB_N_E
+THETA_MIN, THETA_MAX, N_TH = VIB_THETA_MIN, VIB_THETA_MAX, VIB_N_TH
 
 # 8 vibrational channels in order - note we use what's actually in Michaud tables
 # Table 2: v''(T), v'(L), v''(L)  
 # Table 3: v2, v1,3, v3, v1,3+vL, 2(v1,3)
 # Note: v'(r) has mostly zero/empty values, so we skip it
-TARGETS = ["vT2","vL1","vL2","v2","v1,3","v3","v1,3+vL","2(v1,3)"]
+TARGETS = VIB_TARGETS
 
 # ---------- I/O helpers ----------
 

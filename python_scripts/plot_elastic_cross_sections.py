@@ -7,44 +7,40 @@ Plot elastic scattering cross-sections for electrons in ice:
 
 import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
 import pandas as pd
 
+from constants import (
+    ELASTIC_BLEND_E0,
+    ELASTIC_BLEND_E_MAX,
+    ELASTIC_BLEND_E_MIN,
+    ELASTIC_BLEND_N_POINTS,
+    ELASTIC_BLEND_T,
+    ELSEPA_MUFFIN_TOTAL,
+    EV_TO_MEV,
+    FM2_TO_CM2,
+    FONT_COURIER,
+    FONTSIZE_24,
+    MICHAUD_SIGMA_SCALE_CM2,
+    MICHAUD_TABLE2_PATH,
+    MICHAUD_TABLE3_PATH,
+    OUTPUT_DIR,
+    RC_BASE_ELASTIC,
+    SR_ALPHA_1,
+    SR_BETA_1,
+    SR_CONST_K,
+    SR_E_SQUARED_MEV_FM,
+    SR_ELECTRON_MASS_MEV,
+    SR_Z_WATER,
+    rcparams_with_fontsize,
+)
+
 # Font configuration
-font = 'Courier'
+font = FONT_COURIER
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
-FONTSIZE = 18
-
-plt.rcParams.update({
-    'axes.linewidth': 1.5,
-    'lines.linewidth': 1.5,
-    'lines.markersize': 6,
-    'lines.markerfacecolor': 'white',
-    'lines.markeredgecolor': 'k',
-    'xtick.major.size': 0,
-    'xtick.major.width': 1.5,
-    'xtick.minor.size': 0,
-    'xtick.minor.width': 1.5,
-    'xtick.direction': 'in',
-    'xtick.major.pad': 5,
-    'ytick.major.size': 8,
-    'ytick.minor.size': 4,
-    'xtick.major.size': 8,
-    'xtick.minor.size': 4,
-    'ytick.major.width': 1.5,
-    'ytick.minor.width': 1.5,
-    'ytick.direction': 'in',
-    'axes.titleweight': 'normal',
-    'axes.titlepad': 20,
-    'font.size': FONTSIZE,
-    'axes.titlesize': FONTSIZE,
-    'axes.labelsize': FONTSIZE,
-    'xtick.labelsize': FONTSIZE,
-    'ytick.labelsize': FONTSIZE,
-    'legend.fontsize': FONTSIZE,
-})
+FONTSIZE = FONTSIZE_24
+plt.rcParams.update(rcparams_with_fontsize(RC_BASE_ELASTIC, FONTSIZE))
 
 
 def screened_rutherford_cross_section(energy_eV):
@@ -52,12 +48,12 @@ def screened_rutherford_cross_section(energy_eV):
     Calculate Screened Rutherford elastic cross-section for electrons in water/ice.
     """
     # Physical constants (Geant4 system)
-    e_squared = 1.4399764  # MeV * fm
-    electron_mass_c2 = 0.510998928  # MeV
-    z = 10.0  # Effective charge for water (H2O)
+    e_squared = SR_E_SQUARED_MEV_FM
+    electron_mass_c2 = SR_ELECTRON_MASS_MEV
+    z = SR_Z_WATER  # Effective charge for water (H2O)
     
     # Convert eV to MeV
-    k_MeV = energy_eV * 1e-6
+    k_MeV = energy_eV * EV_TO_MEV
     
     # Rutherford cross-section formula
     length_fm = (e_squared * (k_MeV + electron_mass_c2)) / \
@@ -65,9 +61,9 @@ def screened_rutherford_cross_section(energy_eV):
     sigma_ruth_fm2 = z * (z + 1) * length_fm**2
     
     # Screening factor formula
-    alpha_1 = 1.64
-    beta_1 = -0.0825
-    constK = 1.7e-5
+    alpha_1 = SR_ALPHA_1
+    beta_1 = SR_BETA_1
+    constK = SR_CONST_K
     
     numerator = (alpha_1 + beta_1 * np.log(energy_eV)) * constK * (z**(2./3.))
     k_ratio = k_MeV / electron_mass_c2
@@ -77,7 +73,7 @@ def screened_rutherford_cross_section(energy_eV):
     sigma_fm2 = np.pi * sigma_ruth_fm2 / (n * (n + 1.0))
     
     # Convert from fm^2 to cm^2
-    sigma_cm2 = sigma_fm2 * 1e-26
+    sigma_cm2 = sigma_fm2 * FM2_TO_CM2
     
     return sigma_cm2
 
@@ -90,8 +86,7 @@ def plot_elastic_cross_sections():
     
     # Load Michaud data from CSV Table 2
     try:
-        csv_path = Path(__file__).parent.parent / "tabular" / "michaud_table2.csv"
-        df = pd.read_csv(csv_path, skiprows=3, header=None)
+        df = pd.read_csv(MICHAUD_TABLE2_PATH, skiprows=3, header=None)
         E_michaud = pd.to_numeric(df[0], errors="coerce").to_numpy()
         sigma_raw = pd.to_numeric(df[1], errors="coerce").to_numpy()
         
@@ -101,7 +96,7 @@ def plot_elastic_cross_sections():
         sigma_raw = sigma_raw[mask]
         
         # Apply scale factor: 1e-16 cm^2
-        sigma_michaud = sigma_raw * 1e-16
+        sigma_michaud = sigma_raw * MICHAUD_SIGMA_SCALE_CM2
         
         print(f"Loaded Michaud CSV data: {len(E_michaud)} points")
         print(f"Energy range: {E_michaud[0]:.1f} - {E_michaud[-1]:.1f} eV")
@@ -119,8 +114,7 @@ def plot_elastic_cross_sections():
     
     # Load ELSEPA elastic cross-sections (muffin potential) to use for high-energy branch
     try:
-        elsepa_path = Path(__file__).parent.parent / "cross_sections" / "sigma_elastic_e_elsepa_muffin.dat"
-        data_elsepa = np.loadtxt(elsepa_path)
+        data_elsepa = np.loadtxt(ELSEPA_MUFFIN_TOTAL)
         E_elsepa = data_elsepa[:, 0]
         sigma_elsepa = data_elsepa[:, 1]
         ax.loglog(E_elsepa, sigma_elsepa, color='slategray', linewidth=5,
@@ -133,11 +127,11 @@ def plot_elastic_cross_sections():
     # Create blended cross-section using C1-smooth smoothstep kernel
     try:
         # Define transition parameters
-        E0 = 100.0  # Start of transition
-        t = 494   # End of transition
+        E0 = ELASTIC_BLEND_E0  # Start of transition
+        t = ELASTIC_BLEND_T   # End of transition
         
         # Create blended cross-section array spanning full range
-        E_blend = np.logspace(np.log10(2), np.log10(1e7), 500)
+        E_blend = np.logspace(np.log10(ELASTIC_BLEND_E_MIN), np.log10(ELASTIC_BLEND_E_MAX), ELASTIC_BLEND_N_POINTS)
         sigma_blend = np.zeros_like(E_blend)
 
         # Target at 100 eV: regular Michaud
@@ -177,7 +171,7 @@ def plot_elastic_cross_sections():
     # Mark transition zone
     # ax.axvline(100, color='red', linestyle=':', linewidth=1, alpha=0.7, zorder=1)
     # ax.axvline(t, color='red', linestyle=':', linewidth=1, alpha=0.7, zorder=1)
-    ax.axvspan(100, t, color='lightgray', alpha=0.3, zorder=0)
+    ax.axvspan(ELASTIC_BLEND_E0, t, color='lightgray', alpha=0.3, zorder=0)
     
     # Formatting
     ax.set_xlabel('Electron Energy (eV)')
@@ -190,7 +184,7 @@ def plot_elastic_cross_sections():
     plt.tight_layout()
     
     # Save figure
-    output_file = Path(__file__).parent / 'output/elastic_cross_sections.png'
+    output_file = OUTPUT_DIR / "elastic_cross_sections.png"
     plt.savefig(output_file, bbox_inches='tight')
     print(f"\nPlot saved to: {output_file}")
     
@@ -209,8 +203,7 @@ def plot_vibrational_excitations():
     
     # ============== PANEL 1: INTERMOLECULAR MODES ==============
     try:
-        csv_path = Path(__file__).parent.parent / "tabular" / "michaud_table2.csv"
-        df = pd.read_csv(csv_path, skiprows=3, header=None)
+        df = pd.read_csv(MICHAUD_TABLE2_PATH, skiprows=3, header=None)
         
         E = pd.to_numeric(df[0], errors="coerce").to_numpy()
         
@@ -235,7 +228,7 @@ def plot_vibrational_excitations():
             sigma_raw = pd.to_numeric(df[col_idx], errors="coerce").to_numpy()
             mask = np.isfinite(E) & np.isfinite(sigma_raw) & (sigma_raw > 0)
             E_valid = E[mask]
-            sigma = sigma_raw[mask] * 1e-16  # Apply scale factor
+            sigma = sigma_raw[mask] * MICHAUD_SIGMA_SCALE_CM2  # Apply scale factor
             
             ax1.plot(E_valid, sigma, color=color, linewidth=3, label=label, zorder=3)
         
@@ -251,8 +244,7 @@ def plot_vibrational_excitations():
     
     # ============== PANEL 2: INTRAMOLECULAR MODES ==============
     try:
-        csv_path = Path(__file__).parent.parent / "tabular" / "michaud_table3.csv"
-        df = pd.read_csv(csv_path, skiprows=3, header=None)
+        df = pd.read_csv(MICHAUD_TABLE3_PATH, skiprows=3, header=None)
         
         E = pd.to_numeric(df[0], errors="coerce").to_numpy()
         
@@ -278,7 +270,7 @@ def plot_vibrational_excitations():
             sigma_raw = pd.to_numeric(df[col_idx], errors="coerce").to_numpy()
             mask = np.isfinite(E) & np.isfinite(sigma_raw) & (sigma_raw > 0)
             E_valid = E[mask]
-            sigma = sigma_raw[mask] * 1e-16  # Apply scale factor
+            sigma = sigma_raw[mask] * MICHAUD_SIGMA_SCALE_CM2  # Apply scale factor
             
             ax2.plot(E_valid, sigma, color=color, linewidth=3, label=label, zorder=3)
         
@@ -295,7 +287,7 @@ def plot_vibrational_excitations():
     plt.tight_layout()
     
     # Save figure
-    output_file = Path(__file__).parent / 'output/vibrational_excitations.png'
+    output_file = OUTPUT_DIR / "vibrational_excitations.png"
     plt.savefig(output_file, bbox_inches='tight', dpi=150)
     print(f"\nVibrational excitations plot saved to: {output_file}")
     
@@ -368,7 +360,7 @@ def plot_vibrational_energy_distributions():
     plt.tight_layout()
     
     # Save figure
-    output_file = Path(__file__).parent / 'output/vibrational_energy_distributions.png'
+    output_file = OUTPUT_DIR / "vibrational_energy_distributions.png"
     plt.savefig(output_file, bbox_inches='tight', dpi=150)
     print(f"\nVibrational energy distributions plot saved to: {output_file}")
     

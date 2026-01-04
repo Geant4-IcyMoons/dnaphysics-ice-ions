@@ -19,46 +19,25 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 
+from constants import (
+    EH,
+    FONT_COURIER,
+    FONTSIZE_18,
+    HFONT_COURIER,
+    ICE_DATA_XLSX_PATH,
+    RC_BASE_STANDARD,
+    RY,
+    rcparams_with_fontsize,
+)
 
-font = 'Courier'
-hfont = {'fontname': font}
+font = FONT_COURIER
+hfont = HFONT_COURIER
 plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
 
-FONTSIZE = 18
-plt.rcParams.update({
-    'axes.linewidth': 1.5,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'lines.linewidth': 1.5,
-    'lines.markersize': 6,
-    'lines.markerfacecolor': 'white',
-    'lines.markeredgecolor': 'k',
-    'xtick.major.size': 0,
-    'xtick.major.width': 1.5,
-    'xtick.minor.size': 0,
-    'xtick.minor.width': 1.5,
-    'xtick.direction': 'in',
-    'xtick.major.pad': 5,
-    'ytick.major.size': 0,
-    'ytick.major.width': 1.5,
-    'ytick.minor.size': 0,
-    'ytick.minor.width': 1.5,
-    'ytick.direction': 'in',
-    'axes.titleweight': 'normal',
-    'axes.titlepad': 20,
-    'font.size': FONTSIZE,
-    'axes.titlesize': FONTSIZE,
-    'axes.labelsize': FONTSIZE,
-    'xtick.labelsize': FONTSIZE,
-    'ytick.labelsize': FONTSIZE,
-    'legend.fontsize': FONTSIZE,
-})
-
-# ---- constants ----
-EH = 27.211386245988  # eV, Hartree
-RY = 13.605693009     # eV, Rydberg
+FONTSIZE = FONTSIZE_18
+plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
 
 Material = Literal["amorphous", "hexagonal"]
 ArrayLike = Union[float, np.ndarray]
@@ -899,8 +878,7 @@ def plot_model_vs_experiment_two_panel(use_partitioning: bool = True, savepath: 
     """
     from matplotlib.gridspec import GridSpec
 
-    script_dir = Path(__file__).parent
-    ice_data_file = script_dir.parent / "tabular" / "ice data.xlsx"
+    ice_data_file = ICE_DATA_XLSX_PATH
     E = np.linspace(1.0, 60.0, 20000)
 
     fig = plt.figure(figsize=(14, 7))
