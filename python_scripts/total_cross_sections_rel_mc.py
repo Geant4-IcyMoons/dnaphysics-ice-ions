@@ -16,12 +16,15 @@ from constants import (
     C_AU,
     EH,
     EV_TO_HA,
+    ELF_ROLLOFF_COEF,
+    ELF_ROLLOFF_E0_eV,
     MC2_HA,
     MC2_eV,
-    MC_T_THRESHOLD_eV,
     N,
-    REL_T_THRESHOLD_eV,
-    TRANS_T_THRESHOLD_eV,
+    REGIME_I_MAX_eV,
+    REGIME_II_MAX_eV,
+    REGIME_III_MAX_eV,
+    REGIME_IV_MAX_eV,
     a0,
     mass,
 )
@@ -34,9 +37,83 @@ import emfietzoglou_model_finite_q as model
 # ----------------------------------------------------------------------
 # Helpers: Relativistic corrections
 # ----------------------------------------------------------------------
+def _simpson_integrate(y, x):
+    y = np.asarray(y, dtype=float)
+    x = np.asarray(x, dtype=float)
+    n = y.size
+    if n < 2:
+        return 0.0
+    if n != x.size:
+        raise ValueError("x and y must have the same length")
+    if n == 2:
+        return 0.5 * (y[0] + y[1]) * (x[1] - x[0])
+
+    dx = np.diff(x)
+    if not np.allclose(dx, dx[0]):
+        return float(np.sum(0.5 * dx * (y[:-1] + y[1:])))
+
+    h = dx[0]
+    if n % 2 == 1:
+        return float(
+            (h / 3.0)
+            * (y[0] + y[-1] + 4.0 * np.sum(y[1:-1:2]) + 2.0 * np.sum(y[2:-1:2]))
+        )
+
+    n1 = n - 1
+    simpson_part = (h / 3.0) * (
+        y[0]
+        + y[n1 - 1]
+        + 4.0 * np.sum(y[1 : n1 - 1 : 2])
+        + 2.0 * np.sum(y[2 : n1 - 2 : 2])
+    )
+    trap_part = 0.5 * (y[-2] + y[-1]) * (x[-1] - x[-2])
+    return float(simpson_part + trap_part)
+
+def _regime_flags(Tj):
+    Tj = float(Tj)
+    if Tj <= REGIME_I_MAX_eV:
+        return True, False, False, False
+    if Tj <= REGIME_II_MAX_eV:
+        return True, True, False, False
+    if Tj <= REGIME_III_MAX_eV:
+        return False, True, True, False
+    if Tj <= REGIME_IV_MAX_eV:
+        return False, True, True, True
+    return False, True, True, True
+
+def _elf_rolloff_factor(Ei):
+    Ei = np.asarray(Ei, dtype=float)
+    factor = np.ones_like(Ei)
+    mask = Ei > ELF_ROLLOFF_E0_eV
+    if np.any(mask):
+        factor[mask] = 1.0 - ELF_ROLLOFF_COEF * np.log10(Ei[mask] / ELF_ROLLOFF_E0_eV)
+    return factor
+
 def beta2_rel(Tj):
     # Use exactly the form you specified:
     return 1.0 - 1.0 / (Tj / MC2_eV + 1.0)**2
+
+def delta_fermi(T):
+    """
+    Steinheimer-Fano density effect for liquid water.
+    """
+    b2 = beta2_rel(T)
+    b2 = min(max(float(b2), np.finfo(float).tiny), 1.0 - np.finfo(float).eps)
+    beta = np.sqrt(b2)
+    X = np.log10(np.sqrt(beta / (1.0 - beta * beta)))
+
+    # liquid water parameters
+    alpha = 0.09116
+    X1 = 2.8004
+    m = 3.4773
+    C = -3.5017
+    X0 = 0.24
+
+    if X < X0:
+        return 0.0
+    if X < X1:
+        return 4.6052 * X + alpha * (X1 - X) ** m + C
+    return 4.6052 * X + C
 
 def Q_q(q_au):
     """
@@ -122,6 +199,7 @@ def _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=400):
     else:
         raise ValueError("channel_type must be 'excitation' or 'ionization'")
 
+    vals = vals * _elf_rolloff_factor(Ei)
     integrand = vals
     dq = np.diff(qvals)
 
@@ -132,10 +210,6 @@ def _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=400):
     return float(int_cons * accum)
 
 def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
-    # Only defined/used above threshold (or return 0 below)
-    if Tj < REL_T_THRESHOLD_eV:
-        return 0.0
-
     qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
     if qhi <= qlo:
         return 0.0
@@ -156,6 +230,7 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     else:
         vals = e2["ionizations"][idx][:, 0] / denom
 
+    vals = vals * _elf_rolloff_factor(Ei)
     # Q(q) in eV
     Q_eV = Q_q(qvals)
     Q_eV = np.where(Q_eV == 0.0, np.finfo(float).tiny, Q_eV)
@@ -167,7 +242,7 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     kernel = factor1 * factor2 * factor3
 
     integrand = vals * kernel
-    accum = float(np.trapezoid(integrand, qvals))
+    accum = float(_simpson_integrate(integrand, qvals))
 
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
@@ -175,15 +250,16 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
     return float(int_cons * accum)
 
-def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
+def _integrate_channel_single_E_trans(
+    Ei, Tj, idx, channel_type, s, C, Nq=0, use_density_effect=False
+):
     """ Transverse RPWBA term (Fano approximation at q=0)"""
-    if Tj < TRANS_T_THRESHOLD_eV:
-        return 0.0
-
     # beta^2 and transverse bracket
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
     bracket = np.log(1.0 / max(1.0 - b2, np.finfo(float).tiny)) - b2
+    if use_density_effect:
+        bracket = max(bracket - 0.5 * delta_fermi(Tj), 0.0)
 
     # Optical (q=0) channel-resolved ELF via epsilon2_channel / (epsilon1_total^2 + epsilon2_total^2)
     E_arr = np.array([Ei], float)
@@ -202,7 +278,7 @@ def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
     else:
         raise ValueError("channel_type must be 'excitation' or 'ionization'")
 
-    elf0 = float(np.asarray(elf0).ravel()[0])
+    elf0 = float(np.asarray(elf0).ravel()[0] * _elf_rolloff_factor(Ei))
 
     int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
     return float(int_cons * elf0 * bracket)
@@ -213,10 +289,10 @@ def _integrate_channel_single_E_trans(Ei, Tj, idx, channel_type, s, C, Nq=0):
 def _dsigma_pwba_dE(Ei, Tj, idx, channel_type, s, C, Nq=400, use_rel=False):
     """
     Return the differential cross section d sigma/dE at (Ei,Tj) for one channel.
-    If use_rel=True (and Tj >= REL_T_THRESHOLD_eV), this uses the longitudinal relativistic
-    kernel; otherwise it uses the nonrelativistic PWBA kernel.
+    If use_rel=True, this uses the longitudinal relativistic kernel; otherwise it uses
+    the nonrelativistic PWBA kernel.
     """
-    if use_rel and (float(Tj) >= float(REL_T_THRESHOLD_eV)):
+    if use_rel:
         return _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=Nq)
     return _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=Nq)
 
@@ -251,7 +327,7 @@ def _sigma_pwba_excitation_shifted_T(s, C, Tshift, Tj, k, NE=400, Nq=400, use_re
         vals[i] = _dsigma_pwba_dE(Ei, Tshift, k, "excitation", s, C, Nq=Nq, use_rel=use_rel)
 
     vals = np.where(vals < 0.0, 0.0, vals)
-    return float(np.trapezoid(vals, Egrid))
+    return float(_simpson_integrate(vals, Egrid))
 
 def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
     """sigma_MC(T) for ionization shell j: integrate d sigma_MC/dE over E."""
@@ -270,7 +346,7 @@ def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
         vals[i] = _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=Nq, use_rel=use_rel)
 
     vals = np.where(vals < 0.0, 0.0, vals)
-    return float(np.trapezoid(vals, Egrid))
+    return float(_simpson_integrate(vals, Egrid))
 
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for K-shell channel
@@ -291,6 +367,7 @@ def _integrate_kshell_single_E(Ei, Tj, s, Nq=400, include_kshell=True):
     if ks_val == 0.0:
         return 0.0
 
+    ks_val *= float(_elf_rolloff_factor(Ei))
     qvals = np.linspace(qlo, qhi, Nq)
 
     dq = np.diff(qvals)
@@ -316,6 +393,7 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     if ks_val == 0.0:
         return 0.0
 
+    ks_val *= float(_elf_rolloff_factor(Ei))
     qvals = np.linspace(qlo, qhi, Nq)
 
     # Q(q) in eV
@@ -329,7 +407,7 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     kernel = factor1 * factor2 * factor3
 
     integrand = ks_val * kernel
-    accum = float(np.trapezoid(integrand, qvals))
+    accum = float(_simpson_integrate(integrand, qvals))
 
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
@@ -340,11 +418,24 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
 # ----------------------------------------------------------------------
 # Q-integrated ELF per channel, on its own E-grid
 # ----------------------------------------------------------------------
-def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell=True):
+def integrate_elf_channels_per_channel_q(
+    s,
+    C,
+    T,
+    NE=400,
+    Nq=400,
+    include_kshell=True,
+    use_rel_long=False,
+    use_rel_trans=False,
+    use_density_effect=False,
+):
     """
     Integrate ELF(E,q)/q over q for each excitation, ionization, and K-shell,
     and ALSO compute a second "relativistic longitudinal-corrected" version
     of the same inner-q integrals (stored with *_rel keys).
+
+    use_rel_long and use_rel_trans control whether the corresponding arrays
+    are computed or filled with zeros.
     """
 
     # --- Channel energy windows ---
@@ -384,21 +475,25 @@ def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell
             results["excitation_E"].append(np.array([], float))
             results["excitation_int"].append(np.array([], float))
             results["excitation_int_rel"].append(np.array([], float))
+            results["excitation_int_rel_trans"].append(np.array([], float))
             continue
 
         Egrid = np.linspace(Emin, Emax, NE)
         vals = np.empty_like(Egrid)
-        vals_rel = np.empty_like(Egrid)
-        vals_rel_trans = np.empty_like(Egrid)
+        vals_rel = np.zeros_like(Egrid)
+        vals_rel_trans = np.zeros_like(Egrid)
 
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_channel_single_E(Ei, T, k, "excitation", s, C, Nq=Nq)
 
             # Relativistic-longitudinal corrected inner-q integral
-            vals_rel[i] = _integrate_channel_single_E_rel(Ei, T, k, "excitation", s, C, Nq=Nq)
-
-            vals_rel_trans[i] = _integrate_channel_single_E_trans(Ei, T, k, "excitation", s, C)
+            if use_rel_long:
+                vals_rel[i] = _integrate_channel_single_E_rel(Ei, T, k, "excitation", s, C, Nq=Nq)
+            if use_rel_trans:
+                vals_rel_trans[i] = _integrate_channel_single_E_trans(
+                    Ei, T, k, "excitation", s, C, use_density_effect=use_density_effect
+                )
 
 
         results["excitation_E"].append(Egrid)
@@ -413,21 +508,25 @@ def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell
             results["ionization_E"].append(np.array([], float))
             results["ionization_int"].append(np.array([], float))
             results["ionization_int_rel"].append(np.array([], float))
+            results["ionization_int_rel_trans"].append(np.array([], float))
             continue
 
         Egrid = np.linspace(Emin, Emax, NE)
         vals = np.empty_like(Egrid)
-        vals_rel = np.empty_like(Egrid)
-        vals_rel_trans = np.empty_like(Egrid)
+        vals_rel = np.zeros_like(Egrid)
+        vals_rel_trans = np.zeros_like(Egrid)
 
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_channel_single_E(Ei, T, j, "ionization", s, C, Nq=Nq)
 
             # Relativistic-longitudinal corrected inner-q integral
-            vals_rel[i] = _integrate_channel_single_E_rel(Ei, T, j, "ionization", s, C, Nq=Nq)
-
-            vals_rel_trans[i] = _integrate_channel_single_E_trans(Ei, T, j, "ionization", s, C)
+            if use_rel_long:
+                vals_rel[i] = _integrate_channel_single_E_rel(Ei, T, j, "ionization", s, C, Nq=Nq)
+            if use_rel_trans:
+                vals_rel_trans[i] = _integrate_channel_single_E_trans(
+                    Ei, T, j, "ionization", s, C, use_density_effect=use_density_effect
+                )
 
 
         results["ionization_E"].append(Egrid)
@@ -439,7 +538,7 @@ def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell
     if (kshell_Emin is not None) and (kshell_Emin < kshell_Emax):
         Egrid = np.linspace(kshell_Emin, kshell_Emax, NE)
         vals = np.empty_like(Egrid)
-        vals_rel = np.empty_like(Egrid)
+        vals_rel = np.zeros_like(Egrid)
 
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
@@ -448,206 +547,173 @@ def integrate_elf_channels_per_channel_q(s, C, T, NE=400, Nq=400, include_kshell
             )
 
             # Relativistic-longitudinal corrected inner-q integral
-            vals_rel[i] = _integrate_kshell_single_E_rel(
-                Ei, T, s, Nq=Nq, include_kshell=include_kshell
-            )
+            if use_rel_long:
+                vals_rel[i] = _integrate_kshell_single_E_rel(
+                    Ei, T, s, Nq=Nq, include_kshell=include_kshell
+                )
 
         results["kshell_E"] = Egrid
         results["kshell_int"] = vals
-        results["kshell_int_rel"] = vals_rel
+        results["kshell_int_rel"] = vals_rel if use_rel_long else None
 
     return results
 
 # ----------------------------------------------------------------------
 # Full double integral over E and q: sigma(T) per channel and totals
 # ----------------------------------------------------------------------
-def integrate_elf_double_integral(s, C, T,
-                                  NE=1000, Nq=1000,
-                                  include_kshell=True,
-                                  use_mott_coulomb=False,
-                                  mc_T_max_eV=MC_T_THRESHOLD_eV):
+def integrate_elf_double_integral(
+    s,
+    C,
+    T,
+    NE=1000,
+    Nq=1000,
+    include_kshell=True,
+    use_mott_coulomb=False,
+):
     """
     Compute full double integral sigma(T) per channel and totals.
     """
 
+    use_mc, use_rel_long, use_rel_trans, use_density_effect = _regime_flags(T)
+    if not use_mott_coulomb:
+        use_mc = False
+
     # 1) Inner q-integrals as functions of E
     integ = integrate_elf_channels_per_channel_q(
-        s, C, T=T, NE=NE, Nq=Nq,
-        include_kshell=include_kshell
+        s,
+        C,
+        T=T,
+        NE=NE,
+        Nq=Nq,
+        include_kshell=include_kshell,
+        use_rel_long=use_rel_long,
+        use_rel_trans=use_rel_trans,
+        use_density_effect=use_density_effect,
     )
 
-    # -------------------- Nonrelativistic --------------------
-    exc_sigma = []
-    ion_sigma = []
-    kshell_sigma = None
+    # -------------------- PWBA baseline --------------------
+    exc_sigma_pwba = []
+    ion_sigma_pwba = []
+    kshell_sigma_pwba = None
 
-    #Activate Mott-Colomb Corrections
-    use_mc_here = bool(use_mott_coulomb) and (float(T) <= float(mc_T_max_eV))
-    use_rel_in_mc = bool(use_mc_here) and (float(T) >= float(REL_T_THRESHOLD_eV))
-
-    # ------------- Excitations -------------
     for k in range(len(s.excitations)):
         E_k = integ["excitation_E"][k]
         y_k = integ["excitation_int"][k]
+        exc_sigma_pwba.append(0.0 if E_k.size == 0 else float(_simpson_integrate(y_k, E_k)))
 
-        if E_k.size == 0:
-            exc_sigma.append(0.0)
-        else:
-            exc_sigma.append(float(np.trapezoid(y_k, E_k)))
-
-    # ------------- Ionizations -------------
     for j in range(len(s.ionizations)):
         E_j = integ["ionization_E"][j]
         y_j = integ["ionization_int"][j]
+        ion_sigma_pwba.append(0.0 if E_j.size == 0 else float(_simpson_integrate(y_j, E_j)))
 
-        if E_j.size == 0:
-            ion_sigma.append(0.0)
-        else:
-            ion_sigma.append(float(np.trapezoid(y_j, E_j)))
-
-    # ------------- K-shell -------------
     if integ["kshell_E"] is not None:
         E_K = integ["kshell_E"]
         y_K = integ["kshell_int"]
+        kshell_sigma_pwba = 0.0 if E_K.size == 0 else float(_simpson_integrate(y_K, E_K))
 
-        if E_K.size == 0:
-            kshell_sigma = 0.0
+    valence_sigma_pwba = float(np.sum(exc_sigma_pwba) + np.sum(ion_sigma_pwba))
+    total_sigma_pwba = (
+        valence_sigma_pwba + kshell_sigma_pwba if kshell_sigma_pwba is not None else valence_sigma_pwba
+    )
+
+    # -------------------- Relativistic components --------------------
+    exc_sigma_rel = []
+    exc_sigma_rel_trans = []
+    ion_sigma_rel = []
+    ion_sigma_rel_trans = []
+    kshell_sigma_rel = None
+
+    for k in range(len(s.excitations)):
+        E_k = integ["excitation_E"][k]
+        y_k_rel = integ["excitation_int_rel"][k]
+        y_k_trans = integ["excitation_int_rel_trans"][k]
+        exc_sigma_rel.append(0.0 if E_k.size == 0 else float(_simpson_integrate(y_k_rel, E_k)))
+        exc_sigma_rel_trans.append(0.0 if E_k.size == 0 else float(_simpson_integrate(y_k_trans, E_k)))
+
+    for j in range(len(s.ionizations)):
+        E_j = integ["ionization_E"][j]
+        y_j_rel = integ["ionization_int_rel"][j]
+        y_j_trans = integ["ionization_int_rel_trans"][j]
+        ion_sigma_rel.append(0.0 if E_j.size == 0 else float(_simpson_integrate(y_j_rel, E_j)))
+        ion_sigma_rel_trans.append(0.0 if E_j.size == 0 else float(_simpson_integrate(y_j_trans, E_j)))
+
+    if integ["kshell_E"] is not None:
+        E_K = integ["kshell_E"]
+        y_K_rel = integ.get("kshell_int_rel", None)
+        if (y_K_rel is None) or (E_K.size == 0):
+            kshell_sigma_rel = 0.0
         else:
-            kshell_sigma = float(np.trapezoid(y_K, E_K))
+            kshell_sigma_rel = float(_simpson_integrate(y_K_rel, E_K))
 
-    # ------------- Totals -------------
-    valence_sigma = float(np.sum(exc_sigma) + np.sum(ion_sigma))
-    if kshell_sigma is not None:
-        total_sigma = valence_sigma + kshell_sigma
+    valence_sigma_rel = float(np.sum(exc_sigma_rel) + np.sum(ion_sigma_rel))
+    valence_sigma_rel_trans = float(np.sum(exc_sigma_rel_trans) + np.sum(ion_sigma_rel_trans))
+    if kshell_sigma_rel is not None:
+        total_sigma_rel = valence_sigma_rel + kshell_sigma_rel
     else:
-        total_sigma = valence_sigma
+        total_sigma_rel = valence_sigma_rel
+    total_sigma_rel_trans = valence_sigma_rel_trans
+    total_sigma_rel_total = total_sigma_rel + total_sigma_rel_trans
 
-
-    # -------------------- Low-energy Mott–Coulomb (optional) -------------
+    # -------------------- Mott-Coulomb --------------------
     exc_sigma_mc = None
     ion_sigma_mc = None
     valence_sigma_mc = None
     total_sigma_mc = None
 
-    if use_mc_here:
-        # Excitations: sigma_MC(T) = sum_k sigma_PWBA(T + 2*B_k)
+    if use_mc:
+        use_rel_in_mc = use_rel_long
         exc_sigma_mc = []
         for k in range(len(s.excitations)):
             Bk = float(s.excitations[k].Bth)
             Tshift = float(T + 2.0 * Bk)
-            exc_sigma_mc.append(_sigma_pwba_excitation_shifted_T(s, C, Tshift, T, k, NE=NE, Nq=Nq, use_rel=use_rel_in_mc))
+            exc_sigma_mc.append(
+                _sigma_pwba_excitation_shifted_T(
+                    s, C, Tshift, T, k, NE=NE, Nq=Nq, use_rel=use_rel_in_mc
+                )
+            )
 
-        # Ionizations: integrate the specified MC differential form
         ion_sigma_mc = []
         for j in range(len(s.ionizations)):
-            ion_sigma_mc.append(_sigma_mc_ionization(s, C, T, j, NE=NE, Nq=Nq, use_rel=use_rel_in_mc))
+            ion_sigma_mc.append(
+                _sigma_mc_ionization(s, C, T, j, NE=NE, Nq=Nq, use_rel=use_rel_in_mc)
+            )
 
         valence_sigma_mc = float(np.sum(exc_sigma_mc) + np.sum(ion_sigma_mc))
-        if kshell_sigma is not None:
-            total_sigma_mc = valence_sigma_mc + kshell_sigma
-        else:
-            total_sigma_mc = valence_sigma_mc
+        kshell_for_mc = (
+            kshell_sigma_rel if (use_rel_long and kshell_sigma_rel is not None) else kshell_sigma_pwba
+        )
+        total_sigma_mc = valence_sigma_mc + (kshell_for_mc if kshell_for_mc is not None else 0.0)
 
-    elif use_mott_coulomb and (not use_mc_here):
-        # Above the MC validity range: fall back to PWBA results
-        exc_sigma_mc = exc_sigma
-        ion_sigma_mc = ion_sigma
-        valence_sigma_mc = valence_sigma
-        total_sigma_mc = total_sigma
+    # -------------------- Default output selection --------------------
+    exc_sigma = list(exc_sigma_pwba)
+    ion_sigma = list(ion_sigma_pwba)
+    kshell_sigma = kshell_sigma_pwba
+    valence_sigma = float(valence_sigma_pwba)
+    total_sigma = float(total_sigma_pwba)
 
-    # Keep raw PWBA results for debugging/comparison
-    exc_sigma_pwba = list(exc_sigma)
-    ion_sigma_pwba = list(ion_sigma)
-    valence_sigma_pwba = float(valence_sigma)
-    total_sigma_pwba = float(total_sigma)
-
-    if use_mc_here and (exc_sigma_mc is not None) and (ion_sigma_mc is not None):
+    if use_mc and (exc_sigma_mc is not None) and (ion_sigma_mc is not None):
         exc_sigma = list(exc_sigma_mc)
         ion_sigma = list(ion_sigma_mc)
-        valence_sigma = float(valence_sigma_mc)
-        total_sigma = float(total_sigma_mc)
-
-    # -------------------- Relativistic-longitudinal (additional) --------
-    exc_sigma_rel = []
-    exc_sigma_rel_trans = []
-
-    ion_sigma_rel = []
-    ion_sigma_rel_trans = []
-
-    kshell_sigma_rel = None
-
-    # ------------- Excitations (REL) -------------
-    for k in range(len(s.excitations)):
-        E_k = integ["excitation_E"][k]
-        y_k_rel = integ.get("excitation_int_rel", [])[k] if "excitation_int_rel" in integ else None
-
-        if (E_k.size == 0) or (y_k_rel is None) or (len(y_k_rel) == 0):
-            exc_sigma_rel.append(0.0)
-            exc_sigma_rel_trans.append(0.0)
-        else:
-            exc_sigma_rel.append(float(np.trapezoid(y_k_rel, E_k)))
-            y_k_trans = integ.get("excitation_int_rel_trans", [])[k] if "excitation_int_rel_trans" in integ else None
-            if (y_k_trans is None) or (len(y_k_trans) == 0):
-                exc_sigma_rel_trans.append(0.0)
-            else:
-                exc_sigma_rel_trans.append(float(np.trapezoid(y_k_trans, E_k)))
-
-    # ------------- Ionizations (REL) -------------
-    for j in range(len(s.ionizations)):
-        E_j = integ["ionization_E"][j]
-        y_j_rel = integ.get("ionization_int_rel", [])[j] if "ionization_int_rel" in integ else None
-
-        if (E_j.size == 0) or (y_j_rel is None) or (len(y_j_rel) == 0):
-            ion_sigma_rel.append(0.0)
-            ion_sigma_rel_trans.append(0.0)
-        else:
-            ion_sigma_rel.append(float(np.trapezoid(y_j_rel, E_j)))
-            y_j_trans = integ.get("ionization_int_rel_trans", [])[j] if "ionization_int_rel_trans" in integ else None
-            if (y_j_trans is None) or (len(y_j_trans) == 0):
-                ion_sigma_rel_trans.append(0.0)
-            else:
-                ion_sigma_rel_trans.append(float(np.trapezoid(y_j_trans, E_j)))
-
-
-    # ------------- K-shell (REL) -------------
-    if integ["kshell_E"] is not None:
-        E_K = integ["kshell_E"]
-        y_K_rel = integ.get("kshell_int_rel", None)
-
-        if (y_K_rel is None) or (E_K.size == 0):
-            kshell_sigma_rel = 0.0
-        else:
-            kshell_sigma_rel = float(np.trapezoid(y_K_rel, E_K))
-
-    # ------------- Totals (REL) -------------
-    valence_sigma_rel = float(np.sum(exc_sigma_rel) + np.sum(ion_sigma_rel))
-    valence_sigma_rel_trans = float(np.sum(exc_sigma_rel_trans) + np.sum(ion_sigma_rel_trans))
-
-    if kshell_sigma_rel is not None:
-        total_sigma_rel = valence_sigma_rel + kshell_sigma_rel
-    else:
-        total_sigma_rel = valence_sigma_rel
-
-    # Transverse totals (K-shell transverse not included)
-    if kshell_sigma_rel is not None:
-        total_sigma_rel_trans = valence_sigma_rel_trans  # keep kshell separate
-    else:
-        total_sigma_rel_trans = valence_sigma_rel_trans
-
-    total_sigma_rel_total = total_sigma_rel + total_sigma_rel_trans
-
-    if float(T) >= float(mc_T_max_eV):
-        exc_sigma = list(exc_sigma_rel)  # longitudinal only
-        ion_sigma = list(ion_sigma_rel)  # longitudinal only
+        kshell_sigma = (
+            kshell_sigma_rel if (use_rel_long and kshell_sigma_rel is not None) else kshell_sigma_pwba
+        )
         valence_sigma = float(np.sum(exc_sigma) + np.sum(ion_sigma))
-        if kshell_sigma is not None:
-            total_sigma = valence_sigma + float(kshell_sigma)
+        total_sigma = valence_sigma + (kshell_sigma if kshell_sigma is not None else 0.0)
+    elif use_rel_long:
+        if use_rel_trans:
+            exc_sigma = [a + b for a, b in zip(exc_sigma_rel, exc_sigma_rel_trans)]
+            ion_sigma = [a + b for a, b in zip(ion_sigma_rel, ion_sigma_rel_trans)]
+            valence_sigma = float(valence_sigma_rel + valence_sigma_rel_trans)
         else:
-            total_sigma = valence_sigma
+            exc_sigma = list(exc_sigma_rel)
+            ion_sigma = list(ion_sigma_rel)
+            valence_sigma = float(valence_sigma_rel)
+        kshell_sigma = kshell_sigma_rel if kshell_sigma_rel is not None else kshell_sigma_pwba
+        total_sigma = valence_sigma + (kshell_sigma if kshell_sigma is not None else 0.0)
 
     # Optional convenience: combined
-    total_sigma_plus_rel = total_sigma_pwba + total_sigma_rel  # Long Only (PWBA + long)
-    total_sigma_plus_rel_total = total_sigma_pwba + total_sigma_rel_total  # (PWBA + long + trans)
+    total_sigma_plus_rel = total_sigma_pwba + total_sigma_rel
+    total_sigma_plus_rel_total = total_sigma_pwba + total_sigma_rel_total
 
     return {
         # PWBA Baseline
@@ -692,19 +758,14 @@ def integrate_elf_double_integral(s, C, T,
 # ----------------------------------------------------------------------
 def plot_full_cross_sections_per_channel(
         T_list, sigma_list, s,
-        ax=None, linewidth=2, alpha=0.9, figsize=(12, 8),
-        mc_T_max_eV=1.0e5,
-        rel_T_min_eV=REL_T_THRESHOLD_eV):
+        ax=None, linewidth=2, alpha=0.9, figsize=(12, 8)):
     """
     Plot a *comparison* of PWBA vs the default model (per channel)
 
     Baseline (PWBA):
         uses keys '*_sigma_pwba' computed by the integrator.
 
-    Default model :
-        - T < rel_T_min_eV (default 1 keV): Mott–Coulomb (MC) using PWBA kernel
-        - rel_T_min_eV <= T < mc_T_max_eV (default 100 keV): MC using longitudinal-relativistic kernel
-        - T >= mc_T_max_eV: longitudinal-relativistic replacement + transverse relativistic add-on
+    Default model uses the regime flags from _regime_flags(T).
     """
 
     # Allow passing (ax_ion, ax_exc) or None
@@ -734,19 +795,18 @@ def plot_full_cross_sections_per_channel(
             pwba_list = _get_list(i, "ionization_sigma_pwba", [0.0] * n_ion)
             pwba = pwba_list[j] if j < len(pwba_list) else 0.0
 
-            # Default model logic by energy range
-            if Tj < float(rel_T_min_eV):
+            use_mc, use_rel_long, use_rel_trans, _ = _regime_flags(Tj)
+            if use_mc:
                 mc_list = _get_list(i, "ionization_sigma_mc", None)
                 model = (mc_list[j] if (mc_list is not None and j < len(mc_list)) else pwba)
-            elif Tj < float(mc_T_max_eV):
-                mc_list = _get_list(i, "ionization_sigma_mc", None)
-                model = (mc_list[j] if (mc_list is not None and j < len(mc_list)) else pwba)
-            else:
+            elif use_rel_long:
                 relL_list = _get_list(i, "ionization_sigma_rel", [0.0] * n_ion)
                 relT_list = _get_list(i, "ionization_sigma_rel_trans", [0.0] * n_ion)
                 relL = relL_list[j] if j < len(relL_list) else 0.0
                 relT = relT_list[j] if j < len(relT_list) else 0.0
-                model = relL + relT
+                model = relL + (relT if use_rel_trans else 0.0)
+            else:
+                model = pwba
 
             y_pwba.append(pwba)
             y_model.append(model)
@@ -783,18 +843,18 @@ def plot_full_cross_sections_per_channel(
             pwba_list = _get_list(i, "excitation_sigma_pwba", [0.0] * n_exc)
             pwba = pwba_list[k] if k < len(pwba_list) else 0.0
 
-            if Tj < float(rel_T_min_eV):
+            use_mc, use_rel_long, use_rel_trans, _ = _regime_flags(Tj)
+            if use_mc:
                 mc_list = _get_list(i, "excitation_sigma_mc", None)
                 model = (mc_list[k] if (mc_list is not None and k < len(mc_list)) else pwba)
-            elif Tj < float(mc_T_max_eV):
-                mc_list = _get_list(i, "excitation_sigma_mc", None)
-                model = (mc_list[k] if (mc_list is not None and k < len(mc_list)) else pwba)
-            else:
+            elif use_rel_long:
                 relL_list = _get_list(i, "excitation_sigma_rel", [0.0] * n_exc)
                 relT_list = _get_list(i, "excitation_sigma_rel_trans", [0.0] * n_exc)
                 relL = relL_list[k] if k < len(relL_list) else 0.0
                 relT = relT_list[k] if k < len(relT_list) else 0.0
-                model = relL + relT
+                model = relL + (relT if use_rel_trans else 0.0)
+            else:
+                model = pwba
 
             y_pwba.append(pwba)
             y_model.append(model)
@@ -837,13 +897,13 @@ def plot_relativistic_component_per_channel(
       - excitation_sigma_rel (longitudinal)
       - excitation_sigma_rel_trans (transverse)
 
-    Plots only for T >= 100 keV by default.
+    Plots only for T >= REGIME_II_MAX_eV by default.
     """
 
     T_arr = np.asarray(T_list, dtype=float)
-    mask = T_arr >= 1.0e5
+    mask = T_arr >= REGIME_II_MAX_eV
     if not np.any(mask):
-        raise ValueError("No T values >= 100 keV found in T_list.")
+        raise ValueError("No T values >= REGIME_II_MAX_eV found in T_list.")
 
     Tm = T_arr[mask]
     idxs = np.where(mask)[0]
@@ -864,7 +924,7 @@ def plot_relativistic_component_per_channel(
         ax_ion, ax_exc = ax
 
     # ----------------- Ionizations -----------------
-    print("Plot IONIZATIONS (REL longitudinal solid, transverse dashed; T>=100keV)")
+    print(f"Plot IONIZATIONS (REL longitudinal solid, transverse dashed; T>={REGIME_II_MAX_eV:.1e} eV)")
     for j in tqdm(range(n_ion)):
         y_long = []
         y_trans = []
@@ -893,7 +953,7 @@ def plot_relativistic_component_per_channel(
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
 
     # ----------------- Excitations -----------------
-    print("Plot EXCITATIONS (REL longitudinal solid, transverse dashed; T>=100keV)")
+    print(f"Plot EXCITATIONS (REL longitudinal solid, transverse dashed; T>={REGIME_II_MAX_eV:.1e} eV)")
     for k in tqdm(range(n_exc)):
         y_long = []
         y_trans = []
@@ -925,15 +985,14 @@ def plot_relativistic_component_per_channel(
 
 def plot_total_cross_section(
         T_list, sigma_list, s,
-        ax=None, linewidth=2, alpha=0.9, figsize=(12, 8),
-        mc_T_max_eV=1.0e5):
+        ax=None, linewidth=2, alpha=0.9, figsize=(12, 8)):
     """
     Plot TOTAL cross section with *all* corrections (as available in sigma_list).
 
     The corrected total is chosen per T as:
-      * if 'total_sigma_mc' exists and T <= mc_T_max_eV: use it
-      * else if 'total_sigma_plus_rel_total' exists: use it (PWBA + REL_long + REL_trans)
-      * else fall back to 'total_sigma_plus_rel' if present, else 'total_sigma'
+      * if regime selects MC: use total_sigma_mc when present
+      * elif regime selects rel: use total_sigma_rel_total (long+trans) or total_sigma_rel
+      * else fall back to PWBA
     """
 
     if ax is None:
@@ -947,16 +1006,16 @@ def plot_total_cross_section(
     for i, Tj in enumerate(T_arr):
         pwba = float(sigma_list[i].get("total_sigma_pwba", sigma_list[i].get("total_sigma", 0.0)) or 0.0)
 
-        # choose corrected total
-        if ("total_sigma_mc" in sigma_list[i]) and (float(Tj) <= float(mc_T_max_eV)):
+        use_mc, use_rel_long, use_rel_trans, _ = _regime_flags(Tj)
+        if use_mc:
             corr = float(sigma_list[i].get("total_sigma_mc", pwba) or pwba)
-        else:
-            if "total_sigma_plus_rel_total" in sigma_list[i]:
-                corr = float(sigma_list[i].get("total_sigma_plus_rel_total", pwba) or pwba)
-            elif "total_sigma_plus_rel" in sigma_list[i]:
-                corr = float(sigma_list[i].get("total_sigma_plus_rel", pwba) or pwba)
+        elif use_rel_long:
+            if use_rel_trans:
+                corr = float(sigma_list[i].get("total_sigma_rel_total", pwba) or pwba)
             else:
-                corr = pwba
+                corr = float(sigma_list[i].get("total_sigma_rel", pwba) or pwba)
+        else:
+            corr = pwba
 
         y_pwba.append(pwba)
         y_corr.append(corr)
@@ -979,7 +1038,7 @@ _WORKER_S = None
 _WORKER_C = None
 _WORKER_KW = None
 
-def _init_worker(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb, mc_T_max_eV):
+def _init_worker(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
     """
@@ -993,7 +1052,6 @@ def _init_worker(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb, 
         Nq=Nq,
         include_kshell=include_kshell,
         use_mott_coulomb=use_mott_coulomb,
-        mc_T_max_eV=mc_T_max_eV,
     )
 
 def _compute_for_T(T):
@@ -1024,8 +1082,6 @@ def main():
     Nq = 100
     include_kshell = True
     use_mott_coulomb = True
-    mc_T_max_eV = 1.0e5
-
     # Use ~ (CPU cores) workers;
     max_workers = max(1, (os.cpu_count() or 4) - 1)
     print("Using %i workers" %(max_workers))
@@ -1035,7 +1091,7 @@ def main():
     with ProcessPoolExecutor(
             max_workers=max_workers,
             initializer=_init_worker,
-            initargs=(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb, mc_T_max_eV),
+            initargs=(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb),
     ) as ex:
         futures = [ex.submit(_compute_for_T, T) for T in T_list]
 
@@ -1050,9 +1106,7 @@ def main():
     fig_ion, ax_ion = plt.subplots(figsize=(14, 9))
     fig_exc, ax_exc = plt.subplots(figsize=(14, 9))
     ax_ion, ax_exc = plot_full_cross_sections_per_channel(
-        T_list, sigma_list, s,
-        mc_T_max_eV=1.0e5,
-        rel_T_min_eV=REL_T_THRESHOLD_eV
+        T_list, sigma_list, s
     )
 
     ax_ion.figure.tight_layout()
@@ -1079,7 +1133,7 @@ def main():
 
     # ----------------- Plot 3: TOTAL cross section with all corrections -----------------
     fig, ax = plt.subplots()
-    plot_total_cross_section(T_list, sigma_list, s, ax=ax, mc_T_max_eV=1.0e5)
+    plot_total_cross_section(T_list, sigma_list, s, ax=ax)
     fig.tight_layout()
     fig.savefig("total_cross_section_all_corrections.png", dpi=300)
     plt.close(fig)
