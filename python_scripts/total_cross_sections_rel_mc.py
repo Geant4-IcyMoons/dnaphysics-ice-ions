@@ -21,6 +21,7 @@ from constants import (
     MC2_HA,
     MC2_eV,
     N,
+    OUTPUT_DIR,
     REGIME_I_MAX_eV,
     REGIME_II_MAX_eV,
     REGIME_III_MAX_eV,
@@ -37,6 +38,26 @@ import emfietzoglou_model_finite_q as model
 # ----------------------------------------------------------------------
 # Helpers: Relativistic corrections
 # ----------------------------------------------------------------------
+# Regime correction handles (toggle corrections in regimes II/III/IV).
+APPLY_CORRECTIONS_REGIME_II = True
+APPLY_CORRECTIONS_REGIME_III = True
+APPLY_CORRECTIONS_REGIME_IV = True
+APPLY_MOTT_COULOMB = True
+
+def _set_regime_corrections(apply_regime_ii=None, apply_regime_iii=None, apply_regime_iv=None):
+    global APPLY_CORRECTIONS_REGIME_II, APPLY_CORRECTIONS_REGIME_III, APPLY_CORRECTIONS_REGIME_IV
+    if apply_regime_ii is not None:
+        APPLY_CORRECTIONS_REGIME_II = bool(apply_regime_ii)
+    if apply_regime_iii is not None:
+        APPLY_CORRECTIONS_REGIME_III = bool(apply_regime_iii)
+    if apply_regime_iv is not None:
+        APPLY_CORRECTIONS_REGIME_IV = bool(apply_regime_iv)
+
+def _set_mc_correction(apply_mc=None):
+    global APPLY_MOTT_COULOMB
+    if apply_mc is not None:
+        APPLY_MOTT_COULOMB = bool(apply_mc)
+
 def _simpson_integrate(y, x):
     y = np.asarray(y, dtype=float)
     x = np.asarray(x, dtype=float)
@@ -69,17 +90,41 @@ def _simpson_integrate(y, x):
     trap_part = 0.5 * (y[-2] + y[-1]) * (x[-1] - x[-2])
     return float(simpson_part + trap_part)
 
+def _energy_grid(Emin, Emax, N, use_log=True):
+    Emin = float(Emin)
+    Emax = float(Emax)
+    if (not use_log) or (Emin <= 0.0) or (Emax <= Emin):
+        return np.linspace(Emin, Emax, N)
+    log_min = np.log(Emin)
+    log_max = np.log(Emax)
+    if (not np.isfinite(log_min)) or (not np.isfinite(log_max)) or (log_max <= log_min):
+        return np.linspace(Emin, Emax, N)
+    return np.exp(np.linspace(log_min, log_max, N))
+
 def _regime_flags(Tj):
     Tj = float(Tj)
     if Tj <= REGIME_I_MAX_eV:
-        return True, False, False, False
+        use_mc, use_rel_long, use_rel_trans, use_density_effect = True, False, False, False
+        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
     if Tj <= REGIME_II_MAX_eV:
-        return True, True, False, False
-    if Tj <= REGIME_III_MAX_eV:
-        return False, True, True, False
+        if not APPLY_CORRECTIONS_REGIME_II:
+            return False, False, False, False
+        use_mc, use_rel_long, use_rel_trans, use_density_effect = True, True, False, False
+        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
+    if Tj < REGIME_III_MAX_eV:
+        if not APPLY_CORRECTIONS_REGIME_III:
+            return False, False, False, False
+        use_mc, use_rel_long, use_rel_trans, use_density_effect = False, True, True, False
+        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
     if Tj <= REGIME_IV_MAX_eV:
-        return False, True, True, True
-    return False, True, True, True
+        if not APPLY_CORRECTIONS_REGIME_IV:
+            return False, False, False, False
+        use_mc, use_rel_long, use_rel_trans, use_density_effect = False, True, True, True
+        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
+    if not APPLY_CORRECTIONS_REGIME_IV:
+        return False, False, False, False
+    use_mc, use_rel_long, use_rel_trans, use_density_effect = False, True, True, True
+    return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
 
 def _elf_rolloff_factor(Ei):
     Ei = np.asarray(Ei, dtype=float)
@@ -158,16 +203,22 @@ def _q_bounds_scalar_rel(Ei, Tj):
 
     term1 = np.sqrt(T_H * (T_H + 2.0 * MC2_HA))
     term2 = np.sqrt(d   * (d   + 2.0 * MC2_HA))
-    qlo = (term1 - term2) / C_AU
-    qhi = (term1 + term2) / C_AU
-    if (not np.isfinite(qlo)) or (not np.isfinite(qhi)) or (qhi <= qlo):
+    s12 = term1 + term2
+    if (not np.isfinite(s12)) or (s12 <= 0.0):
+        return 0.0, 0.0
+    num = Ei_H * (2.0 * T_H - Ei_H + 2.0 * MC2_HA)
+    qlo = (num / s12) / C_AU
+    qhi = s12 / C_AU
+    if (not np.isfinite(qlo)) or (not np.isfinite(qhi)) or (qhi <= qlo) or (qlo <= 0.0):
         return 0.0, 0.0
     return float(qlo), float(qhi)
 
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for channels (excitation / ionization)
 # ----------------------------------------------------------------------
-def _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=400):
+def _integrate_channel_single_E(
+    Ei, Tj, idx, channel_type, s, C, Nq=400, use_rel_bounds=False
+):
     """
     Compute inner integral over q:
 
@@ -175,12 +226,16 @@ def _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=400):
 
     for one excitation or ionization channel, at fixed Ei, Tj.
     """
-    qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
-    if qhi <= qlo:
+    if use_rel_bounds:
+        qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
+    else:
+        qlo, qhi = _q_bounds_scalar(Ei, Tj, mass)
+    if qhi <= qlo or qlo <= 0.0:
         return 0.0
 
     # q-grid
-    qvals = np.linspace(qlo, qhi, Nq)
+    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
+    qvals = np.exp(xi)
     E_arr = np.array([Ei], float)
 
     # Vectorized dielectric functions at (Ei, qvals)
@@ -200,21 +255,18 @@ def _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=400):
         raise ValueError("channel_type must be 'excitation' or 'ionization'")
 
     vals = vals * _elf_rolloff_factor(Ei)
-    integrand = vals
-    dq = np.diff(qvals)
-
-    # Use mid/edge trapezoid form and divide by qvals[1:], avoids small q-value infinities
-    accum = float(np.sum(0.5 * dq * (integrand[:-1] + integrand[1:]) / qvals[1:]))
+    accum = float(_simpson_integrate(vals, xi))
 
     int_cons = 1.0 / (np.pi * a0 * N * Tj)
     return float(int_cons * accum)
 
 def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
-    if qhi <= qlo:
+    if qhi <= qlo or qlo <= 0.0:
         return 0.0
 
-    qvals = np.linspace(qlo, qhi, Nq)
+    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
+    qvals = np.exp(xi)
     E_arr = np.array([Ei], float)
 
     e1 = model.epsilon1_valence_Eq(E_arr, qvals, s, C)
@@ -242,7 +294,7 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     kernel = factor1 * factor2 * factor3
 
     integrand = vals * kernel
-    accum = float(_simpson_integrate(integrand, qvals))
+    accum = float(_simpson_integrate(integrand * qvals, xi))
 
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
@@ -321,7 +373,7 @@ def _sigma_pwba_excitation_shifted_T(s, C, Tshift, Tj, k, NE=400, Nq=400, use_re
     if Emin >= Emax:
         return 0.0
 
-    Egrid = np.linspace(Emin, Emax, NE)
+    Egrid = _energy_grid(Emin, Emax, NE)
     vals = np.empty_like(Egrid)
     for i, Ei in enumerate(Egrid):
         vals[i] = _dsigma_pwba_dE(Ei, Tshift, k, "excitation", s, C, Nq=Nq, use_rel=use_rel)
@@ -340,7 +392,7 @@ def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
     if Emin >= Emax:
         return 0.0
 
-    Egrid = np.linspace(Emin, Emax, NE)
+    Egrid = _energy_grid(Emin, Emax, NE)
     vals = np.empty_like(Egrid)
     for i, Ei in enumerate(Egrid):
         vals[i] = _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=Nq, use_rel=use_rel)
@@ -348,18 +400,58 @@ def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
     vals = np.where(vals < 0.0, 0.0, vals)
     return float(_simpson_integrate(vals, Egrid))
 
+def _total_transverse_sigma(s, C, Tj, NE=400, use_density_effect=False):
+    """Total transverse (valence-only) sigma via the optical-limit kernel."""
+    Tj = float(Tj)
+    exc_total = 0.0
+    ion_total = 0.0
+
+    for k in range(len(s.excitations)):
+        Emin = float(s.excitations[k].Bth)
+        Emax = Tj
+        if Emin >= Emax:
+            continue
+        Egrid = _energy_grid(Emin, Emax, NE)
+        vals = np.empty_like(Egrid)
+        for i, Ei in enumerate(Egrid):
+            vals[i] = _integrate_channel_single_E_trans(
+                Ei, Tj, k, "excitation", s, C, use_density_effect=use_density_effect
+            )
+        exc_total += float(_simpson_integrate(vals, Egrid))
+
+    for j in range(len(s.ionizations)):
+        B = float(getattr(s.ionizations[j], "Bth"))
+        Emin = B
+        Emax = 0.5 * (Tj + B)
+        if Emin >= Emax:
+            continue
+        Egrid = _energy_grid(Emin, Emax, NE)
+        vals = np.empty_like(Egrid)
+        for i, Ei in enumerate(Egrid):
+            vals[i] = _integrate_channel_single_E_trans(
+                Ei, Tj, j, "ionization", s, C, use_density_effect=use_density_effect
+            )
+        ion_total += float(_simpson_integrate(vals, Egrid))
+
+    return float(exc_total + ion_total)
+
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for K-shell channel
 # ----------------------------------------------------------------------
-def _integrate_kshell_single_E(Ei, Tj, s, Nq=400, include_kshell=True):
+def _integrate_kshell_single_E(
+    Ei, Tj, s, Nq=400, include_kshell=True, use_rel_bounds=False
+):
     """
     Inner integral over q for K-shell:
     """
     if not include_kshell or (s.kshell is None):
         return 0.0
 
-    qlo, qhi = _q_bounds_scalar(Ei, Tj, mass)
-    if qhi <= qlo:
+    if use_rel_bounds:
+        qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
+    else:
+        qlo, qhi = _q_bounds_scalar(Ei, Tj, mass)
+    if qhi <= qlo or qlo <= 0.0:
         return 0.0
 
     ks_arr = model.epsilon2_Kshell_E0(np.array([Ei], float), s)
@@ -368,10 +460,8 @@ def _integrate_kshell_single_E(Ei, Tj, s, Nq=400, include_kshell=True):
         return 0.0
 
     ks_val *= float(_elf_rolloff_factor(Ei))
-    qvals = np.linspace(qlo, qhi, Nq)
-
-    dq = np.diff(qvals)
-    accum = float(np.sum(0.5 * dq * (ks_val + ks_val) / qvals[1:]))
+    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
+    accum = float(_simpson_integrate(np.full_like(xi, ks_val), xi))
 
     int_cons = 1.0 / (np.pi * a0 * N * Tj)
     return float(int_cons * accum)
@@ -384,7 +474,7 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
         return 0.0
 
     qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
-    if qhi <= qlo:
+    if qhi <= qlo or qlo <= 0.0:
         return 0.0
 
     # K-shell imaginary part at optical limit, with threshold gating
@@ -394,7 +484,8 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
         return 0.0
 
     ks_val *= float(_elf_rolloff_factor(Ei))
-    qvals = np.linspace(qlo, qhi, Nq)
+    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
+    qvals = np.exp(xi)
 
     # Q(q) in eV
     Q_eV = Q_q(qvals)
@@ -407,7 +498,7 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     kernel = factor1 * factor2 * factor3
 
     integrand = ks_val * kernel
-    accum = float(_simpson_integrate(integrand, qvals))
+    accum = float(_simpson_integrate(integrand * qvals, xi))
 
     b2 = beta2_rel(Tj)
     b2 = max(b2, np.finfo(float).tiny)
@@ -478,14 +569,16 @@ def integrate_elf_channels_per_channel_q(
             results["excitation_int_rel_trans"].append(np.array([], float))
             continue
 
-        Egrid = np.linspace(Emin, Emax, NE)
+        Egrid = _energy_grid(Emin, Emax, NE)
         vals = np.empty_like(Egrid)
         vals_rel = np.zeros_like(Egrid)
         vals_rel_trans = np.zeros_like(Egrid)
 
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
-            vals[i] = _integrate_channel_single_E(Ei, T, k, "excitation", s, C, Nq=Nq)
+            vals[i] = _integrate_channel_single_E(
+                Ei, T, k, "excitation", s, C, Nq=Nq, use_rel_bounds=use_rel_long
+            )
 
             # Relativistic-longitudinal corrected inner-q integral
             if use_rel_long:
@@ -511,14 +604,16 @@ def integrate_elf_channels_per_channel_q(
             results["ionization_int_rel_trans"].append(np.array([], float))
             continue
 
-        Egrid = np.linspace(Emin, Emax, NE)
+        Egrid = _energy_grid(Emin, Emax, NE)
         vals = np.empty_like(Egrid)
         vals_rel = np.zeros_like(Egrid)
         vals_rel_trans = np.zeros_like(Egrid)
 
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
-            vals[i] = _integrate_channel_single_E(Ei, T, j, "ionization", s, C, Nq=Nq)
+            vals[i] = _integrate_channel_single_E(
+                Ei, T, j, "ionization", s, C, Nq=Nq, use_rel_bounds=use_rel_long
+            )
 
             # Relativistic-longitudinal corrected inner-q integral
             if use_rel_long:
@@ -536,14 +631,14 @@ def integrate_elf_channels_per_channel_q(
 
     # ------------------- K-shell -----------------------
     if (kshell_Emin is not None) and (kshell_Emin < kshell_Emax):
-        Egrid = np.linspace(kshell_Emin, kshell_Emax, NE)
+        Egrid = _energy_grid(kshell_Emin, kshell_Emax, NE)
         vals = np.empty_like(Egrid)
         vals_rel = np.zeros_like(Egrid)
 
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_kshell_single_E(
-                Ei, T, s, Nq=Nq, include_kshell=include_kshell
+                Ei, T, s, Nq=Nq, include_kshell=include_kshell, use_rel_bounds=use_rel_long
             )
 
             # Relativistic-longitudinal corrected inner-q integral
@@ -565,8 +660,8 @@ def integrate_elf_double_integral(
     s,
     C,
     T,
-    NE=1000,
-    Nq=1000,
+    NE=200,
+    Nq=200,
     include_kshell=True,
     use_mott_coulomb=False,
 ):
@@ -575,7 +670,7 @@ def integrate_elf_double_integral(
     """
 
     use_mc, use_rel_long, use_rel_trans, use_density_effect = _regime_flags(T)
-    if not use_mott_coulomb:
+    if (not use_mott_coulomb) or (not APPLY_MOTT_COULOMB):
         use_mc = False
 
     # 1) Inner q-integrals as functions of E
@@ -653,6 +748,13 @@ def integrate_elf_double_integral(
         total_sigma_rel = valence_sigma_rel
     total_sigma_rel_trans = valence_sigma_rel_trans
     total_sigma_rel_total = total_sigma_rel + total_sigma_rel_trans
+    valence_sigma_rel_trans_no_density = None
+    total_sigma_rel_trans_no_density = None
+    if use_rel_trans and use_density_effect:
+        valence_sigma_rel_trans_no_density = _total_transverse_sigma(
+            s, C, T, NE=NE, use_density_effect=False
+        )
+        total_sigma_rel_trans_no_density = valence_sigma_rel_trans_no_density
 
     # -------------------- Mott-Coulomb --------------------
     exc_sigma_mc = None
@@ -744,9 +846,11 @@ def integrate_elf_double_integral(
         "kshell_sigma_rel": kshell_sigma_rel,
         "valence_sigma_rel": valence_sigma_rel,
         "valence_sigma_rel_trans": valence_sigma_rel_trans,
+        "valence_sigma_rel_trans_no_density": valence_sigma_rel_trans_no_density,
 
         "total_sigma_rel": total_sigma_rel,
         "total_sigma_rel_trans": total_sigma_rel_trans,
+        "total_sigma_rel_trans_no_density": total_sigma_rel_trans_no_density,
         "total_sigma_rel_total": total_sigma_rel_total,
 
         "total_sigma_plus_rel": total_sigma_plus_rel,
@@ -1031,6 +1135,183 @@ def plot_total_cross_section(
     return ax
 
 # ----------------------------------------------------------------------
+# Logging: per-energy corrections
+# ----------------------------------------------------------------------
+def _compute_correction_row(T, sigma):
+    Tj = float(T)
+    use_mc, use_rel_long, use_rel_trans, use_density_effect = _regime_flags(Tj)
+    if sigma.get("total_sigma_mc", None) is None:
+        use_mc = False
+
+    pwba = float(sigma.get("total_sigma_pwba", 0.0) or 0.0)
+    corrected = float(sigma.get("total_sigma", 0.0) or 0.0)
+
+    total_mc = sigma.get("total_sigma_mc", None)
+    corr_mc = float(total_mc) - pwba if total_mc is not None else 0.0
+    corr_rel_long = float(sigma.get("total_sigma_rel", 0.0) or 0.0)
+
+    corr_density = 0.0
+    trans_no_density = sigma.get("total_sigma_rel_trans_no_density", None)
+    if use_density_effect and trans_no_density is not None:
+        corr_rel_trans = float(trans_no_density)
+        corr_density = float(sigma.get("total_sigma_rel_trans", 0.0) or 0.0) - corr_rel_trans
+    else:
+        corr_rel_trans = float(sigma.get("total_sigma_rel_trans", 0.0) or 0.0)
+
+    return {
+        "T_eV": Tj,
+        "sigma_pwba": pwba,
+        "corr_stage1_mc": corr_mc,
+        "corr_stage2_rel_long": corr_rel_long,
+        "corr_stage3_rel_trans": corr_rel_trans,
+        "corr_stage4_density": corr_density,
+        "sigma_corrected": corrected,
+        "use_mc": int(use_mc),
+        "use_rel_long": int(use_rel_long),
+        "use_rel_trans": int(use_rel_trans),
+        "use_density_effect": int(use_density_effect),
+    }
+
+def save_cross_section_corrections_npz(T_list, sigma_list, out_path=None):
+    """
+    Save PWBA, per-stage correction terms, corrected totals, and per-channel
+    cross sections for each energy to an NPZ file.
+    """
+    if out_path is None:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = OUTPUT_DIR / "cross_section_corrections.npz"
+
+    T_arr = np.asarray(T_list, dtype=float)
+    nT = len(T_arr)
+    n_exc = len(sigma_list[0].get("excitation_sigma_pwba", [])) if nT else 0
+    n_ion = len(sigma_list[0].get("ionization_sigma_pwba", [])) if nT else 0
+
+    def _stack_channel(key, n_chan):
+        arr = np.zeros((nT, n_chan), float)
+        for i, sigma in enumerate(sigma_list):
+            vals = sigma.get(key, None)
+            if vals is None:
+                continue
+            for j in range(min(n_chan, len(vals))):
+                arr[i, j] = float(vals[j])
+        return arr
+
+    rows = [_compute_correction_row(T, sigma) for T, sigma in zip(T_list, sigma_list)]
+    pwba_total = np.array([row["sigma_pwba"] for row in rows], float)
+    corr_mc = np.array([row["corr_stage1_mc"] for row in rows], float)
+    corr_rel_long = np.array([row["corr_stage2_rel_long"] for row in rows], float)
+    corr_rel_trans = np.array([row["corr_stage3_rel_trans"] for row in rows], float)
+    corr_density = np.array([row["corr_stage4_density"] for row in rows], float)
+    corrected_total = np.array([row["sigma_corrected"] for row in rows], float)
+    use_mc = np.array([row["use_mc"] for row in rows], int)
+    use_rel_long = np.array([row["use_rel_long"] for row in rows], int)
+    use_rel_trans = np.array([row["use_rel_trans"] for row in rows], int)
+    use_density_effect = np.array([row["use_density_effect"] for row in rows], int)
+
+    exc_pwba = _stack_channel("excitation_sigma_pwba", n_exc)
+    ion_pwba = _stack_channel("ionization_sigma_pwba", n_ion)
+    exc_rel_long = _stack_channel("excitation_sigma_rel", n_exc)
+    ion_rel_long = _stack_channel("ionization_sigma_rel", n_ion)
+    exc_rel_trans = _stack_channel("excitation_sigma_rel_trans", n_exc)
+    ion_rel_trans = _stack_channel("ionization_sigma_rel_trans", n_ion)
+    exc_mc = _stack_channel("excitation_sigma_mc", n_exc)
+    ion_mc = _stack_channel("ionization_sigma_mc", n_ion)
+
+    exc_selected = np.zeros((nT, n_exc), float)
+    ion_selected = np.zeros((nT, n_ion), float)
+    for i, (Tj, sigma) in enumerate(zip(T_arr, sigma_list)):
+        use_mc_i, use_rel_long_i, use_rel_trans_i, _ = _regime_flags(Tj)
+        if sigma.get("total_sigma_mc", None) is None:
+            use_mc_i = False
+        if use_mc_i:
+            exc_selected[i, :] = exc_mc[i, :]
+            ion_selected[i, :] = ion_mc[i, :]
+        elif use_rel_long_i:
+            if use_rel_trans_i:
+                exc_selected[i, :] = exc_rel_long[i, :] + exc_rel_trans[i, :]
+                ion_selected[i, :] = ion_rel_long[i, :] + ion_rel_trans[i, :]
+            else:
+                exc_selected[i, :] = exc_rel_long[i, :]
+                ion_selected[i, :] = ion_rel_long[i, :]
+        else:
+            exc_selected[i, :] = exc_pwba[i, :]
+            ion_selected[i, :] = ion_pwba[i, :]
+
+    np.savez(
+        out_path,
+        T_eV=T_arr,
+        total_sigma_pwba=pwba_total,
+        total_sigma_corrected=corrected_total,
+        corr_stage1_mc=corr_mc,
+        corr_stage2_rel_long=corr_rel_long,
+        corr_stage3_rel_trans=corr_rel_trans,
+        corr_stage4_density=corr_density,
+        use_mc=use_mc,
+        use_rel_long=use_rel_long,
+        use_rel_trans=use_rel_trans,
+        use_density_effect=use_density_effect,
+        excitation_sigma_pwba=exc_pwba,
+        ionization_sigma_pwba=ion_pwba,
+        excitation_sigma_rel_long=exc_rel_long,
+        ionization_sigma_rel_long=ion_rel_long,
+        excitation_sigma_rel_trans=exc_rel_trans,
+        ionization_sigma_rel_trans=ion_rel_trans,
+        excitation_sigma_mc=exc_mc,
+        ionization_sigma_mc=ion_mc,
+        excitation_sigma_selected=exc_selected,
+        ionization_sigma_selected=ion_selected,
+    )
+
+    print(f"Saved correction log to {out_path}")
+
+def plot_total_cross_section_corrections(T_list, sigma_list, out_path=None):
+    """
+    Plot PWBA vs corrected totals and per-stage correction terms vs energy.
+    """
+    if out_path is None:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = OUTPUT_DIR / "cross_section_corrections.png"
+
+    rows = [_compute_correction_row(T, sigma) for T, sigma in zip(T_list, sigma_list)]
+    T_arr = np.array([row["T_eV"] for row in rows], float)
+    pwba = np.array([row["sigma_pwba"] for row in rows], float)
+    corrected = np.array([row["sigma_corrected"] for row in rows], float)
+    corr_mc = np.array([row["corr_stage1_mc"] for row in rows], float)
+    corr_rel_long = np.array([row["corr_stage2_rel_long"] for row in rows], float)
+    corr_rel_trans = np.array([row["corr_stage3_rel_trans"] for row in rows], float)
+    corr_density = np.array([row["corr_stage4_density"] for row in rows], float)
+
+    abs_vals = np.abs(
+        np.concatenate([corr_mc, corr_rel_long, corr_rel_trans, corr_density])
+    )
+    abs_vals = abs_vals[abs_vals > 0.0]
+    linthresh = float(np.min(abs_vals)) if abs_vals.size else 1e-40
+
+    fig, (ax_tot, ax_corr) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+
+    ax_tot.loglog(T_arr, pwba, lw=2, ls=":", label="PWBA total")
+    ax_tot.loglog(T_arr, corrected, lw=2, ls="-", label="Corrected total")
+    ax_tot.set_ylabel("Total cross section sigma(T)")
+    ax_tot.grid(True, which="both", ls="--", alpha=0.3)
+    ax_tot.legend(loc="best", fontsize=9)
+
+    ax_corr.set_xscale("log")
+    ax_corr.set_yscale("symlog", linthresh=linthresh)
+    ax_corr.plot(T_arr, corr_mc, lw=1.8, label="Stage 1: MC")
+    ax_corr.plot(T_arr, corr_rel_long, lw=1.8, label="Stage 2: Rel long")
+    ax_corr.plot(T_arr, corr_rel_trans, lw=1.8, label="Stage 3: Rel trans")
+    ax_corr.plot(T_arr, corr_density, lw=1.8, label="Stage 4: Density effect")
+    ax_corr.set_xlabel("Incident energy T (eV)")
+    ax_corr.set_ylabel("Correction term")
+    ax_corr.grid(True, which="both", ls="--", alpha=0.3)
+    ax_corr.legend(loc="best", fontsize=9)
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+    print(f"Saved correction diagnostics to {out_path}")
+
+# ----------------------------------------------------------------------
 # Workers for parallel computing
 # ----------------------------------------------------------------------
 # Globals set once per worker process
@@ -1038,13 +1319,31 @@ _WORKER_S = None
 _WORKER_C = None
 _WORKER_KW = None
 
-def _init_worker(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb):
+def _init_worker(
+    a_vec,
+    b_vec,
+    c_vec,
+    NE,
+    Nq,
+    include_kshell,
+    use_mott_coulomb,
+    apply_regime_ii,
+    apply_regime_iii,
+    apply_regime_iv,
+    apply_mc,
+):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
     """
     global _WORKER_S, _WORKER_C, _WORKER_KW
 
     import emfietzoglou_model_finite_q as model
+    _set_regime_corrections(
+        apply_regime_ii=apply_regime_ii,
+        apply_regime_iii=apply_regime_iii,
+        apply_regime_iv=apply_regime_iv,
+    )
+    _set_mc_correction(apply_mc=apply_mc)
     _WORKER_S = model.epsilon_optical('amorphous')
     _WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
     _WORKER_KW = dict(
@@ -1073,7 +1372,7 @@ def main():
     C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
 
     # Energy grid (eV)
-    T_list = np.logspace(1, 6, 40)
+    T_list = np.logspace(1, 6, 100)
 
     print("Computing double-integrated cross sections (parallel over T)...")
 
@@ -1082,8 +1381,19 @@ def main():
     Nq = 100
     include_kshell = True
     use_mott_coulomb = True
+    apply_mc = True
+    apply_regime_ii = True
+    apply_regime_iii = True
+    apply_regime_iv = True
+
+    _set_regime_corrections(
+        apply_regime_ii=apply_regime_ii,
+        apply_regime_iii=apply_regime_iii,
+        apply_regime_iv=apply_regime_iv,
+    )
+    _set_mc_correction(apply_mc=apply_mc)
     # Use ~ (CPU cores) workers;
-    max_workers = max(1, (os.cpu_count() or 4) - 1)
+    max_workers = 12
     print("Using %i workers" %(max_workers))
 
     results_by_T = {}
@@ -1091,7 +1401,19 @@ def main():
     with ProcessPoolExecutor(
             max_workers=max_workers,
             initializer=_init_worker,
-            initargs=(a_vec, b_vec, c_vec, NE, Nq, include_kshell, use_mott_coulomb),
+            initargs=(
+                a_vec,
+                b_vec,
+                c_vec,
+                NE,
+                Nq,
+                include_kshell,
+                use_mott_coulomb,
+                apply_regime_ii,
+                apply_regime_iii,
+                apply_regime_iv,
+                apply_mc,
+            ),
     ) as ex:
         futures = [ex.submit(_compute_for_T, T) for T in T_list]
 
@@ -1101,6 +1423,10 @@ def main():
 
     # Restore original T order
     sigma_list = [results_by_T[float(T)] for T in T_list]
+
+    # ----------------- Log corrections per energy -----------------
+    save_cross_section_corrections_npz(T_list, sigma_list)
+    plot_total_cross_section_corrections(T_list, sigma_list)
 
     # ----------------- Plot 1: comparison per channel (PWBA vs selected corrections) -----------------
     fig_ion, ax_ion = plt.subplots(figsize=(14, 9))
