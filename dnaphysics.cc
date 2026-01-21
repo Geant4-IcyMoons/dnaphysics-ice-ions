@@ -39,12 +39,17 @@
 #include "ActionInitialization.hh"
 #include "DetectorConstruction.hh"
 #include "PhysicsList.hh"
+#include "PhysicsList_Water.hh"
 
 #include "G4RunManagerFactory.hh"
 #include "G4Types.hh"
 #include "G4UIExecutive.hh"
+#include "G4VModularPhysicsList.hh"
 #include "Randomize.hh"
+#include <cctype>
+#include <cstdlib>
 #include <ctime>
+#include <string>
 #include "G4UImanager.hh"
 #include "G4VisExecutive.hh"
 
@@ -66,7 +71,21 @@ int main(int argc, char** argv)
     runManager->SetNumberOfThreads(2);
 
   // Set mandatory user initialization classes
-  auto physlist = new PhysicsList();
+  const char* phys_env = std::getenv("DNA_PHYSICS");
+  std::string phys_choice = phys_env ? phys_env : "ice";
+  for (auto& c : phys_choice) c = static_cast<char>(std::tolower(c));
+
+  G4VModularPhysicsList* physlist = nullptr;
+  if (phys_choice == "water") {
+    physlist = new PhysicsList_Water();
+  } else {
+    if (phys_choice != "ice") {
+      G4cout << "### dnaphysics Warning: unknown DNA_PHYSICS='"
+             << phys_choice << "', defaulting to ice." << G4endl;
+    }
+    physlist = new PhysicsList();
+  }
+  G4cout << "Using physics list: " << phys_choice << G4endl;
   runManager->SetUserInitialization(new DetectorConstruction(physlist));
   runManager->SetUserInitialization(physlist);
 

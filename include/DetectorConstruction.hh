@@ -46,14 +46,14 @@
 #include "G4VisAttributes.hh"
 
 class DetectorMessenger;
-class PhysicsList;
+class G4VModularPhysicsList;
 class G4LogicalVolume;
 class G4PVPlacement;
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
   public:
-    DetectorConstruction(PhysicsList*);
+    DetectorConstruction(G4VModularPhysicsList*);
 
     ~DetectorConstruction() override;
     G4VPhysicalVolume* Construct() override;

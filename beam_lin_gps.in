@@ -5,7 +5,7 @@
 
 # ===== Parameters =====
 # N = number of particles AND threads
-/control/alias N 1000000
+/control/alias N 10000
 /control/alias EMIN 2      # min energy value (numeric)
 /control/alias EMAX 100000      # max energy value (numeric)
 /control/alias EUNIT eV     # unit for energies
@@ -17,7 +17,7 @@
 /dna/test/setMat G4_WATER
 
 # Size of World volume
-/dna/test/setSize 2 um
+/dna/test/setSize 0.1 um
 
 # Atomic deexcitation
 /process/em/fluo true

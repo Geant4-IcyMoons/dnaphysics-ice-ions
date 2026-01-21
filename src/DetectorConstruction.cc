@@ -38,7 +38,7 @@
 
 #include "DetectorConstruction.hh"
 #include "DetectorMessenger.hh"
-#include "PhysicsList.hh"
+#include "G4VModularPhysicsList.hh"
 
 #include "G4LogicalVolumeStore.hh"
 #include "G4NistManager.hh"
@@ -48,7 +48,7 @@
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-DetectorConstruction::DetectorConstruction(PhysicsList* ptr)
+DetectorConstruction::DetectorConstruction(G4VModularPhysicsList* ptr)
   : G4VUserDetectorConstruction(),
     fpWaterMaterial(nullptr),
     fLogicWorld(nullptr),

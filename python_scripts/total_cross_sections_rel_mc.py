@@ -1130,6 +1130,79 @@ def plot_total_cross_section(
     ax.set_xlabel("Incident energy T (eV)")
     ax.set_ylabel("Total cross section sigma(T)")
     ax.set_title("Total cross section: PWBA vs all corrections")
+    ax.grid(True, which="major", ls="-", alpha=0.3)
+    ax.legend(loc="best", fontsize=9)
+    return ax
+
+def plot_corrected_exc_ion_scaled(
+        T_list, sigma_list,
+        ax=None, linewidth=2, alpha=0.9, figsize=(12, 8), scale=1e-22):
+    """
+    Plot corrected excitation and ionization channels (dashed),
+    scaled by the provided factor.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    T_arr = np.asarray(T_list, dtype=float)
+    T_keV = T_arr * 1e-3
+    scale_inv = 1.0 / scale if scale != 0.0 else 0.0
+    exc_colors = ["#1f77b4", "#2ca02c", "#17becf", "#8c564b", "#9467bd"]
+    ion_colors = ["#d62728", "#ff7f0e", "#bcbd22", "#e377c2", "#7f7f7f"]
+
+    n_exc = len(sigma_list[0].get("excitation_sigma_pwba", [])) if sigma_list else 0
+    n_ion = len(sigma_list[0].get("ionization_sigma_pwba", [])) if sigma_list else 0
+
+    exc_scaled = np.zeros((len(T_arr), n_exc), float)
+    ion_scaled = np.zeros((len(T_arr), n_ion), float)
+
+    for i, Tj in enumerate(T_arr):
+        sigma = sigma_list[i]
+        use_mc, use_rel_long, use_rel_trans, _ = _regime_flags(Tj)
+        if sigma.get("total_sigma_mc", None) is None:
+            use_mc = False
+
+        if use_mc:
+            exc_vals = sigma.get("excitation_sigma_mc", []) or []
+            ion_vals = sigma.get("ionization_sigma_mc", []) or []
+        elif use_rel_long:
+            exc_vals = sigma.get("excitation_sigma_rel", []) or []
+            ion_vals = sigma.get("ionization_sigma_rel", []) or []
+            if use_rel_trans:
+                exc_vals = [a + b for a, b in zip(exc_vals, (sigma.get("excitation_sigma_rel_trans", []) or []))]
+                ion_vals = [a + b for a, b in zip(ion_vals, (sigma.get("ionization_sigma_rel_trans", []) or []))]
+        else:
+            exc_vals = sigma.get("excitation_sigma_pwba", []) or []
+            ion_vals = sigma.get("ionization_sigma_pwba", []) or []
+
+        for j in range(min(n_exc, len(exc_vals))):
+            exc_scaled[i, j] = float(exc_vals[j]) / scale
+        for j in range(min(n_ion, len(ion_vals))):
+            ion_scaled[i, j] = float(ion_vals[j]) / scale
+
+    for j in range(n_exc):
+        ax.loglog(
+            T_keV,
+            exc_scaled[:, j],
+            lw=linewidth,
+            alpha=alpha,
+            ls="--",
+            color=exc_colors[j % len(exc_colors)],
+            label=f"Exc {j+1} corrected",
+        )
+    for j in range(n_ion):
+        ax.loglog(
+            T_keV,
+            ion_scaled[:, j],
+            lw=linewidth,
+            alpha=alpha,
+            ls="--",
+            color=ion_colors[j % len(ion_colors)],
+            label=f"Ion {j+1} corrected",
+        )
+    ax.set_xlabel("Incident energy T (keV)")
+    ax.set_ylabel(f"Cross section × {scale_inv:.0e}")
+    ax.set_title("Corrected excitation and ionization channels (scaled)")
     ax.grid(True, which="both", ls="--", alpha=0.3)
     ax.legend(loc="best", fontsize=9)
     return ax
@@ -1372,13 +1445,13 @@ def main():
     C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
 
     # Energy grid (eV)
-    T_list = np.logspace(1, 6, 100)
+    T_list = np.logspace(-1, 7, 400)
 
     print("Computing double-integrated cross sections (parallel over T)...")
 
     # Computing Choices
-    NE = 100
-    Nq = 100
+    NE = 200
+    Nq = 200
     include_kshell = True
     use_mott_coulomb = True
     apply_mc = True
@@ -1427,6 +1500,16 @@ def main():
     # ----------------- Log corrections per energy -----------------
     save_cross_section_corrections_npz(T_list, sigma_list)
     plot_total_cross_section_corrections(T_list, sigma_list)
+
+    # ----------------- Plot 0: corrected excitation/ionization (scaled) -----------------
+    fig, ax = plt.subplots(figsize=(12, 8))
+    plot_corrected_exc_ion_scaled(T_list, sigma_list, ax=ax, scale=1e-22)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUTPUT_DIR / "corrected_excitation_ionization_scaled.png"
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+    print(f"Saved corrected excitation/ionization plot to {out_path}")
 
     # ----------------- Plot 1: comparison per channel (PWBA vs selected corrections) -----------------
     fig_ion, ax_ion = plt.subplots(figsize=(14, 9))

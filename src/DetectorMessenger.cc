@@ -50,7 +50,7 @@
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-DetectorMessenger::DetectorMessenger(DetectorConstruction* Det, PhysicsList* PL)
+DetectorMessenger::DetectorMessenger(DetectorConstruction* Det, G4VModularPhysicsList* PL)
   : G4UImessenger(), fpDetector(Det), fpPhysList(PL)
 {
   fpDetDir = new G4UIdirectory("/dna/test/");
@@ -117,10 +117,25 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue)
 {
   if (command == fpMaterCmd) fpDetector->SetMaterial(newValue);
 
-  if (command == fpPhysCmd) fpPhysList->AddPhysics(newValue);
+  if (command == fpPhysCmd) {
+    auto* phys = dynamic_cast<PhysicsList*>(fpPhysList);
+    if (phys != nullptr) {
+      phys->AddPhysics(newValue);
+    } else {
+      G4cout << "### DetectorMessenger Warning: addPhysics is only supported for PhysicsList (ice)."
+             << G4endl;
+    }
+  }
 
-  if (command == fpTrackingCutCmd)
-    fpPhysList->SetTrackingCut(fpTrackingCutCmd->GetNewBoolValue(newValue));
+  if (command == fpTrackingCutCmd) {
+    auto* phys = dynamic_cast<PhysicsList*>(fpPhysList);
+    if (phys != nullptr) {
+      phys->SetTrackingCut(fpTrackingCutCmd->GetNewBoolValue(newValue));
+    } else {
+      G4cout << "### DetectorMessenger Warning: addIonsTrackingCut is only supported for PhysicsList (ice)."
+             << G4endl;
+    }
+  }
 
   if (command == fDensityCmd)
    {
