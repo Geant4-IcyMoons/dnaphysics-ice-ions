@@ -14,22 +14,31 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from constants import (
     C_AU,
+    CUSTOM_DATA_ROOT_GEANT4,
+    CUSTOM_DATA_ROOT_PROJECT,
     EH,
     EV_TO_HA,
     ELF_ROLLOFF_COEF,
     ELF_ROLLOFF_E0_eV,
+    FONT_COURIER,
+    FONTSIZE_24,
     MC2_HA,
     MC2_eV,
     N,
     OUTPUT_DIR,
+    RC_BASE_ELASTIC,
     REGIME_I_MAX_eV,
     REGIME_II_MAX_eV,
     REGIME_III_MAX_eV,
     REGIME_IV_MAX_eV,
     a0,
     mass,
+    rcparams_with_fontsize,
 )
 import emfietzoglou_model_finite_q as model
+
+# Geant4 Emfietzoglou DCS table scale: file values * scale -> m^2
+EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
 
 # ----------------------------------------------------------------------
 # Constants for integration (from constants.py)
@@ -882,8 +891,8 @@ def plot_full_cross_sections_per_channel(
     T_arr = np.asarray(T_list, dtype=float)
     nT = len(T_arr)
 
-    exc_colors = ["#1f77b4", "#2ca02c", "#17becf", "#8c564b", "#9467bd"]
-    ion_colors = ["#d62728", "#ff7f0e", "#bcbd22", "#e377c2", "#7f7f7f"]
+    exc_colors = ["#08306b", "#08519c", "#2171b5", "#4292c6", "#6baed6"]
+    ion_colors = ["#67000d", "#a50f15", "#cb181d", "#ef3b2c", "#fb6a4a"]
 
     def _get_list(i, key, default):
         return sigma_list[i].get(key, default)
@@ -920,14 +929,14 @@ def plot_full_cross_sections_per_channel(
             color=ion_colors[j % len(ion_colors)],
             lw=linewidth, alpha=alpha,
             ls="--",
-            label=f"Ion {j+1} PWBA",
+            label=f"Ion. {j+1} PWBA",
         )
         ax_ion.loglog(
             T_arr, y_model,
             color=ion_colors[j % len(ion_colors)],
             lw=linewidth, alpha=alpha,
             ls="-",
-            label=f"Ion {j+1} Default model",
+            label=f"Ion. {j+1} Default model",
         )
 
     ax_ion.set_xlabel("Incident energy T (eV)")
@@ -968,14 +977,14 @@ def plot_full_cross_sections_per_channel(
             color=exc_colors[k % len(exc_colors)],
             lw=linewidth, alpha=alpha,
             ls="--",
-            label=f"Exc {k+1} PWBA",
+            label=f"Exc. {k+1} PWBA",
         )
         ax_exc.loglog(
             T_arr, y_model,
             color=exc_colors[k % len(exc_colors)],
             lw=linewidth, alpha=alpha,
             ls="-",
-            label=f"Exc {k+1} Default model",
+            label=f"Exc. {k+1} Default model",
         )
 
     ax_exc.set_xlabel("Incident energy T (eV)")
@@ -1012,8 +1021,8 @@ def plot_relativistic_component_per_channel(
     Tm = T_arr[mask]
     idxs = np.where(mask)[0]
 
-    exc_colors = ["#1f77b4", "#2ca02c", "#17becf", "#8c564b", "#9467bd"]
-    ion_colors = ["#d62728", "#ff7f0e", "#bcbd22", "#e377c2", "#7f7f7f"]
+    exc_colors = ["#08306b", "#08519c", "#2171b5", "#4292c6", "#6baed6"]
+    ion_colors = ["#67000d", "#a50f15", "#cb181d", "#ef3b2c", "#fb6a4a"]
 
     n_exc = len(s.excitations)
     n_ion = len(s.ionizations)
@@ -1042,13 +1051,13 @@ def plot_relativistic_component_per_channel(
             Tm, y_long,
             color=ion_colors[j % len(ion_colors)],
             lw=linewidth, alpha=alpha,
-            label=f"Ion {j+1} Long",
+            label=f"Ion. {j+1} Long",
         )
         ax_ion.loglog(
             Tm, y_trans,
             color=ion_colors[j % len(ion_colors)],
             lw=linewidth, alpha=alpha, ls="--",
-            label=f"Ion {j+1} Trans",
+            label=f"Ion. {j+1} Trans",
         )
 
     ax_ion.set_xlabel("Incident energy T (eV)")
@@ -1071,13 +1080,13 @@ def plot_relativistic_component_per_channel(
             Tm, y_long,
             color=exc_colors[k % len(exc_colors)],
             lw=linewidth, alpha=alpha,
-            label=f"Exc {k+1} Long",
+            label=f"Exc. {k+1} Long",
         )
         ax_exc.loglog(
             Tm, y_trans,
             color=exc_colors[k % len(exc_colors)],
             lw=linewidth, alpha=alpha, ls="--",
-            label=f"Exc {k+1} Trans",
+            label=f"Exc. {k+1} Trans",
         )
 
     ax_exc.set_xlabel("Incident energy T (eV)")
@@ -1130,13 +1139,12 @@ def plot_total_cross_section(
     ax.set_xlabel("Incident energy T (eV)")
     ax.set_ylabel("Total cross section sigma(T)")
     ax.set_title("Total cross section: PWBA vs all corrections")
-    ax.grid(True, which="major", ls="-", alpha=0.3)
     ax.legend(loc="best", fontsize=9)
     return ax
 
 def plot_corrected_exc_ion_scaled(
         T_list, sigma_list,
-        ax=None, linewidth=2, alpha=0.9, figsize=(12, 8), scale=1e-22):
+        ax=None, linewidth=2, alpha=0.9, figsize=(12, 8)):
     """
     Plot corrected excitation and ionization channels (dashed),
     scaled by the provided factor.
@@ -1145,10 +1153,8 @@ def plot_corrected_exc_ion_scaled(
         fig, ax = plt.subplots(figsize=figsize)
 
     T_arr = np.asarray(T_list, dtype=float)
-    T_keV = T_arr * 1e-3
-    scale_inv = 1.0 / scale if scale != 0.0 else 0.0
-    exc_colors = ["#1f77b4", "#2ca02c", "#17becf", "#8c564b", "#9467bd"]
-    ion_colors = ["#d62728", "#ff7f0e", "#bcbd22", "#e377c2", "#7f7f7f"]
+    exc_colors = ["#08306b", "#08519c", "#2171b5", "#4292c6", "#6baed6"]
+    ion_colors = ["#67000d", "#a50f15", "#cb181d", "#ef3b2c", "#fb6a4a"]
 
     n_exc = len(sigma_list[0].get("excitation_sigma_pwba", [])) if sigma_list else 0
     n_ion = len(sigma_list[0].get("ionization_sigma_pwba", [])) if sigma_list else 0
@@ -1176,35 +1182,37 @@ def plot_corrected_exc_ion_scaled(
             ion_vals = sigma.get("ionization_sigma_pwba", []) or []
 
         for j in range(min(n_exc, len(exc_vals))):
-            exc_scaled[i, j] = float(exc_vals[j]) / scale
+            exc_scaled[i, j] = float(exc_vals[j])
         for j in range(min(n_ion, len(ion_vals))):
-            ion_scaled[i, j] = float(ion_vals[j]) / scale
+            ion_scaled[i, j] = float(ion_vals[j])
 
     for j in range(n_exc):
         ax.loglog(
-            T_keV,
+            T_arr,
             exc_scaled[:, j],
             lw=linewidth,
             alpha=alpha,
-            ls="--",
+            ls="-",
             color=exc_colors[j % len(exc_colors)],
-            label=f"Exc {j+1} corrected",
+            label=f"{j+1}",
         )
     for j in range(n_ion):
         ax.loglog(
-            T_keV,
+            T_arr,
             ion_scaled[:, j],
             lw=linewidth,
             alpha=alpha,
-            ls="--",
+            ls="-",
             color=ion_colors[j % len(ion_colors)],
-            label=f"Ion {j+1} corrected",
+            label=f"{j+1}",
         )
-    ax.set_xlabel("Incident energy T (keV)")
-    ax.set_ylabel(f"Cross section × {scale_inv:.0e}")
-    ax.set_title("Corrected excitation and ionization channels (scaled)")
-    ax.grid(True, which="both", ls="--", alpha=0.3)
-    ax.legend(loc="best", fontsize=9)
+    ax.set_xlabel("Electron Energy ($T$; eV)", labelpad=1)
+    ax.set_ylabel(r"Cross-Section (cm$^2$)")
+    ax.set_xlim(1.0, np.max(T_arr))
+    from matplotlib.ticker import LogFormatterMathtext, LogLocator, NullLocator
+    ax.xaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0,), numticks=50))
+    ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
+    ax.xaxis.set_minor_locator(NullLocator())
     return ax
 
 # ----------------------------------------------------------------------
@@ -1245,7 +1253,7 @@ def _compute_correction_row(T, sigma):
         "use_density_effect": int(use_density_effect),
     }
 
-def save_cross_section_corrections_npz(T_list, sigma_list, out_path=None):
+def save_cross_section_corrections_npz(T_list, sigma_list, out_path=None, NE=None, Nq=None, dcs_data=None):
     """
     Save PWBA, per-stage correction terms, corrected totals, and per-channel
     cross sections for each energy to an NPZ file.
@@ -1310,11 +1318,63 @@ def save_cross_section_corrections_npz(T_list, sigma_list, out_path=None):
             exc_selected[i, :] = exc_pwba[i, :]
             ion_selected[i, :] = ion_pwba[i, :]
 
-    np.savez(
-        out_path,
+    total_sigma = np.array([float(s.get("total_sigma", 0.0) or 0.0) for s in sigma_list], float)
+    total_sigma_mc = np.array(
+        [float(s.get("total_sigma_mc", np.nan)) if s.get("total_sigma_mc", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+    total_sigma_rel = np.array(
+        [float(s.get("total_sigma_rel", np.nan)) if s.get("total_sigma_rel", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+    total_sigma_rel_trans = np.array(
+        [float(s.get("total_sigma_rel_trans", np.nan)) if s.get("total_sigma_rel_trans", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+    total_sigma_rel_trans_no_density = np.array(
+        [
+            float(s.get("total_sigma_rel_trans_no_density", np.nan))
+            if s.get("total_sigma_rel_trans_no_density", None) is not None
+            else np.nan
+            for s in sigma_list
+        ],
+        float,
+    )
+    total_sigma_rel_total = np.array(
+        [float(s.get("total_sigma_rel_total", np.nan)) if s.get("total_sigma_rel_total", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+    total_sigma_plus_rel = np.array(
+        [float(s.get("total_sigma_plus_rel", np.nan)) if s.get("total_sigma_plus_rel", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+    total_sigma_plus_rel_total = np.array(
+        [float(s.get("total_sigma_plus_rel_total", np.nan)) if s.get("total_sigma_plus_rel_total", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+    kshell_sigma = np.array(
+        [float(s.get("kshell_sigma", np.nan)) if s.get("kshell_sigma", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+    kshell_sigma_rel = np.array(
+        [float(s.get("kshell_sigma_rel", np.nan)) if s.get("kshell_sigma_rel", None) is not None else np.nan for s in sigma_list],
+        float,
+    )
+
+    np_save_args = dict(
         T_eV=T_arr,
         total_sigma_pwba=pwba_total,
         total_sigma_corrected=corrected_total,
+        total_sigma=total_sigma,
+        total_sigma_mc=total_sigma_mc,
+        total_sigma_rel=total_sigma_rel,
+        total_sigma_rel_trans=total_sigma_rel_trans,
+        total_sigma_rel_trans_no_density=total_sigma_rel_trans_no_density,
+        total_sigma_rel_total=total_sigma_rel_total,
+        total_sigma_plus_rel=total_sigma_plus_rel,
+        total_sigma_plus_rel_total=total_sigma_plus_rel_total,
+        kshell_sigma=kshell_sigma,
+        kshell_sigma_rel=kshell_sigma_rel,
         corr_stage1_mc=corr_mc,
         corr_stage2_rel_long=corr_rel_long,
         corr_stage3_rel_trans=corr_rel_trans,
@@ -1335,7 +1395,495 @@ def save_cross_section_corrections_npz(T_list, sigma_list, out_path=None):
         ionization_sigma_selected=ion_selected,
     )
 
+    if NE is not None:
+        np_save_args["NE"] = int(NE)
+    if Nq is not None:
+        np_save_args["Nq"] = int(Nq)
+
+    if dcs_data is not None:
+        np_save_args["dcs_T_line"] = np.asarray(dcs_data.get("T_line", []), float)
+        np_save_args["dcs_E_line"] = np.asarray(dcs_data.get("E_line", []), float)
+        np_save_args["dcs_exc_vals"] = np.asarray(dcs_data.get("exc_vals", []), float)
+        np_save_args["dcs_ion_vals"] = np.asarray(dcs_data.get("ion_vals", []), float)
+
+    np.savez(
+        out_path,
+        **np_save_args,
+    )
+
     print(f"Saved correction log to {out_path}")
+
+def _npz_int_value(npz_data, key):
+    if key not in npz_data:
+        return None
+    try:
+        val = np.asarray(npz_data[key]).reshape(-1)[0]
+    except Exception:
+        return None
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return None
+
+def _npz_matches_params(npz_data, NE, Nq, T_list=None):
+    ne = _npz_int_value(npz_data, "NE")
+    nq = _npz_int_value(npz_data, "Nq")
+    if ne is None or nq is None:
+        return False
+    if int(ne) != int(NE) or int(nq) != int(Nq):
+        return False
+    if T_list is not None and "T_eV" in npz_data:
+        T_arr = np.asarray(npz_data["T_eV"], float)
+        if len(T_arr) != len(T_list):
+            return False
+        if not np.allclose(T_arr, np.asarray(T_list, float)):
+            return False
+    return True
+
+def _dcs_data_from_npz(npz_data):
+    keys = ("dcs_T_line", "dcs_E_line", "dcs_exc_vals", "dcs_ion_vals")
+    if not all(key in npz_data for key in keys):
+        return None
+    T_line = np.asarray(npz_data["dcs_T_line"], float)
+    E_line = np.asarray(npz_data["dcs_E_line"], float)
+    if T_line.size == 0 or E_line.size == 0:
+        return None
+    return {
+        "T_line": T_line,
+        "E_line": E_line,
+        "exc_vals": np.asarray(npz_data["dcs_exc_vals"], float),
+        "ion_vals": np.asarray(npz_data["dcs_ion_vals"], float),
+    }
+
+def _sigma_list_from_npz(npz_data):
+    if "T_eV" not in npz_data:
+        raise KeyError("Missing T_eV in NPZ cache.")
+    T_arr = np.asarray(npz_data["T_eV"], float)
+    nT = len(T_arr)
+
+    def _array(key):
+        if key not in npz_data:
+            return None
+        return np.asarray(npz_data[key], float)
+
+    def _row_vals(arr, i):
+        if arr is None:
+            return []
+        row = np.asarray(arr[i], float)
+        if row.ndim == 0:
+            return [float(row)]
+        return [float(val) for val in row]
+
+    def _scalar(arr, i):
+        if arr is None:
+            return None
+        val = float(arr[i])
+        if not np.isfinite(val):
+            return None
+        return val
+
+    exc_pwba = _array("excitation_sigma_pwba")
+    ion_pwba = _array("ionization_sigma_pwba")
+    exc_rel_long = _array("excitation_sigma_rel_long")
+    ion_rel_long = _array("ionization_sigma_rel_long")
+    exc_rel_trans = _array("excitation_sigma_rel_trans")
+    ion_rel_trans = _array("ionization_sigma_rel_trans")
+    exc_mc = _array("excitation_sigma_mc")
+    ion_mc = _array("ionization_sigma_mc")
+
+    total_sigma = _array("total_sigma")
+    total_sigma_pwba = _array("total_sigma_pwba")
+    total_sigma_mc = _array("total_sigma_mc")
+    total_sigma_rel = _array("total_sigma_rel")
+    total_sigma_rel_trans = _array("total_sigma_rel_trans")
+    total_sigma_rel_trans_no_density = _array("total_sigma_rel_trans_no_density")
+    total_sigma_rel_total = _array("total_sigma_rel_total")
+    total_sigma_plus_rel = _array("total_sigma_plus_rel")
+    total_sigma_plus_rel_total = _array("total_sigma_plus_rel_total")
+    kshell_sigma = _array("kshell_sigma")
+    kshell_sigma_rel = _array("kshell_sigma_rel")
+
+    sigma_list = []
+    for i in range(nT):
+        sigma = {
+            "excitation_sigma_pwba": _row_vals(exc_pwba, i),
+            "ionization_sigma_pwba": _row_vals(ion_pwba, i),
+            "excitation_sigma_rel": _row_vals(exc_rel_long, i),
+            "ionization_sigma_rel": _row_vals(ion_rel_long, i),
+            "excitation_sigma_rel_trans": _row_vals(exc_rel_trans, i),
+            "ionization_sigma_rel_trans": _row_vals(ion_rel_trans, i),
+            "excitation_sigma_mc": _row_vals(exc_mc, i),
+            "ionization_sigma_mc": _row_vals(ion_mc, i),
+            "total_sigma": _scalar(total_sigma, i),
+            "total_sigma_pwba": _scalar(total_sigma_pwba, i),
+            "total_sigma_mc": _scalar(total_sigma_mc, i),
+            "total_sigma_rel": _scalar(total_sigma_rel, i),
+            "total_sigma_rel_trans": _scalar(total_sigma_rel_trans, i),
+            "total_sigma_rel_trans_no_density": _scalar(total_sigma_rel_trans_no_density, i),
+            "total_sigma_rel_total": _scalar(total_sigma_rel_total, i),
+            "total_sigma_plus_rel": _scalar(total_sigma_plus_rel, i),
+            "total_sigma_plus_rel_total": _scalar(total_sigma_plus_rel_total, i),
+            "kshell_sigma": _scalar(kshell_sigma, i),
+            "kshell_sigma_rel": _scalar(kshell_sigma_rel, i),
+        }
+        sigma_list.append(sigma)
+    return T_arr.tolist(), sigma_list
+
+def load_cross_section_corrections_npz(npz_path, NE, Nq, T_list=None, require_dcs=False):
+    if npz_path is None or not os.path.exists(npz_path):
+        return None
+    try:
+        with np.load(npz_path, allow_pickle=False) as npz_data:
+            if not _npz_matches_params(npz_data, NE, Nq, T_list=T_list):
+                return None
+            dcs_data = _dcs_data_from_npz(npz_data)
+            if require_dcs and dcs_data is None:
+                return None
+            T_loaded, sigma_list = _sigma_list_from_npz(npz_data)
+    except Exception as exc:
+        print(f"Failed to load cached NPZ {npz_path}: {exc}")
+        return None
+    return T_loaded, sigma_list, dcs_data
+
+def _geant4_dna_dir():
+    for root in (CUSTOM_DATA_ROOT_GEANT4, CUSTOM_DATA_ROOT_PROJECT):
+        if root is None:
+            continue
+        if not root.exists():
+            continue
+        dna_dir = root / "G4EMLOW8.6.1" / "dna"
+        if dna_dir.exists():
+            return dna_dir
+    return None
+
+def _load_dcs_template_grid(path):
+    from collections import OrderedDict
+
+    grid = OrderedDict()
+    with open(path, "r") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            try:
+                T = float(parts[0])
+                E = float(parts[1])
+            except ValueError:
+                continue
+            grid.setdefault(T, []).append(E)
+    return grid
+
+def _format_dcs_row(T, E, vals):
+    fields = [f"{T:.9E}", f"{E:.9E}"]
+    fields.extend(f"{val:.9E}" for val in vals)
+    return " ".join(fields) + "\n"
+
+def _write_dcs_tables_from_data(dcs_data, exc_out, ion_out):
+    T_line = np.asarray(dcs_data.get("T_line", []), float)
+    E_line = np.asarray(dcs_data.get("E_line", []), float)
+    exc_vals = np.asarray(dcs_data.get("exc_vals", []), float)
+    ion_vals = np.asarray(dcs_data.get("ion_vals", []), float)
+
+    if T_line.size == 0 or E_line.size == 0:
+        raise ValueError("DCS data is empty.")
+    if T_line.shape != E_line.shape:
+        raise ValueError("DCS T/E arrays must have the same shape.")
+    if exc_vals.ndim == 1:
+        exc_vals = exc_vals.reshape(-1, 1)
+    if ion_vals.ndim == 1:
+        ion_vals = ion_vals.reshape(-1, 1)
+    if exc_vals.shape[0] != T_line.size or ion_vals.shape[0] != T_line.size:
+        raise ValueError("DCS value arrays must align with T/E lines.")
+
+    with open(exc_out, "w") as exc_handle, open(ion_out, "w") as ion_handle:
+        for i in range(T_line.size):
+            exc_handle.write(_format_dcs_row(T_line[i], E_line[i], exc_vals[i]))
+            ion_handle.write(_format_dcs_row(T_line[i], E_line[i], ion_vals[i]))
+
+_DCS_WORKER_S = None
+_DCS_WORKER_C = None
+_DCS_WORKER_T_LINE = None
+_DCS_WORKER_E_LINE = None
+_DCS_WORKER_NQ = None
+_DCS_WORKER_EXC_B = None
+_DCS_WORKER_ION_B = None
+_DCS_WORKER_KSHELL_B = None
+
+def _compute_dcs_channel_values(
+    channel_type,
+    idx,
+    s,
+    C,
+    Nq,
+    T_line,
+    E_line,
+    exc_B,
+    ion_B,
+    kshell_B,
+):
+    T_line = np.asarray(T_line, float)
+    E_line = np.asarray(E_line, float)
+    n_lines = T_line.size
+    vals = np.zeros(n_lines, float)
+
+    for i in range(n_lines):
+        Tj = float(T_line[i])
+        Ei = float(E_line[i])
+
+        if channel_type == "excitation":
+            Bk = exc_B[idx]
+            if Ei < Bk or Ei > Tj:
+                val = 0.0
+            else:
+                val = _selected_dsigma_excitation(Ei, Tj, idx, s, C, Nq)
+        elif channel_type == "ionization":
+            Bj = ion_B[idx]
+            if Ei < Bj or Ei > 0.5 * (Tj + Bj):
+                val = 0.0
+            else:
+                val = _selected_dsigma_ionization(Ei, Tj, idx, s, C, Nq)
+        elif channel_type == "kshell":
+            if kshell_B is None:
+                val = 0.0
+            elif Ei < kshell_B or Ei > 0.5 * (Tj + kshell_B):
+                val = 0.0
+            else:
+                val = _selected_dsigma_kshell(Ei, Tj, s, Nq)
+        else:
+            raise ValueError(f"Unknown channel type: {channel_type}")
+
+        if (not np.isfinite(val)) or (val < 0.0):
+            val = 0.0
+        vals[i] = val / EMFI_DCS_SCALE_M2
+
+    return vals
+
+def _init_dcs_worker(
+    a_vec,
+    b_vec,
+    c_vec,
+    T_line,
+    E_line,
+    Nq,
+    apply_mc,
+    apply_regime_ii,
+    apply_regime_iii,
+    apply_regime_iv,
+):
+    global _DCS_WORKER_S, _DCS_WORKER_C
+    global _DCS_WORKER_T_LINE, _DCS_WORKER_E_LINE, _DCS_WORKER_NQ
+    global _DCS_WORKER_EXC_B, _DCS_WORKER_ION_B, _DCS_WORKER_KSHELL_B
+
+    _set_regime_corrections(
+        apply_regime_ii=apply_regime_ii,
+        apply_regime_iii=apply_regime_iii,
+        apply_regime_iv=apply_regime_iv,
+    )
+    _set_mc_correction(apply_mc=apply_mc)
+
+    _DCS_WORKER_S = model.epsilon_optical("amorphous")
+    _DCS_WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
+    _DCS_WORKER_T_LINE = np.asarray(T_line, float)
+    _DCS_WORKER_E_LINE = np.asarray(E_line, float)
+    _DCS_WORKER_NQ = int(Nq)
+    _DCS_WORKER_EXC_B = [float(osc.Bth) for osc in _DCS_WORKER_S.excitations]
+    _DCS_WORKER_ION_B = [float(osc.Bth) for osc in _DCS_WORKER_S.ionizations]
+    _DCS_WORKER_KSHELL_B = (
+        float(_DCS_WORKER_S.kshell.Bth) if _DCS_WORKER_S.kshell is not None else None
+    )
+
+def _compute_dcs_channel_worker(args):
+    channel_type, idx = args
+    vals = _compute_dcs_channel_values(
+        channel_type,
+        idx,
+        _DCS_WORKER_S,
+        _DCS_WORKER_C,
+        _DCS_WORKER_NQ,
+        _DCS_WORKER_T_LINE,
+        _DCS_WORKER_E_LINE,
+        _DCS_WORKER_EXC_B,
+        _DCS_WORKER_ION_B,
+        _DCS_WORKER_KSHELL_B,
+    )
+    return channel_type, idx, vals
+
+def _selected_dsigma_excitation(Ei, Tj, k, s, C, Nq):
+    use_mc, use_rel_long, use_rel_trans, use_density_effect = _regime_flags(Tj)
+    if use_mc:
+        Bk = float(s.excitations[k].Bth)
+        Tshift = float(Tj + 2.0 * Bk)
+        return _dsigma_pwba_dE(Ei, Tshift, k, "excitation", s, C, Nq=Nq, use_rel=use_rel_long)
+    if use_rel_long:
+        val = _integrate_channel_single_E_rel(Ei, Tj, k, "excitation", s, C, Nq=Nq)
+        if use_rel_trans:
+            val += _integrate_channel_single_E_trans(
+                Ei, Tj, k, "excitation", s, C, use_density_effect=use_density_effect
+            )
+        return val
+    return _integrate_channel_single_E(Ei, Tj, k, "excitation", s, C, Nq=Nq, use_rel_bounds=False)
+
+def _selected_dsigma_ionization(Ei, Tj, j, s, C, Nq):
+    use_mc, use_rel_long, use_rel_trans, use_density_effect = _regime_flags(Tj)
+    if use_mc:
+        return _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=Nq, use_rel=use_rel_long)
+    if use_rel_long:
+        val = _integrate_channel_single_E_rel(Ei, Tj, j, "ionization", s, C, Nq=Nq)
+        if use_rel_trans:
+            val += _integrate_channel_single_E_trans(
+                Ei, Tj, j, "ionization", s, C, use_density_effect=use_density_effect
+            )
+        return val
+    return _integrate_channel_single_E(Ei, Tj, j, "ionization", s, C, Nq=Nq, use_rel_bounds=False)
+
+def _selected_dsigma_kshell(Ei, Tj, s, Nq):
+    if s.kshell is None:
+        return 0.0
+    _, use_rel_long, _, _ = _regime_flags(Tj)
+    if use_rel_long:
+        return _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=Nq, include_kshell=True)
+    return _integrate_kshell_single_E(Ei, Tj, s, Nq=Nq, include_kshell=True, use_rel_bounds=False)
+
+def write_emfietzoglou_dcs_tables(
+    s,
+    C,
+    Nq=200,
+    out_dir=None,
+    template_path=None,
+    dcs_data=None,
+    return_data=False,
+    parallel_channels=True,
+    max_workers=None,
+    a_vec=None,
+    b_vec=None,
+    c_vec=None,
+    apply_mc=None,
+    apply_regime_ii=None,
+    apply_regime_iii=None,
+    apply_regime_iv=None,
+):
+    if out_dir is None:
+        out_dir = OUTPUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    exc_out = out_dir / "sigmadiff_excitation_e_ice_emfietzoglou_kyriakou.dat"
+    ion_out = out_dir / "sigmadiff_ionisation_e_ice_emfietzoglou_kyriakou.dat"
+
+    if dcs_data is None:
+        if template_path is None:
+            dna_dir = _geant4_dna_dir()
+            if dna_dir is None:
+                raise FileNotFoundError("Could not locate Geant4 DNA data directory.")
+            template_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
+
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Missing DCS template file: {template_path}")
+
+        grid = _load_dcs_template_grid(template_path)
+
+        T_line = []
+        E_line = []
+        for T, E_list in grid.items():
+            Tj = float(T)
+            for Ei in E_list:
+                T_line.append(Tj)
+                E_line.append(float(Ei))
+
+        T_line = np.asarray(T_line, float)
+        E_line = np.asarray(E_line, float)
+
+        exc_B = [float(osc.Bth) for osc in s.excitations]
+        ion_B = [float(osc.Bth) for osc in s.ionizations]
+        kshell_B = float(s.kshell.Bth) if s.kshell is not None else None
+
+        n_lines = T_line.size
+        n_exc = len(exc_B)
+        n_ion = len(ion_B)
+
+        exc_vals = np.zeros((n_lines, n_exc), float)
+        ion_vals = np.zeros((n_lines, n_ion + 1), float)
+
+        if apply_mc is None:
+            apply_mc = APPLY_MOTT_COULOMB
+        if apply_regime_ii is None:
+            apply_regime_ii = APPLY_CORRECTIONS_REGIME_II
+        if apply_regime_iii is None:
+            apply_regime_iii = APPLY_CORRECTIONS_REGIME_III
+        if apply_regime_iv is None:
+            apply_regime_iv = APPLY_CORRECTIONS_REGIME_IV
+
+        tasks = [("excitation", k) for k in range(n_exc)]
+        tasks.extend(("ionization", j) for j in range(n_ion))
+        if kshell_B is not None:
+            tasks.append(("kshell", 0))
+
+        do_parallel = (
+            parallel_channels
+            and len(tasks) > 1
+            and a_vec is not None
+            and b_vec is not None
+            and c_vec is not None
+        )
+
+        if do_parallel:
+            if max_workers is None:
+                max_workers = os.cpu_count() or 1
+            max_workers = max(1, min(int(max_workers), len(tasks)))
+            with ProcessPoolExecutor(
+                max_workers=max_workers,
+                initializer=_init_dcs_worker,
+                initargs=(
+                    a_vec,
+                    b_vec,
+                    c_vec,
+                    T_line,
+                    E_line,
+                    Nq,
+                    apply_mc,
+                    apply_regime_ii,
+                    apply_regime_iii,
+                    apply_regime_iv,
+                ),
+            ) as ex:
+                futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
+                for fut in tqdm(as_completed(futures), total=len(futures), desc="DCS channels"):
+                    channel_type, idx, vals = fut.result()
+                    if channel_type == "excitation":
+                        exc_vals[:, idx] = vals
+                    elif channel_type == "ionization":
+                        ion_vals[:, idx] = vals
+                    elif channel_type == "kshell":
+                        ion_vals[:, -1] = vals
+        else:
+            for k in tqdm(range(n_exc), desc="DCS excitation"):
+                exc_vals[:, k] = _compute_dcs_channel_values(
+                    "excitation", k, s, C, Nq, T_line, E_line, exc_B, ion_B, kshell_B
+                )
+            for j in tqdm(range(n_ion), desc="DCS ionization"):
+                ion_vals[:, j] = _compute_dcs_channel_values(
+                    "ionization", j, s, C, Nq, T_line, E_line, exc_B, ion_B, kshell_B
+                )
+            if kshell_B is not None:
+                ion_vals[:, -1] = _compute_dcs_channel_values(
+                    "kshell", 0, s, C, Nq, T_line, E_line, exc_B, ion_B, kshell_B
+                )
+
+        dcs_data = {
+            "T_line": T_line,
+            "E_line": E_line,
+            "exc_vals": exc_vals,
+            "ion_vals": ion_vals,
+        }
+
+    _write_dcs_tables_from_data(dcs_data, exc_out, ion_out)
+
+    print(f"Saved excitation DCS to {exc_out}")
+    print(f"Saved ionization DCS to {ion_out}")
+    if return_data:
+        return dcs_data
+    return None
 
 def plot_total_cross_section_corrections(T_list, sigma_list, out_path=None):
     """
@@ -1447,11 +1995,9 @@ def main():
     # Energy grid (eV)
     T_list = np.logspace(-1, 7, 400)
 
-    print("Computing double-integrated cross sections (parallel over T)...")
-
     # Computing Choices
-    NE = 200
-    Nq = 200
+    NE = 300
+    Nq = 300
     include_kshell = True
     use_mott_coulomb = True
     apply_mc = True
@@ -1465,51 +2011,170 @@ def main():
         apply_regime_iv=apply_regime_iv,
     )
     _set_mc_correction(apply_mc=apply_mc)
-    # Use ~ (CPU cores) workers;
-    max_workers = 12
-    print("Using %i workers" %(max_workers))
 
-    results_by_T = {}
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path = OUTPUT_DIR / "cross_section_corrections.npz"
+    cached = load_cross_section_corrections_npz(cache_path, NE=NE, Nq=Nq, T_list=T_list)
 
-    with ProcessPoolExecutor(
-            max_workers=max_workers,
-            initializer=_init_worker,
-            initargs=(
-                a_vec,
-                b_vec,
-                c_vec,
-                NE,
-                Nq,
-                include_kshell,
-                use_mott_coulomb,
-                apply_regime_ii,
-                apply_regime_iii,
-                apply_regime_iv,
-                apply_mc,
-            ),
-    ) as ex:
-        futures = [ex.submit(_compute_for_T, T) for T in T_list]
+    sigma_list = None
+    dcs_data = None
+    dcs_written = False
 
-        for fut in tqdm(as_completed(futures), total=len(futures)):
-            T_val, sigma = fut.result()
-            results_by_T[T_val] = sigma
+    if cached is not None:
+        T_list, sigma_list, dcs_data = cached
+        print(f"Loaded cached cross sections from {cache_path}")
+    else:
+        print("Computing double-integrated cross sections (parallel over T)...")
+        # Use ~ (CPU cores) workers;
+        max_workers = 12
+        print("Using %i workers" %(max_workers))
 
-    # Restore original T order
-    sigma_list = [results_by_T[float(T)] for T in T_list]
+        results_by_T = {}
+
+        with ProcessPoolExecutor(
+                max_workers=max_workers,
+                initializer=_init_worker,
+                initargs=(
+                    a_vec,
+                    b_vec,
+                    c_vec,
+                    NE,
+                    Nq,
+                    include_kshell,
+                    use_mott_coulomb,
+                    apply_regime_ii,
+                    apply_regime_iii,
+                    apply_regime_iv,
+                    apply_mc,
+                ),
+        ) as ex:
+            futures = [ex.submit(_compute_for_T, T) for T in T_list]
+
+            for fut in tqdm(as_completed(futures), total=len(futures)):
+                T_val, sigma = fut.result()
+                results_by_T[T_val] = sigma
+
+        # Restore original T order
+        sigma_list = [results_by_T[float(T)] for T in T_list]
+
+        dcs_data = write_emfietzoglou_dcs_tables(
+            s,
+            C,
+            Nq=Nq,
+            return_data=True,
+            a_vec=a_vec,
+            b_vec=b_vec,
+            c_vec=c_vec,
+            apply_mc=apply_mc,
+            apply_regime_ii=apply_regime_ii,
+            apply_regime_iii=apply_regime_iii,
+            apply_regime_iv=apply_regime_iv,
+        )
+        dcs_written = True
+        save_cross_section_corrections_npz(
+            T_list,
+            sigma_list,
+            out_path=cache_path,
+            NE=NE,
+            Nq=Nq,
+            dcs_data=dcs_data,
+        )
+
+    if not dcs_written:
+        if dcs_data is None:
+            dcs_data = write_emfietzoglou_dcs_tables(
+                s,
+                C,
+                Nq=Nq,
+                return_data=True,
+                a_vec=a_vec,
+                b_vec=b_vec,
+                c_vec=c_vec,
+                apply_mc=apply_mc,
+                apply_regime_ii=apply_regime_ii,
+                apply_regime_iii=apply_regime_iii,
+                apply_regime_iv=apply_regime_iv,
+            )
+            dcs_written = True
+            save_cross_section_corrections_npz(
+                T_list,
+                sigma_list,
+                out_path=cache_path,
+                NE=NE,
+                Nq=Nq,
+                dcs_data=dcs_data,
+            )
+        else:
+            write_emfietzoglou_dcs_tables(s, C, Nq=Nq, dcs_data=dcs_data)
+            dcs_written = True
 
     # ----------------- Log corrections per energy -----------------
-    save_cross_section_corrections_npz(T_list, sigma_list)
     plot_total_cross_section_corrections(T_list, sigma_list)
 
     # ----------------- Plot 0: corrected excitation/ionization (scaled) -----------------
-    fig, ax = plt.subplots(figsize=(12, 8))
-    plot_corrected_exc_ion_scaled(T_list, sigma_list, ax=ax, scale=1e-22)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / "corrected_excitation_ionization_scaled.png"
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=300)
-    plt.close(fig)
-    print(f"Saved corrected excitation/ionization plot to {out_path}")
+    style = rcparams_with_fontsize(
+        RC_BASE_ELASTIC,
+        FONTSIZE_24,
+        overrides={
+            "font.family": FONT_COURIER,
+            "mathtext.rm": FONT_COURIER,
+            "mathtext.fontset": "custom",
+        },
+    )
+    with plt.rc_context(style):
+        from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+
+        fig = plt.figure(figsize=(9, 7.8))
+        gs = GridSpec(2, 1, height_ratios=[4.7, 1.3], hspace=0.18)
+        ax = fig.add_subplot(gs[0, 0])
+        plot_corrected_exc_ion_scaled(T_list, sigma_list, ax=ax)
+
+        gs_leg = GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1, 0], height_ratios=[1.0, 1.0], hspace=0.0)
+        ax_leg_exc = fig.add_subplot(gs_leg[0, 0])
+        ax_leg_ion = fig.add_subplot(gs_leg[1, 0])
+        ax_leg_exc.axis("off")
+        ax_leg_ion.axis("off")
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            n_exc = len(s.excitations)
+            n_ion = len(s.ionizations)
+            exc_handles = handles[:n_exc]
+            ion_handles = handles[n_exc:n_exc + n_ion]
+            if exc_handles:
+                exc_labels = [str(i + 1) for i in range(n_exc)]
+                ax_leg_exc.legend(
+                    exc_handles,
+                    exc_labels,
+                    loc="center left",
+                    bbox_to_anchor=(0.0, 0.5),
+                    ncol=max(1, n_exc),
+                    frameon=False,
+                    columnspacing=0.9,
+                    handlelength=2.2,
+                    handletextpad=0.6,
+                    borderaxespad=0.0,
+                )
+            if ion_handles:
+                ion_labels = [str(i + 1) for i in range(n_ion)]
+                ax_leg_ion.legend(
+                    ion_handles,
+                    ion_labels,
+                    loc="center left",
+                    bbox_to_anchor=(0.0, 0.5),
+                    ncol=max(1, n_ion),
+                    frameon=False,
+                    columnspacing=0.9,
+                    handlelength=2.2,
+                    handletextpad=0.6,
+                    borderaxespad=0.0,
+                )
+
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = OUTPUT_DIR / "corrected_excitation_ionization_scaled.png"
+        fig.subplots_adjust(left=0.14, right=0.98, top=0.96, bottom=0.06)
+        fig.savefig(out_path, dpi=300)
+        plt.close(fig)
+        print(f"Saved corrected excitation/ionization plot to {out_path}")
 
     # ----------------- Plot 1: comparison per channel (PWBA vs selected corrections) -----------------
     fig_ion, ax_ion = plt.subplots(figsize=(14, 9))

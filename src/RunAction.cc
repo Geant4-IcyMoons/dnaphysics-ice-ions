@@ -43,6 +43,10 @@
 #include "SteppingAction.hh"
 #include <iomanip>
 
+namespace {
+constexpr bool kPrintPostRunStepSummary = false;
+}
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 RunAction::RunAction() : G4UserRunAction()
@@ -136,36 +140,38 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
   analysisManager->CloseFile();
 
   // After the simulation finishes, print custom per-step verbose lines
-  auto& logs = SteppingAction::Logs();
-  if (!logs.empty()) {
-    G4cout << "\n-- Post-run step summary --" << G4endl;
-    G4cout << std::left
-           << std::setw(8)  << "Step#"
-           << std::setw(16) << "E(eV)"
-           << std::setw(28) << "Process"
-           << std::setw(28) << "Model"
-           << std::setw(16) << "Channel"
-           << std::setw(16) << "Sigma(cm^2)"
-           << G4endl;
-
-    // numeric formatting
-    std::ios::fmtflags oldFlags = G4cout.flags();
-    std::streamsize oldPrec = G4cout.precision();
-    G4cout.setf(std::ios::scientific);
-    G4cout.precision(6);
-
-    for (const auto& r : logs) {
-      G4cout << std::right
-             << std::setw(8)  << r.stepNo
-             << std::setw(16) << r.kinE_eV
-             << std::left  << ' ' << std::setw(27) << r.process
-             << std::left  << std::setw(27) << (r.model.empty() ? "-" : r.model)
-             << std::left  << std::setw(16) << (r.channel.empty() ? "-" : r.channel)
-             << std::right << std::setw(16) << r.sigma_area_cm2
+  if (kPrintPostRunStepSummary) {
+    auto& logs = SteppingAction::Logs();
+    if (!logs.empty()) {
+      G4cout << "\n-- Post-run step summary --" << G4endl;
+      G4cout << std::left
+             << std::setw(8)  << "Step#"
+             << std::setw(16) << "E(eV)"
+             << std::setw(28) << "Process"
+             << std::setw(28) << "Model"
+             << std::setw(16) << "Channel"
+             << std::setw(16) << "Sigma(cm^2)"
              << G4endl;
+
+      // numeric formatting
+      std::ios::fmtflags oldFlags = G4cout.flags();
+      std::streamsize oldPrec = G4cout.precision();
+      G4cout.setf(std::ios::scientific);
+      G4cout.precision(6);
+
+      for (const auto& r : logs) {
+        G4cout << std::right
+               << std::setw(8)  << r.stepNo
+               << std::setw(16) << r.kinE_eV
+               << std::left  << ' ' << std::setw(27) << r.process
+               << std::left  << std::setw(27) << (r.model.empty() ? "-" : r.model)
+               << std::left  << std::setw(16) << (r.channel.empty() ? "-" : r.channel)
+               << std::right << std::setw(16) << r.sigma_area_cm2
+               << G4endl;
+      }
+      // restore
+      G4cout.flags(oldFlags);
+      G4cout.precision(oldPrec);
     }
-    // restore
-    G4cout.flags(oldFlags);
-    G4cout.precision(oldPrec);
   }
 }

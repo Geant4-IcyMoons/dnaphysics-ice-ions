@@ -81,7 +81,6 @@
 #include "G4DNAEmfietzoglou_iceIonisationModel.hh"
 //****** END ICE *****
 
-
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 PhysicsList::PhysicsList() : G4VModularPhysicsList()

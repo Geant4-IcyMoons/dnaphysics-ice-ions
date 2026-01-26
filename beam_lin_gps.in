@@ -1,23 +1,25 @@
 # Verbosity
-/tracking/verbose 1
-/run/verbose 2
-/control/verbose 1
+/control/verbose 0
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+/gps/verbose 0
 
 # ===== Parameters =====
 # N = number of particles AND threads
-/control/alias N 10000
-/control/alias EMIN 2      # min energy value (numeric)
-/control/alias EMAX 100000      # max energy value (numeric)
+/control/alias N 100000
+/control/alias EMIN 1    # min energy value (numeric)
+/control/alias EMAX 10      # max energy value (numeric)
 /control/alias EUNIT eV     # unit for energies
 
 # Threads: set equal to N (must be before initialize)
-/run/numberOfThreads 1
+/run/numberOfThreads 12
 
 # Material
 /dna/test/setMat G4_WATER
 
 # Size of World volume
-/dna/test/setSize 0.1 um
+/dna/test/setSize 0.01 um
 
 # Atomic deexcitation
 /process/em/fluo true
@@ -47,7 +49,7 @@
 /gps/number 1
 
 # Useful: print GPS config
-/gps/verbose 1
+
 
 # Fire N events (enables event-level parallelism across {N} threads)
 /run/beamOn {N}

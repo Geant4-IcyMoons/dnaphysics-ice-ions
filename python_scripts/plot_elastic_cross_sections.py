@@ -15,6 +15,7 @@ from constants import (
     ELASTIC_BLEND_E_MIN,
     ELASTIC_BLEND_N_POINTS,
     ELASTIC_BLEND_T,
+    CROSS_SECTIONS_DIR,
     ELSEPA_MUFFIN_TOTAL,
     EV_TO_MEV,
     FM2_TO_CM2,
@@ -41,6 +42,8 @@ plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
 FONTSIZE = FONTSIZE_24
 plt.rcParams.update(rcparams_with_fontsize(RC_BASE_ELASTIC, FONTSIZE))
+
+ATTACHMENT_SIGMA_PATH = CROSS_SECTIONS_DIR / "sigma_attachment_e_michaud.dat"
 
 
 def screened_rutherford_cross_section(energy_eV):
@@ -367,7 +370,39 @@ def plot_vibrational_energy_distributions():
     plt.show()
 
 
+def plot_attachment_cross_section():
+    """
+    Plot G4DNA attachment cross-section from the Michaud dataset.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    try:
+        data = np.loadtxt(ATTACHMENT_SIGMA_PATH)
+        E = data[:, 0]
+        sigma_raw = data[:, 1]
+        mask = np.isfinite(E) & np.isfinite(sigma_raw) & (sigma_raw > 0)
+        E = E[mask]
+        sigma = sigma_raw[mask] * MICHAUD_SIGMA_SCALE_CM2
+        ax.semilogy(E, sigma, color="black", linewidth=3, label="Dissoc. Att.", zorder=3)
+        print(f"Loaded attachment data: {len(E)} points, {E[0]:.2f}-{E[-1]:.2f} eV")
+    except Exception as e:
+        print(f"Error loading attachment data: {e}")
+
+    ax.set_xlabel('Electron Energy ($T$; eV)')
+    ax.set_ylabel(r'Cross-Section (cm$^2$)')
+    ax.set_xlim(1, 10)
+    # ax.legend()
+
+    plt.tight_layout()
+
+    output_file = OUTPUT_DIR / "attachment_cross_section_g4dna.png"
+    plt.savefig(output_file, bbox_inches='tight', dpi=150)
+    print(f"\nAttachment cross-section plot saved to: {output_file}")
+
+    plt.show()
+
+
 if __name__ == "__main__":
     plot_elastic_cross_sections()
     plot_vibrational_excitations()
     plot_vibrational_energy_distributions()
+    plot_attachment_cross_section()
