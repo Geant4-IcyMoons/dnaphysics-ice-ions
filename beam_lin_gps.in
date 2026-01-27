@@ -7,9 +7,9 @@
 
 # ===== Parameters =====
 # N = number of particles AND threads
-/control/alias N 100000
+/control/alias N 10000000
 /control/alias EMIN 1    # min energy value (numeric)
-/control/alias EMAX 10      # max energy value (numeric)
+/control/alias EMAX 20     # max energy value (numeric)
 /control/alias EUNIT eV     # unit for energies
 
 # Threads: set equal to N (must be before initialize)

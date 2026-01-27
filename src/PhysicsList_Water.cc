@@ -40,6 +40,10 @@
 #include "G4DNAVibExcitation.hh"
 #include "G4DNAAttachment.hh"
 #include "G4Electron.hh"
+#include "G4DNABornExcitationModel.hh"
+#include "G4DNABornIonisationModel.hh"
+#include "G4DNAEmfietzoglouExcitationModel.hh"
+#include "G4DNAEmfietzoglouIonisationModel.hh"
 
 PhysicsList_Water::PhysicsList_Water() : G4VModularPhysicsList()
 {
@@ -81,8 +85,24 @@ void PhysicsList_Water::ConstructProcess()
   ph->RegisterProcess(attachment, electron);
 
   auto* excitation = new G4DNAExcitation("e-_G4DNAExcitation_WATER");
+  auto* exc_emfi = new G4DNAEmfietzoglouExcitationModel();
+  exc_emfi->SetLowEnergyLimit(8. * eV);
+  exc_emfi->SetHighEnergyLimit(10. * keV);
+  excitation->SetEmModel(exc_emfi);
+  auto* exc_born = new G4DNABornExcitationModel();
+  exc_born->SetLowEnergyLimit(10. * keV);
+  exc_born->SetHighEnergyLimit(1. * MeV);
+  excitation->AddEmModel(2, exc_born);
   ph->RegisterProcess(excitation, electron);
 
   auto* ionisation = new G4DNAIonisation("e-_G4DNAIonisation_WATER");
+  auto* ion_emfi = new G4DNAEmfietzoglouIonisationModel();
+  ion_emfi->SetLowEnergyLimit(10. * eV);
+  ion_emfi->SetHighEnergyLimit(10. * keV);
+  ionisation->SetEmModel(ion_emfi);
+  auto* ion_born = new G4DNABornIonisationModel();
+  ion_born->SetLowEnergyLimit(10. * keV);
+  ion_born->SetHighEnergyLimit(1. * MeV);
+  ionisation->AddEmModel(2, ion_born);
   ph->RegisterProcess(ionisation, electron);
 }

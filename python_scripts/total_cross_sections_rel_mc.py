@@ -16,6 +16,7 @@ from constants import (
     C_AU,
     CUSTOM_DATA_ROOT_GEANT4,
     CUSTOM_DATA_ROOT_PROJECT,
+    CROSS_SECTIONS_DIR,
     EH,
     EV_TO_HA,
     ELF_ROLLOFF_COEF,
@@ -36,6 +37,10 @@ from constants import (
     rcparams_with_fontsize,
 )
 import emfietzoglou_model_finite_q as model
+
+# Select ice structure: "amorphous" or "hexagonal"
+ICE_TYPE = "amorphous"
+ICE_LABEL = f"{ICE_TYPE}_ice"
 
 # Geant4 Emfietzoglou DCS table scale: file values * scale -> m^2
 EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
@@ -1253,14 +1258,24 @@ def _compute_correction_row(T, sigma):
         "use_density_effect": int(use_density_effect),
     }
 
-def save_cross_section_corrections_npz(T_list, sigma_list, out_path=None, NE=None, Nq=None, dcs_data=None):
+def save_cross_section_corrections_npz(
+    T_list,
+    sigma_list,
+    out_path=None,
+    NE=None,
+    Nq=None,
+    dcs_data=None,
+    ice_label=None,
+):
     """
     Save PWBA, per-stage correction terms, corrected totals, and per-channel
     cross sections for each energy to an NPZ file.
     """
     if out_path is None:
+        if ice_label is None:
+            ice_label = ICE_LABEL
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / "cross_section_corrections.npz"
+        out_path = OUTPUT_DIR / f"cross_section_corrections_{ice_label}.npz"
 
     T_arr = np.asarray(T_list, dtype=float)
     nT = len(T_arr)
@@ -1556,7 +1571,7 @@ def _geant4_dna_dir():
             return dna_dir
     return None
 
-def _load_dcs_template_grid(path):
+def _load_dcs_template_grid(path, t_min=None, t_max=None, include_min=True, include_max=True):
     from collections import OrderedDict
 
     grid = OrderedDict()
@@ -1572,8 +1587,25 @@ def _load_dcs_template_grid(path):
                 E = float(parts[1])
             except ValueError:
                 continue
+            if t_min is not None:
+                if T < t_min or (not include_min and T == t_min):
+                    continue
+            if t_max is not None:
+                if T > t_max or (not include_max and T == t_max):
+                    continue
             grid.setdefault(T, []).append(E)
     return grid
+
+def _merge_dcs_template_grids(*grids):
+    from collections import OrderedDict
+
+    merged = OrderedDict()
+    for grid in grids:
+        for T, E_list in grid.items():
+            if T in merged:
+                continue
+            merged[T] = E_list
+    return merged
 
 def _format_dcs_row(T, E, vals):
     fields = [f"{T:.9E}", f"{E:.9E}"]
@@ -1671,6 +1703,7 @@ def _init_dcs_worker(
     apply_regime_ii,
     apply_regime_iii,
     apply_regime_iv,
+    ice_type,
 ):
     global _DCS_WORKER_S, _DCS_WORKER_C
     global _DCS_WORKER_T_LINE, _DCS_WORKER_E_LINE, _DCS_WORKER_NQ
@@ -1683,7 +1716,7 @@ def _init_dcs_worker(
     )
     _set_mc_correction(apply_mc=apply_mc)
 
-    _DCS_WORKER_S = model.epsilon_optical("amorphous")
+    _DCS_WORKER_S = model.epsilon_optical(ice_type)
     _DCS_WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
     _DCS_WORKER_T_LINE = np.asarray(T_line, float)
     _DCS_WORKER_E_LINE = np.asarray(E_line, float)
@@ -1759,29 +1792,52 @@ def write_emfietzoglou_dcs_tables(
     a_vec=None,
     b_vec=None,
     c_vec=None,
+    ice_label=None,
+    ice_type=None,
     apply_mc=None,
     apply_regime_ii=None,
     apply_regime_iii=None,
     apply_regime_iv=None,
 ):
     if out_dir is None:
-        out_dir = OUTPUT_DIR
+        out_dir = CROSS_SECTIONS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    exc_out = out_dir / "sigmadiff_excitation_e_ice_emfietzoglou_kyriakou.dat"
-    ion_out = out_dir / "sigmadiff_ionisation_e_ice_emfietzoglou_kyriakou.dat"
+    if ice_label is None:
+        ice_label = ICE_LABEL
+    exc_out = out_dir / f"sigmadiff_excitation_e_{ice_label}_emfietzoglou_kyriakou.dat"
+    ion_out = out_dir / f"sigmadiff_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat"
 
-    if dcs_data is None:
-        if template_path is None:
-            dna_dir = _geant4_dna_dir()
-            if dna_dir is None:
-                raise FileNotFoundError("Could not locate Geant4 DNA data directory.")
-            template_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
+    if template_path is None:
+        dna_dir = _geant4_dna_dir()
+        if dna_dir is None:
+            raise FileNotFoundError("Could not locate Geant4 DNA data directory.")
+        emfi_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
+        if not os.path.exists(emfi_path):
+            raise FileNotFoundError(f"Missing DCS template file: {emfi_path}")
+        grid_low = _load_dcs_template_grid(emfi_path)
 
+        grid = grid_low
+        born_path = dna_dir / "sigmadiff_ionisation_e_born.dat"
+        if os.path.exists(born_path) and grid_low:
+            t_switch = max(grid_low.keys())
+            grid_high = _load_dcs_template_grid(
+                born_path, t_min=t_switch, include_min=False
+            )
+            if grid_high:
+                grid = _merge_dcs_template_grids(grid_low, grid_high)
+    else:
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Missing DCS template file: {template_path}")
-
         grid = _load_dcs_template_grid(template_path)
+
+    expected_lines = sum(len(v) for v in grid.values())
+    if dcs_data is not None:
+        cached_lines = np.asarray(dcs_data.get("T_line", []), float).size
+        if cached_lines != expected_lines:
+            dcs_data = None
+
+    if dcs_data is None:
 
         T_line = []
         E_line = []
@@ -1813,6 +1869,8 @@ def write_emfietzoglou_dcs_tables(
             apply_regime_iii = APPLY_CORRECTIONS_REGIME_III
         if apply_regime_iv is None:
             apply_regime_iv = APPLY_CORRECTIONS_REGIME_IV
+        if ice_type is None:
+            ice_type = ICE_TYPE
 
         tasks = [("excitation", k) for k in range(n_exc)]
         tasks.extend(("ionization", j) for j in range(n_ion))
@@ -1845,6 +1903,7 @@ def write_emfietzoglou_dcs_tables(
                     apply_regime_ii,
                     apply_regime_iii,
                     apply_regime_iv,
+                    ice_type,
                 ),
             ) as ex:
                 futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
@@ -1885,13 +1944,15 @@ def write_emfietzoglou_dcs_tables(
         return dcs_data
     return None
 
-def plot_total_cross_section_corrections(T_list, sigma_list, out_path=None):
+def plot_total_cross_section_corrections(T_list, sigma_list, out_path=None, ice_label=None):
     """
     Plot PWBA vs corrected totals and per-stage correction terms vs energy.
     """
     if out_path is None:
+        if ice_label is None:
+            ice_label = ICE_LABEL
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / "cross_section_corrections.png"
+        out_path = OUTPUT_DIR / f"cross_section_corrections_{ice_label}.png"
 
     rows = [_compute_correction_row(T, sigma) for T, sigma in zip(T_list, sigma_list)]
     T_arr = np.array([row["T_eV"] for row in rows], float)
@@ -1952,6 +2013,7 @@ def _init_worker(
     apply_regime_iii,
     apply_regime_iv,
     apply_mc,
+    ice_type,
 ):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
@@ -1965,7 +2027,7 @@ def _init_worker(
         apply_regime_iv=apply_regime_iv,
     )
     _set_mc_correction(apply_mc=apply_mc)
-    _WORKER_S = model.epsilon_optical('amorphous')
+    _WORKER_S = model.epsilon_optical(ice_type)
     _WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
     _WORKER_KW = dict(
         NE=NE,
@@ -1983,8 +2045,10 @@ def _compute_for_T(T):
     return float(T), sigma
 
 def main():
+    if ICE_TYPE not in ("amorphous", "hexagonal"):
+        raise ValueError(f"Unsupported ICE_TYPE: {ICE_TYPE}")
     # Optical model / dispersion coefficients
-    s = model.epsilon_optical('amorphous')
+    s = model.epsilon_optical(ICE_TYPE)
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])
     c_vec = np.array([0.098, 0.075, 0.074, 0.765, 0.425])
@@ -2013,7 +2077,7 @@ def main():
     _set_mc_correction(apply_mc=apply_mc)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    cache_path = OUTPUT_DIR / "cross_section_corrections.npz"
+    cache_path = OUTPUT_DIR / f"cross_section_corrections_{ICE_LABEL}.npz"
     cached = load_cross_section_corrections_npz(cache_path, NE=NE, Nq=Nq, T_list=T_list)
 
     sigma_list = None
@@ -2046,6 +2110,7 @@ def main():
                     apply_regime_iii,
                     apply_regime_iv,
                     apply_mc,
+                    ICE_TYPE,
                 ),
         ) as ex:
             futures = [ex.submit(_compute_for_T, T) for T in T_list]
@@ -2062,6 +2127,8 @@ def main():
             C,
             Nq=Nq,
             return_data=True,
+            ice_label=ICE_LABEL,
+            ice_type=ICE_TYPE,
             a_vec=a_vec,
             b_vec=b_vec,
             c_vec=c_vec,
@@ -2078,6 +2145,7 @@ def main():
             NE=NE,
             Nq=Nq,
             dcs_data=dcs_data,
+            ice_label=ICE_LABEL,
         )
 
     if not dcs_written:
@@ -2087,6 +2155,8 @@ def main():
                 C,
                 Nq=Nq,
                 return_data=True,
+                ice_label=ICE_LABEL,
+                ice_type=ICE_TYPE,
                 a_vec=a_vec,
                 b_vec=b_vec,
                 c_vec=c_vec,
@@ -2103,13 +2173,21 @@ def main():
                 NE=NE,
                 Nq=Nq,
                 dcs_data=dcs_data,
+                ice_label=ICE_LABEL,
             )
         else:
-            write_emfietzoglou_dcs_tables(s, C, Nq=Nq, dcs_data=dcs_data)
+            write_emfietzoglou_dcs_tables(
+                s,
+                C,
+                Nq=Nq,
+                dcs_data=dcs_data,
+                ice_label=ICE_LABEL,
+                ice_type=ICE_TYPE,
+            )
             dcs_written = True
 
     # ----------------- Log corrections per energy -----------------
-    plot_total_cross_section_corrections(T_list, sigma_list)
+    plot_total_cross_section_corrections(T_list, sigma_list, ice_label=ICE_LABEL)
 
     # ----------------- Plot 0: corrected excitation/ionization (scaled) -----------------
     style = rcparams_with_fontsize(
@@ -2125,11 +2203,11 @@ def main():
         from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
         fig = plt.figure(figsize=(9, 7.8))
-        gs = GridSpec(2, 1, height_ratios=[4.7, 1.3], hspace=0.18)
+        gs = GridSpec(2, 1, height_ratios=[4.7, 1.3], hspace=0.30)
         ax = fig.add_subplot(gs[0, 0])
         plot_corrected_exc_ion_scaled(T_list, sigma_list, ax=ax)
 
-        gs_leg = GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1, 0], height_ratios=[1.0, 1.0], hspace=0.0)
+        gs_leg = GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1, 0], height_ratios=[1.0, 1.0], hspace=0.30)
         ax_leg_exc = fig.add_subplot(gs_leg[0, 0])
         ax_leg_ion = fig.add_subplot(gs_leg[1, 0])
         ax_leg_exc.axis("off")
@@ -2170,7 +2248,7 @@ def main():
                 )
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / "corrected_excitation_ionization_scaled.png"
+        out_path = OUTPUT_DIR / f"corrected_excitation_ionization_scaled_{ICE_LABEL}.png"
         fig.subplots_adjust(left=0.14, right=0.98, top=0.96, bottom=0.06)
         fig.savefig(out_path, dpi=300)
         plt.close(fig)
@@ -2184,13 +2262,16 @@ def main():
     )
 
     ax_ion.figure.tight_layout()
-    ax_ion.figure.savefig("comparison_ionizations_pwba_vs_model.png", dpi=300)
+    ax_ion.figure.savefig(f"comparison_ionizations_pwba_vs_model_{ICE_LABEL}.png", dpi=300)
     plt.close(ax_ion.figure)
 
     ax_exc.figure.tight_layout()
-    ax_exc.figure.savefig("comparison_excitations_pwba_vs_model.png", dpi=300)
+    ax_exc.figure.savefig(f"comparison_excitations_pwba_vs_model_{ICE_LABEL}.png", dpi=300)
     plt.close(ax_exc.figure)
-    print("Saved comparison plots to comparison_ionizations_pwba_vs_model.png and comparison_excitations_pwba_vs_model.png")
+    print(
+        f"Saved comparison plots to comparison_ionizations_pwba_vs_model_{ICE_LABEL}.png "
+        f"and comparison_excitations_pwba_vs_model_{ICE_LABEL}.png"
+    )
 
 
     # ----------------- Plot 2: REL components per channel (L solid, T dashed) -----------------
@@ -2199,19 +2280,22 @@ def main():
     plot_relativistic_component_per_channel(T_list, sigma_list, s, ax=(ax_ion, ax_exc))
     fig_ion.tight_layout()
     fig_exc.tight_layout()
-    fig_ion.savefig("rel_cross_sections_ionizations_LT.png", dpi=300)
-    fig_exc.savefig("rel_cross_sections_excitations_LT.png", dpi=300)
+    fig_ion.savefig(f"rel_cross_sections_ionizations_LT_{ICE_LABEL}.png", dpi=300)
+    fig_exc.savefig(f"rel_cross_sections_excitations_LT_{ICE_LABEL}.png", dpi=300)
     plt.close(fig_ion)
     plt.close(fig_exc)
-    print("Saved REL component plots to rel_cross_sections_ionizations_LT.png and rel_cross_sections_excitations_LT.png")
+    print(
+        f"Saved REL component plots to rel_cross_sections_ionizations_LT_{ICE_LABEL}.png "
+        f"and rel_cross_sections_excitations_LT_{ICE_LABEL}.png"
+    )
 
     # ----------------- Plot 3: TOTAL cross section with all corrections -----------------
     fig, ax = plt.subplots()
     plot_total_cross_section(T_list, sigma_list, s, ax=ax)
     fig.tight_layout()
-    fig.savefig("total_cross_section_all_corrections.png", dpi=300)
+    fig.savefig(f"total_cross_section_all_corrections_{ICE_LABEL}.png", dpi=300)
     plt.close(fig)
-    print("Saved total plot to total_cross_section_all_corrections.png")
+    print(f"Saved total plot to total_cross_section_all_corrections_{ICE_LABEL}.png")
 
 if __name__ == "__main__":
     main()
