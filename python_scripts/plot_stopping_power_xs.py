@@ -108,7 +108,7 @@ def _interp_loglog(x: np.ndarray, y: np.ndarray, x_new: np.ndarray) -> np.ndarra
 
 def _units_and_label(units: str, density: float, dedx: np.ndarray) -> tuple[np.ndarray, str]:
     if units == "ev_ang":
-        return dedx * EV_NM_TO_EV_ANG, "Stopping Power (eV/$\AA$)"
+        return dedx * EV_NM_TO_EV_ANG, r"Stopping Power (eV/$\AA$)"
     if units == "mev_cm":
         return dedx * EV_NM_TO_MEV_CM, "Stopping Power (MeV/cm)"
     if units == "mev_cm2_g":
@@ -350,22 +350,19 @@ def _compute_stopping_power(
 def _plot(
     energy_grid: np.ndarray,
     water_dedx: np.ndarray,
-    ice_dedx: np.ndarray,
+    ice_series: list[dict],
     units: str,
     out_path: Path,
     rho_water: float,
     rho_ice: float,
-    ice_emax: float | None = None,
+    water_emax: float | None = None,
 ) -> None:
     water_plot, ylabel = _units_and_label(units, rho_water, water_dedx)
-    ice_plot, _ = _units_and_label(units, rho_ice, ice_dedx)
-
     fig, ax = plt.subplots(figsize=(10, 6))
-    valid_w = np.isfinite(water_plot) & (water_plot > 0) & np.isfinite(energy_grid)
-    valid_i = np.isfinite(ice_plot) & (ice_plot > 0) & np.isfinite(energy_grid)
-    if ice_emax is not None:
-        valid_i &= energy_grid <= ice_emax
 
+    valid_w = np.isfinite(water_plot) & (water_plot > 0) & np.isfinite(energy_grid)
+    if water_emax is not None:
+        valid_w &= energy_grid <= water_emax
     ax.loglog(
         energy_grid[valid_w],
         water_plot[valid_w],
@@ -374,14 +371,22 @@ def _plot(
         label="Water",
         zorder=3,
     )
-    ax.loglog(
-        energy_grid[valid_i],
-        ice_plot[valid_i],
-        color="0.35",
-        linewidth=3,
-        label="Ice",
-        zorder=2,
-    )
+
+    for idx, series in enumerate(ice_series):
+        ice_plot, _ = _units_and_label(units, rho_ice, series["dedx"])
+        valid_i = np.isfinite(ice_plot) & (ice_plot > 0) & np.isfinite(energy_grid)
+        ice_emax = series.get("emax")
+        if ice_emax is not None:
+            valid_i &= energy_grid <= ice_emax
+        ax.loglog(
+            energy_grid[valid_i],
+            ice_plot[valid_i],
+            color=series.get("color", f"0.{35 + idx * 20:02d}"),
+            linewidth=3,
+            ls=series.get("ls", "-"),
+            label=series.get("label", "Ice"),
+            zorder=2,
+        )
 
     ax.set_xlabel("Electron Energy (T; eV)")
     ax.set_ylabel(ylabel)
@@ -401,7 +406,7 @@ def main() -> None:
         description="Compute stopping power from cross sections for water vs ice."
     )
     parser.add_argument("--emin", type=float, default=1.0, help="Minimum energy (eV)")
-    parser.add_argument("--emax", type=float, default=1.0e6, help="Maximum energy (eV)")
+    parser.add_argument("--emax", type=float, default=1.0e7, help="Maximum energy (eV)")
     parser.add_argument("--nbins", type=int, default=500, help="Number of log bins")
     parser.add_argument(
         "--units",
@@ -429,11 +434,10 @@ def main() -> None:
         help="Output plot path.",
     )
     parser.add_argument(
-        "--ice-type",
+        "--ice-types",
         type=str,
-        default="amorphous",
-        choices=("amorphous", "hexagonal"),
-        help="Ice type used for ice DCS files.",
+        default="amorphous,hexagonal",
+        help="Comma-separated ice types to plot (amorphous,hexagonal).",
     )
     args = parser.parse_args()
 
@@ -451,32 +455,35 @@ def main() -> None:
     ion_dcs_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
     exc_born_path = dna_dir / "sigma_excitation_e_born.dat"
     ion_born_dcs_path = dna_dir / "sigmadiff_ionisation_e_born.dat"
-    ice_label = f"{args.ice_type}_ice"
-    ice_exc_dcs_path = CROSS_SECTIONS_DIR / f"sigmadiff_excitation_e_{ice_label}_emfietzoglou_kyriakou.dat"
-    ice_ion_dcs_path = CROSS_SECTIONS_DIR / f"sigmadiff_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat"
-    if not ice_exc_dcs_path.exists():
-        fallback = CROSS_SECTIONS_DIR / "sigmadiff_excitation_e_ice_emfietzoglou_kyriakou.dat"
-        if fallback.exists():
-            print(
-                f"Missing {ice_exc_dcs_path.name}; falling back to {fallback.name}."
-            )
-            ice_exc_dcs_path = fallback
-    if not ice_ion_dcs_path.exists():
-        fallback = CROSS_SECTIONS_DIR / "sigmadiff_ionisation_e_ice_emfietzoglou_kyriakou.dat"
-        if fallback.exists():
-            print(
-                f"Missing {ice_ion_dcs_path.name}; falling back to {fallback.name}."
-            )
-            ice_ion_dcs_path = fallback
+    ice_types = [t.strip().lower() for t in args.ice_types.split(",") if t.strip()]
+    ice_types = [t for t in ice_types if t in ("amorphous", "hexagonal")]
+    if not ice_types:
+        raise ValueError("No valid ice types specified (use amorphous and/or hexagonal).")
 
     max_low_water = min(
         _max_table_energy(exc_path),
         _max_table_energy(ion_dcs_path),
     )
-    max_ice = min(
-        _max_table_energy(ice_exc_dcs_path),
-        _max_table_energy(ice_ion_dcs_path),
-    )
+    ice_info = []
+    for ice_type in ice_types:
+        ice_label = f"{ice_type}_ice"
+        ice_exc_dcs_path = CROSS_SECTIONS_DIR / f"sigmadiff_excitation_e_{ice_label}_emfietzoglou_kyriakou.dat"
+        ice_ion_dcs_path = CROSS_SECTIONS_DIR / f"sigmadiff_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat"
+        if not ice_exc_dcs_path.exists():
+            fallback = CROSS_SECTIONS_DIR / "sigmadiff_excitation_e_ice_emfietzoglou_kyriakou.dat"
+            if fallback.exists():
+                print(
+                    f"Missing {ice_exc_dcs_path.name}; falling back to {fallback.name}."
+                )
+                ice_exc_dcs_path = fallback
+        if not ice_ion_dcs_path.exists():
+            fallback = CROSS_SECTIONS_DIR / "sigmadiff_ionisation_e_ice_emfietzoglou_kyriakou.dat"
+            if fallback.exists():
+                print(
+                    f"Missing {ice_ion_dcs_path.name}; falling back to {fallback.name}."
+                )
+                ice_ion_dcs_path = fallback
+        ice_info.append((ice_type, ice_label, ice_exc_dcs_path, ice_ion_dcs_path))
     switch_e = min(HIGH_ENERGY_SWITCH_EEV, max_low_water)
 
     born_available = exc_born_path.exists() and ion_born_dcs_path.exists()
@@ -493,22 +500,25 @@ def main() -> None:
     if args.emax > max_supported_water:
         print(
             f"Requested emax={args.emax:.3e} eV exceeds water table coverage; "
-            f"capping to {max_supported_water:.3e} eV."
+            f"water curve will be truncated at {max_supported_water:.3e} eV."
         )
-        args.emax = max_supported_water
-    if args.emax > max_ice:
-        print(
-            f"Requested emax={args.emax:.3e} eV exceeds ice table coverage; "
-            f"ice curve will be truncated at {max_ice:.3e} eV."
+    ice_max_by_type = {}
+    for ice_type, ice_label, ice_exc_dcs_path, ice_ion_dcs_path in ice_info:
+        max_ice = min(
+            _max_table_energy(ice_exc_dcs_path),
+            _max_table_energy(ice_ion_dcs_path),
         )
+        ice_max_by_type[ice_type] = max_ice
+        if args.emax > max_ice:
+            print(
+                f"Requested emax={args.emax:.3e} eV exceeds {ice_type} ice table coverage; "
+                f"curve will be truncated at {max_ice:.3e} eV."
+            )
 
     energy = np.logspace(np.log10(args.emin), np.log10(args.emax), args.nbins)
 
     exc_eloss_xs_water_low = _excitation_energy_loss_xs(energy, exc_path)
     ion_energy_water, ion_eloss_xs_water_low = _ion_energy_loss_xs_table(ion_dcs_path)
-    exc_energy_ice, exc_eloss_xs_ice_table = _dcs_energy_loss_xs_table(ice_exc_dcs_path)
-    ion_energy_ice, ion_eloss_xs_ice_low = _dcs_energy_loss_xs_table(ice_ion_dcs_path)
-    exc_eloss_xs_ice_low = _interp_loglog(exc_energy_ice, exc_eloss_xs_ice_table, energy)
 
     if born_available:
         exc_eloss_xs_born = _excitation_energy_loss_xs(energy, exc_born_path)
@@ -517,7 +527,6 @@ def main() -> None:
         exc_eloss_xs_water = _merge_low_high_grid(
             energy, exc_eloss_xs_water_low, exc_eloss_xs_born, switch_e
         )
-        exc_eloss_xs_ice = exc_eloss_xs_ice_low
         ion_energy_water, ion_eloss_xs_water = _merge_low_high_tables(
             ion_energy_water,
             ion_eloss_xs_water_low,
@@ -525,12 +534,9 @@ def main() -> None:
             ion_eloss_xs_born,
             switch_e,
         )
-        ion_energy_ice, ion_eloss_xs_ice = ion_energy_ice, ion_eloss_xs_ice_low
     else:
         exc_eloss_xs_water = exc_eloss_xs_water_low
-        exc_eloss_xs_ice = exc_eloss_xs_ice_low
         ion_eloss_xs_water = ion_eloss_xs_water_low
-        ion_eloss_xs_ice = ion_eloss_xs_ice_low
 
     water_dedx = _compute_stopping_power(
         energy_grid=energy,
@@ -541,25 +547,45 @@ def main() -> None:
         ion_energy=ion_energy_water,
         ion_eloss_xs=ion_eloss_xs_water,
     )
-    ice_dedx = _compute_stopping_power(
-        energy_grid=energy,
-        n_cm3=N_CM3_ICE,
-        vib_path=ice_vib,
-        attach_path=ice_attach,
-        exc_eloss_xs=exc_eloss_xs_ice,
-        ion_energy=ion_energy_ice,
-        ion_eloss_xs=ion_eloss_xs_ice,
-    )
+    ice_series = []
+    ice_styles = {
+        "amorphous": {"color": "SlateGray", "ls": "-"},
+        "hexagonal": {"color": "0.55", "ls": "-"},
+    }
+    for ice_type, ice_label, ice_exc_dcs_path, ice_ion_dcs_path in ice_info:
+        exc_energy_ice, exc_eloss_xs_ice_table = _dcs_energy_loss_xs_table(ice_exc_dcs_path)
+        ion_energy_ice, ion_eloss_xs_ice = _dcs_energy_loss_xs_table(ice_ion_dcs_path)
+        exc_eloss_xs_ice = _interp_loglog(exc_energy_ice, exc_eloss_xs_ice_table, energy)
+
+        ice_dedx = _compute_stopping_power(
+            energy_grid=energy,
+            n_cm3=N_CM3_ICE,
+            vib_path=ice_vib,
+            attach_path=ice_attach,
+            exc_eloss_xs=exc_eloss_xs_ice,
+            ion_energy=ion_energy_ice,
+            ion_eloss_xs=ion_eloss_xs_ice,
+        )
+        style = ice_styles.get(ice_type, {"color": "0.6", "ls": "-"})
+        ice_series.append(
+            {
+                "label": f"{ice_type.capitalize()} ice",
+                "dedx": ice_dedx,
+                "color": style["color"],
+                "ls": style["ls"],
+                "emax": ice_max_by_type.get(ice_type),
+            }
+        )
 
     _plot(
         energy_grid=energy,
         water_dedx=water_dedx,
-        ice_dedx=ice_dedx,
+        ice_series=ice_series,
         units=args.units,
         out_path=args.out,
         rho_water=args.rho_water,
         rho_ice=args.rho_ice,
-        ice_emax=max_ice,
+        water_emax=max_supported_water,
     )
 
 

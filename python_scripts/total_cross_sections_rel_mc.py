@@ -39,8 +39,11 @@ from constants import (
 import emfietzoglou_model_finite_q as model
 
 # Select ice structure: "amorphous" or "hexagonal"
-ICE_TYPE = "amorphous"
+ICE_TYPE = "hexagonal"
 ICE_LABEL = f"{ICE_TYPE}_ice"
+# Extend DCS grid beyond Born table using a linear T grid.
+DCS_T_MAX_EEV = 1.0e7
+DCS_T_STEP_EEV = 2.0e5
 
 # Geant4 Emfietzoglou DCS table scale: file values * scale -> m^2
 EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
@@ -944,7 +947,7 @@ def plot_full_cross_sections_per_channel(
             label=f"Ion. {j+1} Default model",
         )
 
-    ax_ion.set_xlabel("Incident energy T (eV)")
+    ax_ion.set_xlabel("Electron energy (T; eV)")
     ax_ion.set_ylabel("Cross section sigma(T)")
     ax_ion.set_title("Ionizations: PWBA baseline vs Default model")
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
@@ -992,7 +995,7 @@ def plot_full_cross_sections_per_channel(
             label=f"Exc. {k+1} Default model",
         )
 
-    ax_exc.set_xlabel("Incident energy T (eV)")
+    ax_exc.set_xlabel("Electron energy (T; eV)")
     ax_exc.set_ylabel("Cross section sigma(T)")
     ax_exc.set_title("Excitations: PWBA baseline vs Default model")
     ax_exc.grid(True, which="both", ls="--", alpha=0.3)
@@ -1065,7 +1068,7 @@ def plot_relativistic_component_per_channel(
             label=f"Ion. {j+1} Trans",
         )
 
-    ax_ion.set_xlabel("Incident energy T (eV)")
+    ax_ion.set_xlabel("Electron energy (T; eV)")
     ax_ion.set_ylabel("Relativistic component sigma_rel(T)")
     ax_ion.legend(loc="best", fontsize=8)
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
@@ -1094,7 +1097,7 @@ def plot_relativistic_component_per_channel(
             label=f"Exc. {k+1} Trans",
         )
 
-    ax_exc.set_xlabel("Incident energy T (eV)")
+    ax_exc.set_xlabel("Electron energy (T; eV)")
     ax_exc.set_ylabel("Relativistic component sigma_rel(T)")
     ax_exc.legend(loc="best", fontsize=8)
     ax_exc.grid(True, which="both", ls="--", alpha=0.3)
@@ -1141,11 +1144,164 @@ def plot_total_cross_section(
     ax.loglog(T_arr, y_pwba, lw=linewidth, alpha=alpha, ls=":", label="Total PWBA")
     ax.loglog(T_arr, y_corr, lw=linewidth+1, alpha=alpha, ls="-", label="Total (all corrections)")
 
-    ax.set_xlabel("Incident energy T (eV)")
+    ax.set_xlabel("Electron energy (T; eV)")
     ax.set_ylabel("Total cross section sigma(T)")
     ax.set_title("Total cross section: PWBA vs all corrections")
     ax.legend(loc="best", fontsize=9)
     return ax
+
+def _load_total_sigma_npz(npz_path):
+    data = np.load(npz_path)
+    T = np.asarray(data["T_eV"], float)
+    pwba = np.asarray(data.get("total_sigma_pwba", []), float)
+    corrected = np.asarray(
+        data.get("total_sigma_corrected", data.get("total_sigma", [])), float
+    )
+    return T, pwba, corrected
+
+def plot_total_cross_section_two_panel(
+    amorphous_npz,
+    hexagonal_npz,
+    out_path=None,
+):
+    """
+    Two-panel comparison (amorphous vs hexagonal) with a shared legend row below.
+    """
+    from matplotlib.gridspec import GridSpec
+
+    T_a, pwba_a, corr_a = _load_total_sigma_npz(amorphous_npz)
+    T_h, pwba_h, corr_h = _load_total_sigma_npz(hexagonal_npz)
+
+    fig = plt.figure(figsize=(14, 7))
+    gs = GridSpec(2, 2, height_ratios=[3.0, 0.8], width_ratios=[1.0, 1.0], hspace=0.30, wspace=0.25)
+    ax_a = fig.add_subplot(gs[0, 0])
+    ax_h = fig.add_subplot(gs[0, 1])
+    legend_ax = fig.add_subplot(gs[1, :])
+    legend_ax.axis("off")
+
+    ln1 = ax_a.loglog(T_a, pwba_a, "k:", linewidth=2, label="Total PWBA")[0]
+    ln2 = ax_a.loglog(T_a, corr_a, "k-", linewidth=2.5, label="Total (all corrections)")[0]
+    ax_a.set_xlabel("Electron energy (T; eV)")
+    ax_a.set_ylabel("Total cross section sigma(T)")
+    ax_a.set_title("Amorphous ice")
+
+    ax_h.loglog(T_h, pwba_h, "k:", linewidth=2, label="Total PWBA")
+    ax_h.loglog(T_h, corr_h, "k-", linewidth=2.5, label="Total (all corrections)")
+    ax_h.set_xlabel("Electron energy (T; eV)")
+    ax_h.set_ylabel("")
+    ax_h.set_title("Hexagonal ice")
+
+    legend_ax.legend(
+        [ln1, ln2],
+        ["Total PWBA", "Total (all corrections)"],
+        loc="center",
+        ncol=2,
+        frameon=False,
+        columnspacing=1.5,
+        handlelength=2.5,
+        labelspacing=0.8,
+    )
+
+    fig.tight_layout()
+    if out_path is not None:
+        fig.savefig(out_path, bbox_inches="tight")
+        print(f"Saved two-panel total cross section plot to {out_path}")
+    plt.close(fig)
+
+def plot_channel_cross_sections_two_panel(
+    amorphous_npz,
+    hexagonal_npz,
+    out_path=None,
+):
+    """
+    Two-panel comparison (amorphous vs hexagonal) of channel-resolved cross sections
+    with a shared legend row below (excitation top, ionization bottom).
+    """
+    from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+
+    data_a = np.load(amorphous_npz)
+    data_h = np.load(hexagonal_npz)
+    T_a, sigma_a = _sigma_list_from_npz(data_a)
+    T_h, sigma_h = _sigma_list_from_npz(data_h)
+    data_a.close()
+    data_h.close()
+
+    fig = plt.figure(figsize=(14, 7))
+    gs = GridSpec(2, 2, height_ratios=[3.0, 0.8], width_ratios=[1.0, 1.0], hspace=0.30, wspace=0.25)
+    ax_a = fig.add_subplot(gs[0, 0])
+    ax_h = fig.add_subplot(gs[0, 1])
+    plot_corrected_exc_ion_scaled(T_a, sigma_a, ax=ax_a)
+    plot_corrected_exc_ion_scaled(T_h, sigma_h, ax=ax_h)
+    ax_a.set_title("Amorphous ice")
+    ax_h.set_title("Hexagonal ice")
+    ax_a.set_xlabel("Electron energy (T; eV)")
+    ax_h.set_xlabel("Electron energy (T; eV)")
+    ax_a.set_ylabel(r"Total cross-section (cm$^2$)")
+    ax_h.set_ylabel("")
+
+    max_x = max(float(np.max(T_a)), float(np.max(T_h)))
+    ax_a.set_xlim(1.0, max_x)
+    ax_h.set_xlim(1.0, max_x)
+
+    from matplotlib.lines import Line2D
+    from matplotlib.ticker import LogFormatterMathtext, LogLocator, NullLocator
+
+    handles, _ = ax_a.get_legend_handles_labels()
+    n_exc = len(sigma_a[0].get("excitation_sigma_pwba", [])) if sigma_a else 0
+    n_ion = len(sigma_a[0].get("ionization_sigma_pwba", [])) if sigma_a else 0
+    exc_handles = handles[:n_exc]
+    ion_handles = handles[n_exc:n_exc + n_ion]
+
+    gs_leg = GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1, :], height_ratios=[1.0, 1.0], hspace=0.30)
+    ax_leg_exc = fig.add_subplot(gs_leg[0, 0])
+    ax_leg_ion = fig.add_subplot(gs_leg[1, 0])
+    ax_leg_exc.axis("off")
+    ax_leg_ion.axis("off")
+
+    if exc_handles:
+        exc_labels = ["Excitation"] + [str(i + 1) for i in range(n_exc)]
+        exc_handles = [Line2D([], [], color="none", linestyle="none")] + exc_handles
+        ax_leg_exc.legend(
+            exc_handles,
+            exc_labels,
+            loc="center",
+            bbox_to_anchor=(0.5, 0.5),
+            ncol=max(1, n_exc + 1),
+            frameon=False,
+            columnspacing=0.9,
+            handlelength=2.2,
+            handletextpad=0.6,
+            borderaxespad=0.0,
+        )
+    if ion_handles:
+        ion_labels = ["Ionization"] + [str(i + 1) for i in range(n_ion)]
+        ion_handles = [Line2D([], [], color="none", linestyle="none")] + ion_handles
+        ax_leg_ion.legend(
+            ion_handles,
+            ion_labels,
+            loc="center",
+            bbox_to_anchor=(0.5, 0.5),
+            ncol=max(1, n_ion + 1),
+            frameon=False,
+            columnspacing=0.9,
+            handlelength=2.2,
+            handletextpad=0.6,
+            borderaxespad=0.0,
+        )
+
+    for ax in (ax_a, ax_h):
+        ax.xaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0,), numticks=50))
+        ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
+        ax.xaxis.set_minor_locator(NullLocator())
+        ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0,), numticks=50))
+        ax.yaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
+        ax.yaxis.set_minor_locator(NullLocator())
+
+    fig.tight_layout()
+    if out_path is not None:
+        fig.savefig(out_path, bbox_inches="tight")
+        print(f"Saved two-panel channel cross section plot to {out_path}")
+    plt.close(fig)
 
 def plot_corrected_exc_ion_scaled(
         T_list, sigma_list,
@@ -1607,6 +1763,28 @@ def _merge_dcs_template_grids(*grids):
             merged[T] = E_list
     return merged
 
+def _extend_dcs_grid(grid, t_max, t_step):
+    from collections import OrderedDict
+
+    if not grid:
+        return grid
+    t_max = float(t_max)
+    t_step = float(t_step)
+    if t_step <= 0.0:
+        return grid
+
+    grid_sorted = OrderedDict(sorted(grid.items(), key=lambda kv: kv[0]))
+    last_T = max(grid_sorted.keys())
+    if t_max <= last_T:
+        return grid_sorted
+
+    template_E = list(grid_sorted[last_T])
+    t = last_T + t_step
+    while t <= t_max + 0.5 * t_step:
+        grid_sorted[float(t)] = list(template_E)
+        t += t_step
+    return grid_sorted
+
 def _format_dcs_row(T, E, vals):
     fields = [f"{T:.9E}", f"{E:.9E}"]
     fields.extend(f"{val:.9E}" for val in vals)
@@ -1826,6 +2004,8 @@ def write_emfietzoglou_dcs_tables(
             )
             if grid_high:
                 grid = _merge_dcs_template_grids(grid_low, grid_high)
+        if DCS_T_MAX_EEV > max(grid.keys()):
+            grid = _extend_dcs_grid(grid, DCS_T_MAX_EEV, DCS_T_STEP_EEV)
     else:
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Missing DCS template file: {template_path}")
@@ -1983,7 +2163,7 @@ def plot_total_cross_section_corrections(T_list, sigma_list, out_path=None, ice_
     ax_corr.plot(T_arr, corr_rel_long, lw=1.8, label="Stage 2: Rel long")
     ax_corr.plot(T_arr, corr_rel_trans, lw=1.8, label="Stage 3: Rel trans")
     ax_corr.plot(T_arr, corr_density, lw=1.8, label="Stage 4: Density effect")
-    ax_corr.set_xlabel("Incident energy T (eV)")
+    ax_corr.set_xlabel("Electron energy (T; eV)")
     ax_corr.set_ylabel("Correction term")
     ax_corr.grid(True, which="both", ls="--", alpha=0.3)
     ax_corr.legend(loc="best", fontsize=9)
@@ -2060,8 +2240,8 @@ def main():
     T_list = np.logspace(-1, 7, 400)
 
     # Computing Choices
-    NE = 300
-    Nq = 300
+    NE = 100
+    Nq = 100
     include_kshell = True
     use_mott_coulomb = True
     apply_mc = True
@@ -2296,6 +2476,21 @@ def main():
     fig.savefig(f"total_cross_section_all_corrections_{ICE_LABEL}.png", dpi=300)
     plt.close(fig)
     print(f"Saved total plot to total_cross_section_all_corrections_{ICE_LABEL}.png")
+
+    # ----------------- Plot 4: two-panel amorphous vs hexagonal totals -----------------
+    amorphous_npz = OUTPUT_DIR / "cross_section_corrections_amorphous_ice.npz"
+    hexagonal_npz = OUTPUT_DIR / "cross_section_corrections_hexagonal_ice.npz"
+    if amorphous_npz.exists() and hexagonal_npz.exists():
+        out_path = OUTPUT_DIR / "channel_cross_section_two_panel_amorphous_hexagonal.png"
+        plot_channel_cross_sections_two_panel(amorphous_npz, hexagonal_npz, out_path=out_path)
+    else:
+        missing = []
+        if not amorphous_npz.exists():
+            missing.append(amorphous_npz.name)
+        if not hexagonal_npz.exists():
+            missing.append(hexagonal_npz.name)
+        if missing:
+            print(f"Skipping two-panel total plot (missing {', '.join(missing)}).")
 
 if __name__ == "__main__":
     main()
