@@ -31,6 +31,7 @@
 #include "G4SystemOfUnits.hh"
 #include "G4DNAChemistryManager.hh"
 #include "G4DNAMolecularMaterial.hh"
+#include "ModelDataRegistry.hh"
 
 using namespace std;
 
@@ -99,6 +100,9 @@ void G4DNAMichaudAttachmentModel::Initialise(const G4ParticleDefinition* particl
 
   G4double scaleFactor = 1e-16*cm2;
   G4String fileElectron("dna/sigma_attachment_e_michaud");
+  ModelDataRegistry::Instance().Record(
+    "ref_attachment",
+    ModelDataRegistry::NormalizeDatBasename(fileElectron));
   fData = new G4DNACrossSectionDataSet(new G4LogLogInterpolation(),
                                         eV, scaleFactor);
   fData->LoadData(fileElectron);

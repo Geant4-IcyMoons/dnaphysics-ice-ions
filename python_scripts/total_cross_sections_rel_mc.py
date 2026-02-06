@@ -39,7 +39,7 @@ from constants import (
 import emfietzoglou_model_finite_q as model
 
 # Select ice structure: "amorphous" or "hexagonal"
-ICE_TYPE = "hexagonal"
+ICE_TYPE = "amorphous"
 ICE_LABEL = f"{ICE_TYPE}_ice"
 # Extend DCS grid beyond Born table using a linear T grid.
 DCS_T_MAX_EEV = 1.0e7
@@ -947,7 +947,7 @@ def plot_full_cross_sections_per_channel(
             label=f"Ion. {j+1} Default model",
         )
 
-    ax_ion.set_xlabel("Electron energy (T; eV)")
+    ax_ion.set_xlabel("Electron Energy (T; eV)")
     ax_ion.set_ylabel("Cross section sigma(T)")
     ax_ion.set_title("Ionizations: PWBA baseline vs Default model")
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
@@ -995,7 +995,7 @@ def plot_full_cross_sections_per_channel(
             label=f"Exc. {k+1} Default model",
         )
 
-    ax_exc.set_xlabel("Electron energy (T; eV)")
+    ax_exc.set_xlabel("Electron Energy (T; eV)")
     ax_exc.set_ylabel("Cross section sigma(T)")
     ax_exc.set_title("Excitations: PWBA baseline vs Default model")
     ax_exc.grid(True, which="both", ls="--", alpha=0.3)
@@ -1183,13 +1183,13 @@ def plot_total_cross_section_two_panel(
     ln2 = ax_a.loglog(T_a, corr_a, "k-", linewidth=2.5, label="Total (all corrections)")[0]
     ax_a.set_xlabel("Electron energy (T; eV)")
     ax_a.set_ylabel("Total cross section sigma(T)")
-    ax_a.set_title("Amorphous ice")
+    ax_a.set_title("Amorphous Ice")
 
     ax_h.loglog(T_h, pwba_h, "k:", linewidth=2, label="Total PWBA")
     ax_h.loglog(T_h, corr_h, "k-", linewidth=2.5, label="Total (all corrections)")
     ax_h.set_xlabel("Electron energy (T; eV)")
     ax_h.set_ylabel("")
-    ax_h.set_title("Hexagonal ice")
+    ax_h.set_title("Hexagonal Ice")
 
     legend_ax.legend(
         [ln1, ln2],
@@ -1232,8 +1232,8 @@ def plot_channel_cross_sections_two_panel(
     ax_h = fig.add_subplot(gs[0, 1])
     plot_corrected_exc_ion_scaled(T_a, sigma_a, ax=ax_a)
     plot_corrected_exc_ion_scaled(T_h, sigma_h, ax=ax_h)
-    ax_a.set_title("Amorphous ice")
-    ax_h.set_title("Hexagonal ice")
+    ax_a.set_title("Amorphous Ice")
+    ax_h.set_title("Hexagonal Ice")
     ax_a.set_xlabel("Electron energy (T; eV)")
     ax_h.set_xlabel("Electron energy (T; eV)")
     ax_a.set_ylabel(r"Total cross-section (cm$^2$)")
@@ -2237,11 +2237,11 @@ def main():
     C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
 
     # Energy grid (eV)
-    T_list = np.logspace(-1, 7, 400)
+    T_list = np.logspace(-1, 7, 1000)
 
     # Computing Choices
-    NE = 100
-    Nq = 100
+    NE = 300
+    Nq = 300
     include_kshell = True
     use_mott_coulomb = True
     apply_mc = True

@@ -75,6 +75,17 @@ int main(int argc, char** argv)
   std::string phys_choice = phys_env ? phys_env : "ice";
   for (auto& c : phys_choice) c = static_cast<char>(std::tolower(c));
 
+  std::string ice_phase;
+  if (phys_choice == "ice_hex" || phys_choice == "ice_hexagonal" ||
+      phys_choice == "ice_hexagon" || phys_choice == "ice_h") {
+    ice_phase = "hexagonal";
+    phys_choice = "ice";
+  } else if (phys_choice == "ice_am" || phys_choice == "ice_amorphous" ||
+             phys_choice == "ice_amo") {
+    ice_phase = "amorphous";
+    phys_choice = "ice";
+  }
+
   G4VModularPhysicsList* physlist = nullptr;
   if (phys_choice == "water") {
     physlist = new PhysicsList_Water();
@@ -85,7 +96,13 @@ int main(int argc, char** argv)
     }
     physlist = new PhysicsList();
   }
-  G4cout << "Using physics list: " << phys_choice << G4endl;
+  if (!ice_phase.empty()) {
+    setenv("DNA_ICE_PHASE", ice_phase.c_str(), 1);
+    G4cout << "Using physics list: " << phys_choice
+           << " (phase: " << ice_phase << ")" << G4endl;
+  } else {
+    G4cout << "Using physics list: " << phys_choice << G4endl;
+  }
   runManager->SetUserInitialization(new DetectorConstruction(physlist));
   runManager->SetUserInitialization(physlist);
 

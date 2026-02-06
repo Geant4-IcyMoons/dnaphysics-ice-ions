@@ -25,16 +25,16 @@
 //
 // Based on the work described in
 // Rad Res 163, 98-111 (2005)
-// D. Emfietzoglou_ice, H. Nikjoo
+// D. Emfietzoglou, H. Nikjoo
 // 
 // Authors of the class (2014):
 // I. Kyriakou (kyriak@cc.uoi.gr)
-// D. Emfietzoglou_ice (demfietz@cc.uoi.gr)
+// D. Emfietzoglou (demfietz@cc.uoi.gr)
 // S. Incerti (incerti@cenbg.in2p3.fr)
 //
 
-#ifndef G4DNAEmfietzoglou_iceIonisationModel_h
-#define G4DNAEmfietzoglou_iceIonisationModel_h 1
+#ifndef G4DNAEmfietzoglouIonisationModelTracked_h
+#define G4DNAEmfietzoglouIonisationModelTracked_h 1
 
 #include "G4VEmModel.hh"
 #include "G4ParticleChangeForGamma.hh"
@@ -47,21 +47,21 @@
 #include "G4DNACrossSectionDataSet.hh"
 #include "G4DNAGenericIonsManager.hh"
 #include "G4LogLogInterpolation.hh"
-#include "G4DNAEmfietzoglou_iceIonisationStructure.hh"
+#include "G4DNAEmfietzoglouWaterIonisationStructure.hh"
 
-class G4DNAEmfietzoglou_iceIonisationModel : public G4VEmModel
+class G4DNAEmfietzoglouIonisationModelTracked : public G4VEmModel
 {
 
 public:
 
-  G4DNAEmfietzoglou_iceIonisationModel(const G4ParticleDefinition* p = nullptr,
+  G4DNAEmfietzoglouIonisationModelTracked(const G4ParticleDefinition* p = nullptr,
                                    const G4String& nam =
-                                       "DNAEmfietzoglou_iceIonisationModel");
+                                       "DNAEmfietzoglouIonisationModel");
 
-  ~G4DNAEmfietzoglou_iceIonisationModel() override;
+  ~G4DNAEmfietzoglouIonisationModelTracked() override;
 
-  G4DNAEmfietzoglou_iceIonisationModel & operator=(const G4DNAEmfietzoglou_iceIonisationModel &right) = delete;
-  G4DNAEmfietzoglou_iceIonisationModel(const G4DNAEmfietzoglou_iceIonisationModel&) = delete;
+  G4DNAEmfietzoglouIonisationModelTracked & operator=(const G4DNAEmfietzoglouIonisationModelTracked &right) = delete;
+  G4DNAEmfietzoglouIonisationModelTracked(const G4DNAEmfietzoglouIonisationModelTracked&) = delete;
 
   void Initialise(const G4ParticleDefinition*,
                           const G4DataVector& = *(new G4DataVector())) override;
@@ -122,7 +122,7 @@ private:
 
   // Final state
 
-  G4DNAEmfietzoglou_iceIonisationStructure waterStructure;
+  G4DNAEmfietzoglouWaterIonisationStructure waterStructure;
 
   G4double RandomizeEjectedElectronEnergy(G4ParticleDefinition * aParticleDefinition,
                                           G4double incomingParticleEnergy,
@@ -176,14 +176,14 @@ private:
 
 };
 
-inline void G4DNAEmfietzoglou_iceIonisationModel::SelectFasterComputation(G4bool input)
+inline void G4DNAEmfietzoglouIonisationModelTracked::SelectFasterComputation(G4bool input)
 {
   fasterCode = input;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-inline void G4DNAEmfietzoglou_iceIonisationModel::SelectStationary (G4bool input)
+inline void G4DNAEmfietzoglouIonisationModelTracked::SelectStationary (G4bool input)
 { 
     statCode = input; 
 }		 

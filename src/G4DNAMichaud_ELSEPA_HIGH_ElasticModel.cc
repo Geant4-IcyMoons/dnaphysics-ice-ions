@@ -31,6 +31,7 @@
 #include "G4DNAMolecularMaterial.hh"
 #include "G4LogLogInterpolation.hh"
 #include "G4Exp.hh"
+#include "ModelDataRegistry.hh"
 
 using namespace std;
 
@@ -108,6 +109,9 @@ void G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Initialise(const G4ParticleDefinitio
   // Total cross section (10^-16 cm^2 units)
   G4double scaleFactor = 1e-16*cm*cm;
   G4String fileElectron("dna/sigma_elastic_e_michaud_elsepa_high");
+  ModelDataRegistry::Instance().Record(
+    "ref_elastic_high",
+    ModelDataRegistry::NormalizeDatBasename(fileElectron));
 
   fpData = new G4DNACrossSectionDataSet(new G4LogLogInterpolation(),
                                         eV,

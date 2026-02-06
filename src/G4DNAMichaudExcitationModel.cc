@@ -269,6 +269,7 @@
 #include "G4RandomTools.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4DNAMolecularMaterial.hh"
+#include "ModelDataRegistry.hh"
 
 #include "Randomize.hh"          // G4UniformRand
 
@@ -379,6 +380,9 @@ void G4DNAMichaudExcitationModel::Initialise(const G4ParticleDefinition*,
   const char* path = G4FindDataDir("G4LEDATA");
   std::ostringstream eFullFileName;
   eFullFileName << path << "/dna/sigma_excitationvib_e_michaud.dat";
+  ModelDataRegistry::Instance().Record(
+    "ref_vib",
+    ModelDataRegistry::NormalizeDatBasename(eFullFileName.str()));
 
   std::ifstream input(eFullFileName.str().c_str());
   if (!input) {

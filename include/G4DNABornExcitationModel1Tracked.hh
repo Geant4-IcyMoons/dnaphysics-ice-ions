@@ -23,18 +23,10 @@
 // * acceptance of all terms of the Geant4 Software license.          *
 // ********************************************************************
 //
-// Based on the work described in
-// Rad Res 163, 98-111 (2005)
-// D. Emfietzoglou_ice, H. Nikjoo
-// 
-// Authors of the class (2014):
-// I. Kyriakou (kyriak@cc.uoi.gr)
-// D. Emfietzoglou_ice (demfietz@cc.uoi.gr)
-// S. Incerti (incerti@cenbg.in2p3.fr)
 //
 
-#ifndef G4DNAEmfietzoglou_iceExcitationModel_h
-#define G4DNAEmfietzoglou_iceExcitationModel_h 1
+#ifndef G4DNABornExcitationModel1Tracked_h
+#define G4DNABornExcitationModel1Tracked_h 1
 
 #include "G4VEmModel.hh"
 #include "G4ParticleChangeForGamma.hh"
@@ -44,22 +36,19 @@
 #include "G4LogLogInterpolation.hh"
 #include "G4Electron.hh"
 #include "G4Proton.hh"
-#include "G4DNAEmfietzoglou_iceExcitationStructure.hh"
+#include "G4DNAWaterExcitationStructure.hh"
 #include "G4NistManager.hh"
 
-class G4DNAEmfietzoglou_iceExcitationModel : public G4VEmModel
+class G4DNABornExcitationModel1Tracked: public G4VEmModel
 {
-
 public:
+  G4DNABornExcitationModel1Tracked(const G4ParticleDefinition* p = nullptr,
+                           const G4String& nam = "DNABornExcitationModel");
 
-  G4DNAEmfietzoglou_iceExcitationModel(const G4ParticleDefinition* p = nullptr,
-                                   const G4String& nam =
-                                       "DNAEmfietzoglou_iceExcitationModel");
+  ~G4DNABornExcitationModel1Tracked() override;
 
-  ~G4DNAEmfietzoglou_iceExcitationModel() override;
-
-  G4DNAEmfietzoglou_iceExcitationModel & operator=(const G4DNAEmfietzoglou_iceExcitationModel &right) = delete;
-  G4DNAEmfietzoglou_iceExcitationModel(const G4DNAEmfietzoglou_iceExcitationModel&) = delete;
+  G4DNABornExcitationModel1Tracked & operator=(const  G4DNABornExcitationModel1Tracked &right) = delete;
+  G4DNABornExcitationModel1Tracked(const  G4DNABornExcitationModel1Tracked&) = delete;
 
   void Initialise(const G4ParticleDefinition*,
                           const G4DataVector& = *(new G4DataVector())) override;
@@ -69,6 +58,11 @@ public:
                                          G4double ekin,
                                          G4double emin,
                                          G4double emax) override;
+
+  G4double GetPartialCrossSection(const G4Material*,
+                                          G4int level,
+                                          const G4ParticleDefinition*,
+                                          G4double kineticEnergy) override;
 
   void SampleSecondaries(std::vector<G4DynamicParticle*>*,
                                  const G4MaterialCutsCouple*,
@@ -92,33 +86,25 @@ private:
   // Water density table
   const std::vector<G4double>* fpMolWaterDensity;
 
-  std::map<G4String, G4double, std::less<G4String> > lowEnergyLimit;
-  std::map<G4String, G4double, std::less<G4String> > highEnergyLimit;
-
   G4bool isInitialised{false};
   G4int verboseLevel;
+  const G4ParticleDefinition* fParticleDefinition;
 
-  // Cross section
-
-  using MapFile = std::map<G4String, G4String, std::less<G4String>>;
-  MapFile tableFile;
-
-  using MapData = std::map<G4String, G4DNACrossSectionDataSet *, std::less<G4String>>;
-  MapData tableData;
+  G4double fLowEnergy;
+  G4double fHighEnergy;
+  G4String fTableFile;
+  G4DNACrossSectionDataSet* fTableData{nullptr};
 
   // Partial cross section
-
-  G4int RandomSelect(G4double energy, const G4String& particle);
-
-  // Final state
-
-  G4DNAEmfietzoglou_iceExcitationStructure waterStructure;
-
+  G4int RandomSelect(G4double energy);
+  
+  G4DNAWaterExcitationStructure waterStructure;
+   
 };
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-inline void G4DNAEmfietzoglou_iceExcitationModel::SelectStationary (G4bool input)
+inline void G4DNABornExcitationModel1Tracked::SelectStationary (G4bool input)
 { 
     statCode = input; 
 }		 

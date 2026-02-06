@@ -12,6 +12,12 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
+try:
+    from tqdm import tqdm
+except ImportError:  # fallback when tqdm isn't installed
+    def tqdm(iterable, **kwargs):
+        return iterable
+
 from constants import (
     CROSS_SECTIONS_DIR,
     CUSTOM_DATA_ROOT_GEANT4,
@@ -129,7 +135,7 @@ def _mean_w_from_dcs(path: Path, bindings_eV: np.ndarray) -> tuple[np.ndarray, n
     n_channels = None
 
     with open(path, "r") as f:
-        for line in f:
+        for line in tqdm(f, desc=f"Reading {path.name}", unit="lines", leave=False):
             if not line.strip():
                 continue
             parts = line.split()
@@ -256,7 +262,7 @@ def _plot(
             zorder=2,
         )
 
-    ax.set_xlabel("Electron energy (T; eV)")
+    ax.set_xlabel("Electron Energy (T; eV)")
     ax.set_ylabel("$<W>$ (eV)")
     ax.set_xlim(energy_grid.min(), energy_grid.max())
     ax.legend(loc="best")

@@ -25,43 +25,41 @@
 //
 // Based on the work described in
 // Rad Res 163, 98-111 (2005)
-// D. Emfietzoglou_ice, H. Nikjoo
+// D. Emfietzoglou, H. Nikjoo
 // 
 // Authors of the class (2014):
 // I. Kyriakou (kyriak@cc.uoi.gr)
-// D. Emfietzoglou_ice (demfietz@cc.uoi.gr)
+// D. Emfietzoglou (demfietz@cc.uoi.gr)
 // S. Incerti (incerti@cenbg.in2p3.fr)
 //
 
-#ifndef G4DNAEmfietzoglou_iceIonisationModel_h
-#define G4DNAEmfietzoglou_iceIonisationModel_h 1
+#ifndef G4DNAEmfietzoglouExcitationModelTracked_h
+#define G4DNAEmfietzoglouExcitationModelTracked_h 1
 
 #include "G4VEmModel.hh"
 #include "G4ParticleChangeForGamma.hh"
 #include "G4ProductionCutsTable.hh"
-#include "G4VAtomDeexcitation.hh"
-#include "G4NistManager.hh"
-#include "G4Electron.hh"
-#include "G4Proton.hh"
 
 #include "G4DNACrossSectionDataSet.hh"
-#include "G4DNAGenericIonsManager.hh"
 #include "G4LogLogInterpolation.hh"
-#include "G4DNAEmfietzoglou_iceIonisationStructure.hh"
+#include "G4Electron.hh"
+#include "G4Proton.hh"
+#include "G4DNAEmfietzoglouWaterExcitationStructure.hh"
+#include "G4NistManager.hh"
 
-class G4DNAEmfietzoglou_iceIonisationModel : public G4VEmModel
+class G4DNAEmfietzoglouExcitationModelTracked : public G4VEmModel
 {
 
 public:
 
-  G4DNAEmfietzoglou_iceIonisationModel(const G4ParticleDefinition* p = nullptr,
+  G4DNAEmfietzoglouExcitationModelTracked(const G4ParticleDefinition* p = nullptr,
                                    const G4String& nam =
-                                       "DNAEmfietzoglou_iceIonisationModel");
+                                       "DNAEmfietzoglouExcitationModel");
 
-  ~G4DNAEmfietzoglou_iceIonisationModel() override;
+  ~G4DNAEmfietzoglouExcitationModelTracked() override;
 
-  G4DNAEmfietzoglou_iceIonisationModel & operator=(const G4DNAEmfietzoglou_iceIonisationModel &right) = delete;
-  G4DNAEmfietzoglou_iceIonisationModel(const G4DNAEmfietzoglou_iceIonisationModel&) = delete;
+  G4DNAEmfietzoglouExcitationModelTracked & operator=(const G4DNAEmfietzoglouExcitationModelTracked &right) = delete;
+  G4DNAEmfietzoglouExcitationModelTracked(const G4DNAEmfietzoglouExcitationModelTracked&) = delete;
 
   void Initialise(const G4ParticleDefinition*,
                           const G4DataVector& = *(new G4DataVector())) override;
@@ -78,17 +76,10 @@ public:
                                  G4double tmin,
                                  G4double maxEnergy) override;
 
-  G4double DifferentialCrossSection(G4ParticleDefinition * aParticleDefinition,
-                                  G4double k,
-                                  G4double energyTransfer,
-                                  G4int shell);
-
-  inline void SelectFasterComputation(G4bool input);
-
   inline void SelectStationary(G4bool input); 
 
-  static G4int GetLastShellIndex();
-  static void ClearLastShellIndex();
+  static G4int GetLastExcitationIndex();
+  static void ClearLastExcitationIndex();
 
 protected:
 
@@ -96,15 +87,10 @@ protected:
 
 private:
 
-  G4bool fasterCode;
-
   G4bool statCode;
 
   // Water density table
   const std::vector<G4double>* fpMolWaterDensity;
-
-  // Deexcitation manager to produce fluo photons and e-
-  G4VAtomDeexcitation* fAtomDeexcitation;
 
   std::map<G4String, G4double, std::less<G4String> > lowEnergyLimit;
   std::map<G4String, G4double, std::less<G4String> > highEnergyLimit;
@@ -115,75 +101,24 @@ private:
   // Cross section
 
   using MapFile = std::map<G4String, G4String, std::less<G4String>>;
-  MapFile tableFile; // useful ?
+  MapFile tableFile;
 
   using MapData = std::map<G4String, G4DNACrossSectionDataSet *, std::less<G4String>>;
   MapData tableData;
-
-  // Final state
-
-  G4DNAEmfietzoglou_iceIonisationStructure waterStructure;
-
-  G4double RandomizeEjectedElectronEnergy(G4ParticleDefinition * aParticleDefinition,
-                                          G4double incomingParticleEnergy,
-                                          G4int shell);
-
-  G4double RandomizeEjectedElectronEnergyFromCumulatedDcs(G4ParticleDefinition * aParticleDefinition,
-                                                          G4double incomingParticleEnergy,
-                                                          G4int shell);
-
-  G4double RandomTransferedEnergy(G4ParticleDefinition * aParticleDefinition,
-                                  G4double incomingParticleEnergy,
-                                  G4int shell);
-
-  G4double Interpolate(G4double e1,
-                       G4double e2,
-                       G4double e,
-                       G4double xs1,
-                       G4double xs2);
-
-  G4double QuadInterpolator(G4double e11,
-                            G4double e12,
-                            G4double e21,
-                            G4double e22,
-                            G4double x11,
-                            G4double x12,
-                            G4double x21,
-                            G4double x22,
-                            G4double t1,
-                            G4double t2,
-                            G4double t,
-                            G4double e);
-
-  using TriDimensionMap = std::map<G4double, std::map<G4double, G4double>>;
-
-  TriDimensionMap eDiffCrossSectionData[6];
-  TriDimensionMap eNrjTransfData[6]; // for cumulated dcs
-
-  TriDimensionMap pDiffCrossSectionData[6];
-
-  std::vector<G4double> eTdummyVec;
-
-  using VecMap = std::map<G4double, std::vector<G4double>>;
-
-  VecMap eVecm;
-
-  VecMap eProbaShellMap[6]; // for cumulated dcs
 
   // Partial cross section
 
   G4int RandomSelect(G4double energy, const G4String& particle);
 
-};
+  // Final state
 
-inline void G4DNAEmfietzoglou_iceIonisationModel::SelectFasterComputation(G4bool input)
-{
-  fasterCode = input;
-}
+  G4DNAEmfietzoglouWaterExcitationStructure waterStructure;
+
+};
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-inline void G4DNAEmfietzoglou_iceIonisationModel::SelectStationary (G4bool input)
+inline void G4DNAEmfietzoglouExcitationModelTracked::SelectStationary (G4bool input)
 { 
     statCode = input; 
 }		 

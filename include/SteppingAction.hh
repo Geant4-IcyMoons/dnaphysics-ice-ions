@@ -40,6 +40,7 @@
 #define SteppingAction_h 1
 
 #include "G4UserSteppingAction.hh"
+#include <set>
 #include <vector>
 #include <string>
 
@@ -61,7 +62,12 @@ class SteppingAction : public G4UserSteppingAction
     };
 
     // Accessors for collected per-step logs (used by RunAction to print after run)
+    static void SetLoggingEnabled(bool enabled);
+    static bool IsLoggingEnabled();
     static std::vector<StepRecord>& Logs();
     static void ClearLogs();
+
+    static void ClearObservedModels();
+    static std::vector<std::string> ObservedModels();
 };
 #endif

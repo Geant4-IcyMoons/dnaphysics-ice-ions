@@ -119,6 +119,71 @@ def _find_backup_dat(basename: str) -> str | None:
     p = GEANT4_PROJECTS_ROOT / "backup" / "geant4_icyMoons" / basename
     return str(p) if p.exists() else None
 
+def load_config_from_root(path: str, tree_name: str = "config") -> dict[str, str]:
+    """Load key/value metadata from the ROOT config tree, if present."""
+    path = _resolve_path(path)
+    if not os.path.exists(path):
+        return {}
+    with uproot.open(path) as f:
+        if tree_name not in f:
+            return {}
+        t = f[tree_name]
+        if "key" not in t.keys() or "value" not in t.keys():
+            return {}
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="overflow encountered in scalar add", category=RuntimeWarning)
+            keys_arr = t["key"].array(library="np")
+            vals_arr = t["value"].array(library="np")
+        cfg: dict[str, str] = {}
+        for k, v in zip(keys_arr, vals_arr):
+            key = _clean_string(k)
+            val = _clean_string(v)
+            if key:
+                cfg[key] = val
+        return cfg
+
+def _resolve_reference_from_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    val = _clean_string(value)
+    if not val:
+        return None
+    if val.lower() in {"none", "default", "null"}:
+        return None
+    if os.path.isabs(val) and os.path.exists(val):
+        return val
+    candidate = _resolve_path(val)
+    if os.path.exists(candidate):
+        return candidate
+    # If this looks like a path fragment, fall back to basename lookup.
+    base = os.path.basename(val)
+    p = _find_g4ledata_file(base)
+    if not p:
+        p = _find_backup_dat(base)
+    return p
+
+def resolve_config_reference_paths(config: dict[str, str]) -> dict[str, str]:
+    """Resolve reference file paths from config keys."""
+    keys = [
+        "ref_elastic_low",
+        "ref_elastic_high",
+        "ref_elastic_blend",
+        "ref_vib",
+        "ref_excitation",
+        "ref_excitation_born",
+        "ref_ionisation",
+        "ref_ionisation_born",
+        "ref_attachment",
+        "model_ionisation_diff",
+        "model_ionisation_diff_born",
+    ]
+    out: dict[str, str] = {}
+    for key in keys:
+        path = _resolve_reference_from_value(config.get(key, ""))
+        if path:
+            out[key] = path
+    return out
+
 def _scale_reference_if_needed(path: str | None, ref_by_ch: list[np.ndarray]) -> list[np.ndarray]:
     """Apply unit fixes for known table formats (e.g., Emfietzoglou)."""
     if not path or not ref_by_ch:
@@ -164,31 +229,31 @@ def _decode_to_str_array(arr: np.ndarray | None) -> np.ndarray | None:
     return np.asarray(out, dtype=object)
 
 
-def _resolve_elastic_reference_path(hints: list[str], fallback: str | None = None) -> str | None:
+def _resolve_elastic_reference_path(
+    hints: list[str],
+    fallback: str | None = None,
+    config_refs: dict[str, str] | None = None,
+) -> str | None:
     """Pick the best-matching elastic reference .dat based on model/process hints."""
     if fallback:
         candidate = _resolve_path(fallback)
         if os.path.exists(candidate):
             return candidate
+    if not config_refs:
+        return None
     for h in hints:
         if not h:
             continue
         m = h.lower()
         if "elsepa_low" in m:
-            fname = "sigma_elastic_e_michaud_elsepa_low.dat"
+            if "ref_elastic_low" in config_refs:
+                return config_refs["ref_elastic_low"]
         elif "elsepa_high" in m:
-            fname = "sigma_elastic_e_michaud_elsepa_high.dat"
-        elif "michaud" in m:
-            fname = "sigma_elastic_e_michaud.dat"
-        else:
-            fname = None
-        if not fname:
-            continue
-        p = _find_g4ledata_file(fname)
-        if not p:
-            p = _find_backup_dat(fname)
-        if p:
-            return p
+            if "ref_elastic_high" in config_refs:
+                return config_refs["ref_elastic_high"]
+        elif "michaud" in m or "champion" in m or "muffin" in m:
+            if "ref_elastic_blend" in config_refs:
+                return config_refs["ref_elastic_blend"]
     return None
 
 
@@ -474,7 +539,8 @@ def _load_michaud_gamma_for_channel(idx: int):
 # -------- Plotters --------
 def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
                                     nH2O_cm3: float, out_path: str, dat_path: str | None = None,
-                                    model_filter: str | None = None):
+                                    model_filter: str | None = None,
+                                    config_refs: dict[str, str] | None = None):
     """Plot XS vs KE per channel for a given process (optionally filtered by modelName)."""
     if arrs is None:
         return None
@@ -507,33 +573,41 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
     if dat_path:
         ref_E, ref_by_ch = load_reference_from_path(dat_path)
         ref_by_ch = _scale_reference_if_needed(dat_path, ref_by_ch)
-        ref_label = "Reference"
+        ref_label = Path(dat_path).name
     elif int(pcode) == 11 and model_hints:
-        p = _resolve_elastic_reference_path(model_hints)
+        p = _resolve_elastic_reference_path(model_hints, config_refs=config_refs)
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
             ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
             ref_label = Path(p).name
     elif int(pcode) == 15:
-        p = _find_g4ledata_file("sigma_excitationvib_e_michaud.dat")
-        if not p:
-            p = _find_backup_dat("sigma_excitationvib_e_michaud.dat")
+        p = config_refs.get("ref_vib") if config_refs else None
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
             ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
             ref_label = Path(p).name
     elif int(pcode) == 12:
-        p = _find_g4ledata_file("sigma_excitation_e_emfietzoglou.dat")
+        p = None
+        if model_hints and any("bornexcitationmodel" in m.lower() for m in model_hints):
+            p = config_refs.get("ref_excitation_born") if config_refs else None
         if not p:
-            p = _find_backup_dat("sigma_excitation_e_emfietzoglou.dat")
+            p = config_refs.get("ref_excitation") if config_refs else None
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
             ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
             ref_label = Path(p).name
     elif int(pcode) == 13:
-        p = _find_g4ledata_file("sigma_ionisation_e_emfietzoglou.dat")
+        p = None
+        if model_hints and any("bornionisationmodel" in m.lower() for m in model_hints):
+            p = config_refs.get("ref_ionisation_born") if config_refs else None
         if not p:
-            p = _find_backup_dat("sigma_ionisation_e_emfietzoglou.dat")
+            p = config_refs.get("ref_ionisation") if config_refs else None
+        if p:
+            ref_E, ref_by_ch = load_reference_from_path(p)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_label = Path(p).name
+    elif int(pcode) == 14:
+        p = config_refs.get("ref_attachment") if config_refs else None
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
             ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
@@ -713,14 +787,6 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
     ref_path = None
     if dat_path:
         ref_path = dat_path
-    elif int(pcode) == 12:
-        ref_path = _find_g4ledata_file("sigma_excitation_e_emfietzoglou.dat")
-        if not ref_path:
-            ref_path = _find_backup_dat("sigma_excitation_e_emfietzoglou.dat")
-    elif int(pcode) == 13:
-        ref_path = _find_g4ledata_file("sigma_ionisation_e_emfietzoglou.dat")
-        if not ref_path:
-            ref_path = _find_backup_dat("sigma_ionisation_e_emfietzoglou.dat")
     if ref_path:
         ref_E, ref_by_ch = load_reference_from_path(ref_path)
         ref_by_ch = _scale_reference_if_needed(ref_path, ref_by_ch)
@@ -832,7 +898,8 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
     return outpath
 
 def plot_elastic_reference_vs_sim(arrs, ncols: int, scale: float, nH2O_cm3: float,
-                                  out_path: str, dat_path: str | None = None):
+                                  out_path: str, dat_path: str | None = None,
+                                  config_refs: dict[str, str] | None = None):
     """Multi-panel elastic XS comparison: reference (black) vs simulation (blue dashed)."""
     if arrs is None or "kineticEnergy" not in arrs:
         return None
@@ -918,7 +985,9 @@ def plot_elastic_reference_vs_sim(arrs, ncols: int, scale: float, nH2O_cm3: floa
 
         ref_line = None
         ref_E = None
-        ref_path = _resolve_elastic_reference_path(model_hints, fallback=dat_path)
+        ref_path = _resolve_elastic_reference_path(
+            model_hints, fallback=dat_path, config_refs=config_refs
+        )
         if ref_path:
             try:
                 ref_E, ref_by_ch = load_reference_from_path(ref_path)
@@ -1258,6 +1327,13 @@ def main():
 
     print_root_processes(arrs)
 
+    config = load_config_from_root(root_path)
+    config_refs = resolve_config_reference_paths(config) if config else {}
+    if config_refs:
+        print("ROOT config references:")
+        for key in sorted(config_refs.keys()):
+            print(f"  {key}: {config_refs[key]}")
+
     # Determine processes to plot
     if arrs is not None and (args.processes is None or str(args.processes).strip().lower() == 'all'):
         proc_list = np.unique(np.asarray(arrs["flagProcess"], dtype=float)).astype(int).tolist()
@@ -1269,7 +1345,16 @@ def main():
     # Plot per-process XS
     base, ext = os.path.splitext(args.out)
     pname_map = _process_name_map()
+    ref_by_proc: dict[int, str | None] = {}
+    if config_refs and args.dat is None:
+        ref_by_proc = {
+            12: config_refs.get("ref_excitation") or config_refs.get("ref_excitation_born"),
+            13: config_refs.get("ref_ionisation") or config_refs.get("ref_ionisation_born"),
+            14: config_refs.get("ref_attachment"),
+            15: config_refs.get("ref_vib"),
+        }
     for pcode in proc_list:
+        dat_path = args.dat if args.dat else ref_by_proc.get(int(pcode))
         suffix = pname_map.get(int(pcode), str(int(pcode)))
         if int(pcode) in (12, 13):
             outname = f"{base}_{suffix}{ext or '.png'}"
@@ -1279,7 +1364,7 @@ def main():
                 scale=args.scale,
                 nH2O_cm3=args.nH2O_cm3,
                 out_path=outname,
-                dat_path=args.dat,
+                dat_path=dat_path,
             )
             continue
         # If elastic has multiple models, emit one plot per model
@@ -1300,8 +1385,9 @@ def main():
                         scale=args.scale,
                         nH2O_cm3=args.nH2O_cm3,
                         out_path=outname,
-                        dat_path=args.dat,
+                        dat_path=dat_path,
                         model_filter=mname,
+                        config_refs=config_refs,
                     )
                 continue
 
@@ -1313,7 +1399,8 @@ def main():
             scale=args.scale,
             nH2O_cm3=args.nH2O_cm3,
             out_path=outname,
-            dat_path=args.dat,
+            dat_path=dat_path,
+            config_refs=config_refs,
         )
 
     # Vib energy-loss histograms (if available)

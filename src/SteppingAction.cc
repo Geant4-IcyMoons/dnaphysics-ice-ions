@@ -57,7 +57,17 @@
 #include "G4EmCalculator.hh"
 #include "G4DNAMolecularMaterial.hh"
 #include "G4Material.hh"
+#include "G4DNAEmfietzoglou_iceIonisationModel.hh"
+#include "G4DNAEmfietzoglou_iceExcitationModel.hh"
+#include "G4DNAEmfietzoglouIonisationModelTracked.hh"
+#include "G4DNAEmfietzoglouExcitationModelTracked.hh"
+#include "G4DNABornIonisationModel1Tracked.hh"
+#include "G4DNABornExcitationModel1Tracked.hh"
 #include "G4DNAMichaudExcitationModel.hh"
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <set>
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -71,9 +81,43 @@ SteppingAction::~SteppingAction() {}
 
 // Static storage for per-step logs
 static std::vector<SteppingAction::StepRecord> g_stepLogs;
+static bool g_logEnabled = false;
+static std::set<std::string> g_observedModels;
+static std::mutex g_observedMutex;
 
 std::vector<SteppingAction::StepRecord>& SteppingAction::Logs() { return g_stepLogs; }
 void SteppingAction::ClearLogs() { g_stepLogs.clear(); }
+void SteppingAction::SetLoggingEnabled(bool enabled) { g_logEnabled = enabled; }
+bool SteppingAction::IsLoggingEnabled() { return g_logEnabled; }
+void SteppingAction::ClearObservedModels()
+{
+  std::lock_guard<std::mutex> lock(g_observedMutex);
+  g_observedModels.clear();
+}
+std::vector<std::string> SteppingAction::ObservedModels()
+{
+  std::lock_guard<std::mutex> lock(g_observedMutex);
+  return std::vector<std::string>(g_observedModels.begin(), g_observedModels.end());
+}
+
+namespace {
+void RecordObservedModel(const std::string& value)
+{
+  std::lock_guard<std::mutex> lock(g_observedMutex);
+  g_observedModels.insert(value);
+}
+}
+
+namespace {
+bool ReadEnvFlag(const char* name, bool defaultValue)
+{
+  const char* env = std::getenv(name);
+  if (!env || !*env) {
+    return defaultValue;
+  }
+  return std::strcmp(env, "0") != 0;
+}
+}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -322,9 +366,23 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
 
     analysisManager->FillNtupleIColumn(13, step->GetTrack()->GetCurrentStepNumber());
 
+    if (flagProcess >= 0.) {
+      std::ostringstream observed;
+      observed << "flagProcess=" << static_cast<int>(flagProcess)
+               << ";process=" << processName;
+      if (!modelName.empty()) {
+        observed << ";model=" << modelName;
+      }
+      RecordObservedModel(observed.str());
+    }
+
     // Compute macroscopic cross section for the actual process (if available)
-    static G4EmCalculator emCal;
-    G4double sigmaPerVol = emCal.ComputeCrossSectionPerVolume(
+    static G4EmCalculator* emCal = nullptr;
+    if (!emCal) {
+      // Avoid destructor-order crashes at shutdown by keeping this alive.
+      emCal = new G4EmCalculator();
+    }
+    G4double sigmaPerVol = emCal->ComputeCrossSectionPerVolume(
       preStep->GetKineticEnergy(),
       step->GetTrack()->GetParticleDefinition(),
       processName,
@@ -380,38 +438,88 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
           rec.channel = ch.str();
         }
       }
-    } else if (processName.find("Ionis") != std::string::npos ||
-               processName.find("Ioniz") != std::string::npos) {
-      // Ionisation: infer channel from energy loss and binding energies
-      // Emfietzoglou model has 5 shells with binding energies: 10, 13, 17, 32.2, 539.7 eV
-      const G4double dE_eV = (preStep->GetKineticEnergy() - postStep->GetKineticEnergy())/eV;
-      static const G4double bindingE[5] = {10.0, 13.0, 17.0, 32.2, 539.7};
-      
-      // Find which shell by comparing energy loss to binding energy + secondary electron energy
-      // Energy loss = binding energy + secondary electron kinetic energy
-      // We'll use a simple heuristic: if dE is closest to a binding energy (within reasonable margin)
-      int best = -1;
-      G4double bestDiff = DBL_MAX;
-      for (int i=0; i<5; ++i) {
-        // Energy loss should be at least the binding energy
-        if (dE_eV >= bindingE[i]) {
-          // Check if this is the closest binding energy below the energy loss
-          G4double diff = dE_eV - bindingE[i];
-          // Prefer shells where energy loss is reasonable (binding energy + some secondary KE)
-          if (diff < bestDiff && diff < 1000.0) { // secondary electron < 1 keV seems reasonable
+    } else if (processName.find("Excitation") != std::string::npos) {
+      const bool isIceEmfi = (modelName.find("Emfietzoglou_ice") != std::string::npos);
+      const bool isWaterEmfi = (modelName.find("EmfietzoglouExcitationModel") != std::string::npos);
+      const bool isBorn = (modelName.find("BornExcitationModel") != std::string::npos);
+      int levelIdx = -1;
+      if (isIceEmfi) {
+        levelIdx = G4DNAEmfietzoglou_iceExcitationModel::GetLastExcitationIndex();
+      } else if (isWaterEmfi) {
+        levelIdx = G4DNAEmfietzoglouExcitationModelTracked::GetLastExcitationIndex();
+      } else if (isBorn) {
+        levelIdx = G4DNABornExcitationModel1Tracked::GetLastExcitationIndex();
+      }
+      if (levelIdx >= 0) {
+        chanIdx = levelIdx;
+        std::ostringstream ch;
+        ch << "exc_" << levelIdx;
+        rec.channel = ch.str();
+      } else {
+        // Fallback: infer channel from energy loss and excitation energies
+        const G4double dE_eV =
+            (preStep->GetKineticEnergy() - postStep->GetKineticEnergy()) / eV;
+        static const G4double excE[5] = {8.22, 10.00, 11.24, 12.61, 13.77};
+        int best = -1;
+        G4double bestDiff = DBL_MAX;
+        for (int i = 0; i < 5; ++i) {
+          const G4double diff = std::abs(dE_eV - excE[i]);
+          if (diff < bestDiff) {
             bestDiff = diff;
             best = i;
           }
         }
+        chanIdx = best;
+        if (best >= 0) {
+          std::ostringstream ch;
+          ch << "exc_" << best;
+          rec.channel = ch.str();
+        } else {
+          rec.channel = "excitation";
+        }
       }
-      
-      chanIdx = best;
-      if (best >= 0) {
+    } else if (processName.find("Ionis") != std::string::npos ||
+               processName.find("Ioniz") != std::string::npos) {
+      const bool isIceEmfi = (modelName.find("Emfietzoglou_ice") != std::string::npos);
+      const bool isWaterEmfi = (modelName.find("EmfietzoglouIonisationModel") != std::string::npos);
+      const bool isBorn = (modelName.find("BornIonisationModel") != std::string::npos);
+      int shellIdx = -1;
+      if (isIceEmfi) {
+        shellIdx = G4DNAEmfietzoglou_iceIonisationModel::GetLastShellIndex();
+      } else if (isWaterEmfi) {
+        shellIdx = G4DNAEmfietzoglouIonisationModelTracked::GetLastShellIndex();
+      } else if (isBorn) {
+        shellIdx = G4DNABornIonisationModel1Tracked::GetLastShellIndex();
+      }
+      if (shellIdx >= 0) {
+        chanIdx = shellIdx;
         std::ostringstream ch;
-        ch << "ion_" << best;
+        ch << "ion_" << shellIdx;
         rec.channel = ch.str();
       } else {
-        rec.channel = "ionisation";
+        // Fallback: infer channel from energy loss and binding energies
+        const G4double dE_eV =
+            (preStep->GetKineticEnergy() - postStep->GetKineticEnergy()) / eV;
+        static const G4double bindingE[5] = {10.0, 13.0, 17.0, 32.2, 539.7};
+        int best = -1;
+        G4double bestDiff = DBL_MAX;
+        for (int i = 0; i < 5; ++i) {
+          if (dE_eV >= bindingE[i]) {
+            G4double diff = dE_eV - bindingE[i];
+            if (diff < bestDiff && diff < 1000.0) {
+              bestDiff = diff;
+              best = i;
+            }
+          }
+        }
+        chanIdx = best;
+        if (best >= 0) {
+          std::ostringstream ch;
+          ch << "ion_" << best;
+          rec.channel = ch.str();
+        } else {
+          rec.channel = "ionisation";
+        }
       }
     } else {
       // Map processName to a human-friendly category label
@@ -425,13 +533,21 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
       else                                                               label = processName;
       rec.channel = label;
     }
+    if (chanIdx < 0) {
+      if (processName.find("Elastic") != std::string::npos ||
+          processName.find("Attach") != std::string::npos) {
+        chanIdx = 0;
+      }
+    }
     // Use per-channel microscopic XS for vib when available; otherwise use per-volume XS converted to area
     if (processName.find("Vib") != std::string::npos && chanMicroXS_cm2 > 0.) {
       rec.sigma_area_cm2 = chanMicroXS_cm2;
     } else {
       rec.sigma_area_cm2 = sigma_area_cm2;
     }
-    g_stepLogs.push_back(rec);
+    if (g_logEnabled) {
+      g_stepLogs.push_back(rec);
+    }
 
     // Keep ntuple column 14 to carry the per-step sigma (1/cm)
     analysisManager->FillNtupleDColumn(14, sigmaPerVol);
@@ -439,8 +555,10 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     analysisManager->FillNtupleIColumn(15, chanIdx);
     // New: per-channel microscopic XS in cm^2 if available (else -1)
     analysisManager->FillNtupleDColumn(16, chanMicroXS_cm2);
-    analysisManager->FillNtupleSColumn(17, processName);
-    analysisManager->FillNtupleSColumn(18, modelName);
+    if (ReadEnvFlag("DNA_NTUPLE_STRINGS", true)) {
+      analysisManager->FillNtupleSColumn(17, processName);
+      analysisManager->FillNtupleSColumn(18, modelName);
+    }
 
     analysisManager->AddNtupleRow();
   }

@@ -25,15 +25,15 @@
 //
 // Based on the work described in
 // Rad Res 163, 98-111 (2005)
-// D. Emfietzoglou_ice, H. Nikjoo
+// D. Emfietzoglou, H. Nikjoo
 //
 // Authors of the class (2014):
 // I. Kyriakou (kyriak@cc.uoi.gr)
-// D. Emfietzoglou_ice (demfietz@cc.uoi.gr)
+// D. Emfietzoglou (demfietz@cc.uoi.gr)
 // S. Incerti (incerti@cenbg.in2p3.fr)
 //
 
-#include "G4DNAEmfietzoglou_iceExcitationModel.hh"
+#include "G4DNAEmfietzoglouExcitationModelTracked.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4DNAChemistryManager.hh"
 #include "G4DNAMolecularMaterial.hh"
@@ -46,20 +46,20 @@ using namespace std;
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
 namespace {
-thread_local G4int g_lastIceExcLevel = -1;
+thread_local G4int g_lastExcitationLevelTracked = -1;
 }
 
-G4int G4DNAEmfietzoglou_iceExcitationModel::GetLastExcitationIndex()
+G4int G4DNAEmfietzoglouExcitationModelTracked::GetLastExcitationIndex()
 {
-  return g_lastIceExcLevel;
+  return g_lastExcitationLevelTracked;
 }
 
-void G4DNAEmfietzoglou_iceExcitationModel::ClearLastExcitationIndex()
+void G4DNAEmfietzoglouExcitationModelTracked::ClearLastExcitationIndex()
 {
-  g_lastIceExcLevel = -1;
+  g_lastExcitationLevelTracked = -1;
 }
 
-G4DNAEmfietzoglou_iceExcitationModel::G4DNAEmfietzoglou_iceExcitationModel(const G4ParticleDefinition*,
+G4DNAEmfietzoglouExcitationModelTracked::G4DNAEmfietzoglouExcitationModelTracked(const G4ParticleDefinition*,
                                                    const G4String& nam)
 :G4VEmModel(nam)
 {
@@ -75,12 +75,12 @@ G4DNAEmfietzoglou_iceExcitationModel::G4DNAEmfietzoglou_iceExcitationModel(const
 
     if( verboseLevel>0 )
     {
-      G4cout << "Emfietzoglou_ice excitation model is constructed " << G4endl;
+      G4cout << "Emfietzoglou excitation model is constructed " << G4endl;
     }
     fParticleChangeForGamma = nullptr;
 
     SetLowEnergyLimit(8.*eV);
-    SetHighEnergyLimit(10.*MeV);
+    SetHighEnergyLimit(10.*keV);
 
     // Selection of stationary mode
     statCode = false;
@@ -88,7 +88,7 @@ G4DNAEmfietzoglou_iceExcitationModel::G4DNAEmfietzoglou_iceExcitationModel(const
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-G4DNAEmfietzoglou_iceExcitationModel::~G4DNAEmfietzoglou_iceExcitationModel()
+G4DNAEmfietzoglouExcitationModelTracked::~G4DNAEmfietzoglouExcitationModelTracked()
 {
     // Cross section
 
@@ -103,12 +103,12 @@ G4DNAEmfietzoglou_iceExcitationModel::~G4DNAEmfietzoglou_iceExcitationModel()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-void G4DNAEmfietzoglou_iceExcitationModel::Initialise(const G4ParticleDefinition* particle,
+void G4DNAEmfietzoglouExcitationModelTracked::Initialise(const G4ParticleDefinition* particle,
                                           const G4DataVector& /*cuts*/)
 {
 
     if (verboseLevel > 3)
-        G4cout << "Calling G4DNAEmfietzoglou_iceExcitationModel::Initialise()" << G4endl;
+        G4cout << "Calling G4DNAEmfietzoglouExcitationModelTracked::Initialise()" << G4endl;
 
     G4String fileElectron("dna/sigma_excitation_e_emfietzoglou");
     ModelDataRegistry::Instance().Record(
@@ -138,7 +138,7 @@ void G4DNAEmfietzoglou_iceExcitationModel::Initialise(const G4ParticleDefinition
 
     if( verboseLevel>0 )
     {
-      G4cout << "Emfietzoglou_ice excitation model is initialized " << G4endl
+      G4cout << "Emfietzoglou excitation model is initialized " << G4endl
              << "Energy range: "
              << LowEnergyLimit() / eV << " eV - "
              << HighEnergyLimit() / keV << " keV for "
@@ -156,14 +156,14 @@ void G4DNAEmfietzoglou_iceExcitationModel::Initialise(const G4ParticleDefinition
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-G4double G4DNAEmfietzoglou_iceExcitationModel::CrossSectionPerVolume(const G4Material* material,
+G4double G4DNAEmfietzoglouExcitationModelTracked::CrossSectionPerVolume(const G4Material* material,
                                                          const G4ParticleDefinition* particleDefinition,
                                                          G4double ekin,
                                                          G4double,
                                                          G4double)
 {
     if (verboseLevel > 3)
-        G4cout << "Calling CrossSectionPerVolume() of G4DNAEmfietzoglou_iceExcitationModel" << G4endl;
+        G4cout << "Calling CrossSectionPerVolume() of G4DNAEmfietzoglouExcitationModelTracked" << G4endl;
 
     if (particleDefinition != G4Electron::ElectronDefinition()) return 0;
 
@@ -187,7 +187,7 @@ G4double G4DNAEmfietzoglou_iceExcitationModel::CrossSectionPerVolume(const G4Mat
       }
       else
       {
-        G4Exception("G4DNAEmfietzoglou_iceExcitationModel::CrossSectionPerVolume","em0002",
+        G4Exception("G4DNAEmfietzoglouExcitationModelTracked::CrossSectionPerVolume","em0002",
                             FatalException,"Model not applicable to particle type.");
       }
     }
@@ -195,13 +195,13 @@ G4double G4DNAEmfietzoglou_iceExcitationModel::CrossSectionPerVolume(const G4Mat
     if (verboseLevel > 2)
     {
       G4cout << "__________________________________" << G4endl;
-      G4cout << "G4DNAEmfietzoglou_iceExcitationModel - XS INFO START" << G4endl;
+      G4cout << "G4DNAEmfietzoglouExcitationModelTracked - XS INFO START" << G4endl;
       G4cout << "Kinetic energy(eV)=" << ekin/eV << " particle : " << particleName << G4endl;
       G4cout << "Cross section per water molecule (cm^2)=" << sigma/cm/cm << G4endl;
       G4cout << "Cross section per water molecule (cm^-1)=" << sigma*waterDensity/(1./cm) << G4endl;
       //G4cout << "   Cross section per water molecule (cm^-1)=" <<
       ///sigma*material->GetAtomicNumDensityVector()[1]/(1./cm) << G4endl;
-      G4cout << "G4DNAEmfietzoglou_iceExcitationModel - XS INFO END" << G4endl;
+      G4cout << "G4DNAEmfietzoglouExcitationModelTracked - XS INFO END" << G4endl;
     }
 
     return sigma*waterDensity;
@@ -209,7 +209,7 @@ G4double G4DNAEmfietzoglou_iceExcitationModel::CrossSectionPerVolume(const G4Mat
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-void G4DNAEmfietzoglou_iceExcitationModel::SampleSecondaries(std::vector<G4DynamicParticle*>* /*fvect*/,
+void G4DNAEmfietzoglouExcitationModelTracked::SampleSecondaries(std::vector<G4DynamicParticle*>* /*fvect*/,
                                                  const G4MaterialCutsCouple* /*couple*/,
                                                  const G4DynamicParticle* aDynamicParticle,
                                                  G4double,
@@ -217,14 +217,14 @@ void G4DNAEmfietzoglou_iceExcitationModel::SampleSecondaries(std::vector<G4Dynam
 {
 
     if (verboseLevel > 3)
-        G4cout << "Calling SampleSecondaries() of G4DNAEmfietzoglou_iceExcitationModel" << G4endl;
+        G4cout << "Calling SampleSecondaries() of G4DNAEmfietzoglouExcitationModelTracked" << G4endl;
 
     G4double k = aDynamicParticle->GetKineticEnergy();
 
     const G4String& particleName = aDynamicParticle->GetDefinition()->GetParticleName();
 
     G4int level = RandomSelect(k,particleName);
-    g_lastIceExcLevel = level;
+    g_lastExcitationLevelTracked = level;
     G4double excitationEnergy = waterStructure.ExcitationEnergy(level);
     G4double newEnergy = k - excitationEnergy;
 
@@ -246,7 +246,7 @@ void G4DNAEmfietzoglou_iceExcitationModel::SampleSecondaries(std::vector<G4Dynam
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4int G4DNAEmfietzoglou_iceExcitationModel::RandomSelect(G4double k, const G4String& particle)
+G4int G4DNAEmfietzoglouExcitationModelTracked::RandomSelect(G4double k, const G4String& particle)
 {
 
     G4int level = 0;
@@ -304,7 +304,7 @@ G4int G4DNAEmfietzoglou_iceExcitationModel::RandomSelect(G4double k, const G4Str
     }
     else
     {
-        G4Exception("G4DNAEmfietzoglou_iceExcitationModel::RandomSelect","em0002",
+        G4Exception("G4DNAEmfietzoglouExcitationModelTracked::RandomSelect","em0002",
                     FatalException,"Model not applicable to particle type.");
     }
     return level;

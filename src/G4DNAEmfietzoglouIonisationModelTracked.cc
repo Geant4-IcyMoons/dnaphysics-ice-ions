@@ -25,15 +25,15 @@
 //
 // Based on the work described in
 // Rad Res 163, 98-111 (2005)
-// D. Emfietzoglou_ice, H. Nikjoo
+// D. Emfietzoglou, H. Nikjoo
 //
 // Authors of the class (2014):
 // I. Kyriakou (kyriak@cc.uoi.gr)
-// D. Emfietzoglou_ice (demfietz@cc.uoi.gr)
+// D. Emfietzoglou (demfietz@cc.uoi.gr)
 // S. Incerti (incerti@cenbg.in2p3.fr)
 //
 
-#include "G4DNAEmfietzoglou_iceIonisationModel.hh"
+#include "G4DNAEmfietzoglouIonisationModelTracked.hh"
 #include "G4PhysicalConstants.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4UAtomicDeexcitation.hh"
@@ -43,45 +43,6 @@
 #include "G4DNAMolecularMaterial.hh"
 #include "G4DNABornAngle.hh"
 #include "G4DeltaAngle.hh"
-#include <cctype>
-#include <cstdlib>
-
-namespace {
-std::string ToLower(std::string value)
-{
-  for (auto& ch : value) ch = static_cast<char>(std::tolower(ch));
-  return value;
-}
-
-std::string NormalizeIcePhase(const char* raw)
-{
-  if (!raw) return {};
-  std::string phase = ToLower(raw);
-  if (phase == "ice_hex" || phase == "hex" || phase == "hexagonal" ||
-      phase == "crystalline") {
-    return "hexagonal";
-  }
-  if (phase == "ice_am" || phase == "am" || phase == "amo" ||
-      phase == "amorphous") {
-    return "amorphous";
-  }
-  return phase;
-}
-
-std::string BuildDataPath(const char* data_dir, const std::string& filename)
-{
-  if (!data_dir || !*data_dir) {
-    return std::string("dna/") + filename;
-  }
-  return std::string(data_dir) + "/dna/" + filename;
-}
-
-bool FileExists(const std::string& path)
-{
-  std::ifstream test(path.c_str());
-  return test.good();
-}
-}  // namespace
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
@@ -90,20 +51,22 @@ using namespace std;
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
 namespace {
-thread_local G4int g_lastIonShell = -1;
+thread_local G4int g_lastIonShellTracked = -1;
 }
 
-G4int G4DNAEmfietzoglou_iceIonisationModel::GetLastShellIndex()
+G4int G4DNAEmfietzoglouIonisationModelTracked::GetLastShellIndex()
 {
-  return g_lastIonShell;
+  return g_lastIonShellTracked;
 }
 
-void G4DNAEmfietzoglou_iceIonisationModel::ClearLastShellIndex()
+void G4DNAEmfietzoglouIonisationModelTracked::ClearLastShellIndex()
 {
-  g_lastIonShell = -1;
+  g_lastIonShellTracked = -1;
 }
 
-G4DNAEmfietzoglou_iceIonisationModel::G4DNAEmfietzoglou_iceIonisationModel(const G4ParticleDefinition*,
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
+
+G4DNAEmfietzoglouIonisationModelTracked::G4DNAEmfietzoglouIonisationModelTracked(const G4ParticleDefinition*,
                                                                    const G4String& nam) :
 G4VEmModel(nam) 
 {
@@ -117,7 +80,7 @@ G4VEmModel(nam)
 
   if(verboseLevel > 0)
   {
-    G4cout << "Emfietzoglou_ice ionisation model is constructed " << G4endl;
+    G4cout << "Emfietzoglou ionisation model is constructed " << G4endl;
   }
 
   // Mark this model as "applicable" for atomic deexcitation
@@ -130,7 +93,7 @@ G4VEmModel(nam)
   SetAngularDistribution(new G4DNABornAngle());
 
   SetLowEnergyLimit(10. * eV);
-  SetHighEnergyLimit(10. * MeV);
+  SetHighEnergyLimit(10. * keV);
 
   // Selection of computation method
 
@@ -143,7 +106,7 @@ G4VEmModel(nam)
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-G4DNAEmfietzoglou_iceIonisationModel::~G4DNAEmfietzoglou_iceIonisationModel()
+G4DNAEmfietzoglouIonisationModelTracked::~G4DNAEmfietzoglouIonisationModelTracked()
 {
   // Cross section
 
@@ -162,13 +125,13 @@ G4DNAEmfietzoglou_iceIonisationModel::~G4DNAEmfietzoglou_iceIonisationModel()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition* particle,
+void G4DNAEmfietzoglouIonisationModelTracked::Initialise(const G4ParticleDefinition* particle,
                                                   const G4DataVector& /*cuts*/)
 {
 
   if(verboseLevel > 3)
   {
-    G4cout << "Calling G4DNAEmfietzoglou_iceIonisationModel::Initialise()" << G4endl;
+    G4cout << "Calling G4DNAEmfietzoglouIonisationModelTracked::Initialise()" << G4endl;
   }
 
   // Energy limits
@@ -201,40 +164,23 @@ void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition
 
   // Final state
 
-  std::string defaultDiffFile = fasterCode
-      ? "sigmadiff_cumulated_ionisation_e_emfietzoglou.dat"
-      : "sigmadiff_ionisation_e_emfietzoglou.dat";
-  std::string diffFileToUse = defaultDiffFile;
+  std::ostringstream eFullFileName;
 
-  const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_ICE_PHASE"));
-  if (!icePhase.empty()) {
-    const std::string phaseDiffFile = fasterCode
-        ? "sigmadiff_cumulated_ionisation_e_" + icePhase + "_ice_emfietzoglou_kyriakou.dat"
-        : "sigmadiff_ionisation_e_" + icePhase + "_ice_emfietzoglou_kyriakou.dat";
-    const std::string phasePath = BuildDataPath(path, phaseDiffFile);
-    if (FileExists(phasePath)) {
-      diffFileToUse = phaseDiffFile;
-    } else {
-      G4cout << "### dnaphysics Warning: DNA_ICE_PHASE='" << icePhase
-             << "' requested but data file not found: " << phasePath
-             << ". Using " << defaultDiffFile << " instead." << G4endl;
-    }
-  }
-
+  if (fasterCode) eFullFileName << path << "/dna/sigmadiff_cumulated_ionisation_e_emfietzoglou.dat";
+  if (!fasterCode) eFullFileName << path << "/dna/sigmadiff_ionisation_e_emfietzoglou.dat";
   ModelDataRegistry::Instance().Record(
     "model_ionisation_diff",
-    ModelDataRegistry::NormalizeDatBasename(diffFileToUse));
-  const std::string diffPath = BuildDataPath(path, diffFileToUse);
-  std::ifstream eDiffCrossSection(diffPath.c_str());
+    ModelDataRegistry::NormalizeDatBasename(eFullFileName.str()));
+
+  std::ifstream eDiffCrossSection(eFullFileName.str().c_str());
 
   if (!eDiffCrossSection)
   {
-    const std::string missing = "Missing data file: " + diffPath;
-    if (fasterCode) G4Exception("G4DNAEmfietzoglou_iceIonisationModel::Initialise","em0003",
-        FatalException,missing.c_str());
+    if (fasterCode) G4Exception("G4DNAEmfietzoglouIonisationModelTracked::Initialise","em0003",
+        FatalException,"Missing data file:/dna/sigmadiff_cumulated_ionisation_e_emfietzoglou.dat");
 
-    if (!fasterCode) G4Exception("G4DNAEmfietzoglou_iceIonisationModel::Initialise","em0003",
-        FatalException,missing.c_str());
+    if (!fasterCode) G4Exception("G4DNAEmfietzoglouIonisationModelTracked::Initialise","em0003",
+        FatalException,"Missing data file:/dna/sigmadiff_ionisation_e_emfietzoglou.dat");
   }
 
   //
@@ -286,7 +232,7 @@ void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition
 
   if( verboseLevel>0 )
   {
-    G4cout << "Emfietzoglou_ice ionisation model is initialized " << G4endl
+    G4cout << "Emfietzoglou ionisation model is initialized " << G4endl
     << "Energy range: "
     << LowEnergyLimit() / eV << " eV - "
     << HighEnergyLimit() / keV << " keV for "
@@ -312,7 +258,7 @@ void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-G4double G4DNAEmfietzoglou_iceIonisationModel::
+G4double G4DNAEmfietzoglouIonisationModelTracked::
 CrossSectionPerVolume(const G4Material* material,
                       const G4ParticleDefinition* particleDefinition,
                       G4double ekin,
@@ -322,7 +268,7 @@ CrossSectionPerVolume(const G4Material* material,
   if(verboseLevel > 3)
   {
     G4cout
-        << "Calling CrossSectionPerVolume() of G4DNAEmfietzoglou_iceIonisationModel"
+        << "Calling CrossSectionPerVolume() of G4DNAEmfietzoglouIonisationModelTracked"
         << G4endl;
   }
 
@@ -351,7 +297,7 @@ CrossSectionPerVolume(const G4Material* material,
     }
     else
     {
-      G4Exception("G4DNAEmfietzoglou_iceIonisationModel::CrossSectionPerVolume","em0002",
+      G4Exception("G4DNAEmfietzoglouIonisationModelTracked::CrossSectionPerVolume","em0002",
           FatalException,"Model not applicable to particle type.");
     }
   }
@@ -359,11 +305,11 @@ CrossSectionPerVolume(const G4Material* material,
   if (verboseLevel > 2)
   {
     G4cout << "__________________________________" << G4endl;
-    G4cout << "G4DNAEmfietzoglou_iceIonisationModel - XS INFO START" << G4endl;
+    G4cout << "G4DNAEmfietzoglouIonisationModelTracked - XS INFO START" << G4endl;
     G4cout << "Kinetic energy(eV)=" << ekin/eV << " particle : " << particleName << G4endl;
     G4cout << "Cross section per water molecule (cm^2)=" << sigma/cm/cm << G4endl;
     G4cout << "Cross section per water molecule (cm^-1)=" << sigma*waterDensity/(1./cm) << G4endl;
-    G4cout << "G4DNAEmfietzoglou_iceIonisationModel - XS INFO END" << G4endl;
+    G4cout << "G4DNAEmfietzoglouIonisationModelTracked - XS INFO END" << G4endl;
   }
 
   return sigma*waterDensity;
@@ -371,7 +317,7 @@ CrossSectionPerVolume(const G4Material* material,
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
-void G4DNAEmfietzoglou_iceIonisationModel::
+void G4DNAEmfietzoglouIonisationModelTracked::
 SampleSecondaries(std::vector<G4DynamicParticle*>* fvect,
                   const G4MaterialCutsCouple* couple,
                   const G4DynamicParticle* particle,
@@ -381,7 +327,7 @@ SampleSecondaries(std::vector<G4DynamicParticle*>* fvect,
 
   if(verboseLevel > 3)
   {
-    G4cout << "Calling SampleSecondaries() of G4DNAEmfietzoglou_iceIonisationModel"
+    G4cout << "Calling SampleSecondaries() of G4DNAEmfietzoglouIonisationModelTracked"
            << G4endl;
   }
 
@@ -400,7 +346,7 @@ SampleSecondaries(std::vector<G4DynamicParticle*>* fvect,
     G4int ionizationShell = 0;
 
     ionizationShell = RandomSelect(k,particleName);
-    g_lastIonShell = ionizationShell;
+    g_lastIonShellTracked = ionizationShell;
 
     G4double bindingEnergy = 0;
     bindingEnergy = waterStructure.IonisationEnergy(ionizationShell);
@@ -486,7 +432,7 @@ SampleSecondaries(std::vector<G4DynamicParticle*>* fvect,
 
     //This should never happen
     if(bindingEnergy < 0.0)
-     G4Exception("G4DNAEmfietzoglou_iceIonisatioModel1::SampleSecondaries()",
+     G4Exception("G4DNAEmfietzoglouIonisatioModel1::SampleSecondaries()",
                  "em2050",FatalException,"Negative local energy deposit");
 
     //bindingEnergy has been decreased
@@ -519,7 +465,7 @@ SampleSecondaries(std::vector<G4DynamicParticle*>* fvect,
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 G4double
-G4DNAEmfietzoglou_iceIonisationModel::
+G4DNAEmfietzoglouIonisationModelTracked::
 RandomizeEjectedElectronEnergy(G4ParticleDefinition* particleDefinition,
                                G4double k,
                                G4int shell)
@@ -591,7 +537,7 @@ RandomizeEjectedElectronEnergy(G4ParticleDefinition* particleDefinition,
 // GetAngularDistribution()->SampleDirectionForShell is used instead
 
 /*
- void G4DNAEmfietzoglou_iceIonisationModel::RandomizeEjectedElectronDirection(G4ParticleDefinition* particleDefinition,
+ void G4DNAEmfietzoglouIonisationModelTracked::RandomizeEjectedElectronDirection(G4ParticleDefinition* particleDefinition,
  G4double k,
  G4double secKinetic,
  G4double & cosTheta,
@@ -620,7 +566,7 @@ RandomizeEjectedElectronEnergy(G4ParticleDefinition* particleDefinition,
 
  // cosTheta = std::sqrt(secKinetic / maxSecKinetic);
 
- // Restriction below 100 eV from Emfietzoglou_ice (2000)
+ // Restriction below 100 eV from Emfietzoglou (2000)
 
  if (secKinetic>100*eV) cosTheta = std::sqrt(secKinetic / maxSecKinetic);
  else cosTheta = (2.*G4UniformRand())-1.;
@@ -630,7 +576,7 @@ RandomizeEjectedElectronEnergy(G4ParticleDefinition* particleDefinition,
  */
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-G4double G4DNAEmfietzoglou_iceIonisationModel::DifferentialCrossSection(G4ParticleDefinition * particleDefinition,
+G4double G4DNAEmfietzoglouIonisationModelTracked::DifferentialCrossSection(G4ParticleDefinition * particleDefinition,
                                                                   G4double k,
                                                                   G4double energyTransfer,
                                                                   G4int ionizationLevelIndex)
@@ -733,7 +679,7 @@ G4double G4DNAEmfietzoglou_iceIonisationModel::DifferentialCrossSection(G4Partic
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4double G4DNAEmfietzoglou_iceIonisationModel::Interpolate(G4double e1,
+G4double G4DNAEmfietzoglouIonisationModelTracked::Interpolate(G4double e1,
                                                        G4double e2,
                                                        G4double e,
                                                        G4double xs1,
@@ -798,7 +744,7 @@ G4double G4DNAEmfietzoglou_iceIonisationModel::Interpolate(G4double e1,
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4double G4DNAEmfietzoglou_iceIonisationModel::QuadInterpolator(G4double e11,
+G4double G4DNAEmfietzoglouIonisationModelTracked::QuadInterpolator(G4double e11,
                                                             G4double e12,
                                                             G4double e21,
                                                             G4double e22,
@@ -824,7 +770,7 @@ G4double G4DNAEmfietzoglou_iceIonisationModel::QuadInterpolator(G4double e11,
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4int G4DNAEmfietzoglou_iceIonisationModel::RandomSelect(G4double k,
+G4int G4DNAEmfietzoglouIonisationModelTracked::RandomSelect(G4double k,
                                                      const G4String& particle)
 {
   G4int level = 0;
@@ -871,7 +817,7 @@ G4int G4DNAEmfietzoglou_iceIonisationModel::RandomSelect(G4double k,
   }
   else
   {
-    G4Exception("G4DNAEmfietzoglou_iceIonisationModel::RandomSelect",
+    G4Exception("G4DNAEmfietzoglouIonisationModelTracked::RandomSelect",
                 "em0002",
                 FatalException,
                 "Model not applicable to particle type.");
@@ -882,7 +828,7 @@ G4int G4DNAEmfietzoglou_iceIonisationModel::RandomSelect(G4double k,
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4double G4DNAEmfietzoglou_iceIonisationModel::RandomizeEjectedElectronEnergyFromCumulatedDcs(G4ParticleDefinition* particleDefinition,
+G4double G4DNAEmfietzoglouIonisationModelTracked::RandomizeEjectedElectronEnergyFromCumulatedDcs(G4ParticleDefinition* particleDefinition,
                                                                                           G4double k,
                                                                                           G4int shell)
 {
@@ -904,7 +850,7 @@ G4double G4DNAEmfietzoglou_iceIonisationModel::RandomizeEjectedElectronEnergyFro
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4double G4DNAEmfietzoglou_iceIonisationModel::RandomTransferedEnergy(G4ParticleDefinition* particleDefinition,
+G4double G4DNAEmfietzoglouIonisationModelTracked::RandomTransferedEnergy(G4ParticleDefinition* particleDefinition,
                                                                   G4double k,
                                                                   G4int ionizationLevelIndex)
 {

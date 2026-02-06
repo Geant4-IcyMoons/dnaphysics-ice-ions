@@ -41,15 +41,88 @@
 #include "G4AnalysisManager.hh"
 #include "G4Run.hh"
 #include "SteppingAction.hh"
+#include "ModelDataRegistry.hh"
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
 #include <iomanip>
+#include <sstream>
+#include <string>
+#include <vector>
 
 namespace {
 constexpr bool kPrintPostRunStepSummary = false;
+
+bool ReadEnvFlag(const char* name, bool defaultValue)
+{
+  const char* env = std::getenv(name);
+  if (!env || !*env) {
+    return defaultValue;
+  }
+  return std::strcmp(env, "0") != 0;
+}
+
+std::string ToLower(std::string value)
+{
+  for (auto& ch : value) ch = static_cast<char>(std::tolower(ch));
+  return value;
+}
+
+std::string ReadEnvString(const char* name)
+{
+  const char* env = std::getenv(name);
+  return (env && *env) ? std::string(env) : std::string();
+}
+
+std::string NormalizeIcePhase(const std::string& raw)
+{
+  if (raw.empty()) return {};
+  const std::string phase = ToLower(raw);
+  if (phase == "ice_hex" || phase == "hex" || phase == "hexagonal" ||
+      phase == "crystalline") {
+    return "hexagonal";
+  }
+  if (phase == "ice_am" || phase == "am" || phase == "amo" ||
+      phase == "amorphous") {
+    return "amorphous";
+  }
+  return phase;
+}
+
+std::string BuildDnaPath(const char* dataDir, const std::string& filename)
+{
+  if (!dataDir || !*dataDir) {
+    return std::string("dna/") + filename;
+  }
+  return std::string(dataDir) + "/dna/" + filename;
+}
+
+bool FileExists(const std::string& path)
+{
+  std::ifstream test(path.c_str());
+  return test.good();
+}
+
+std::string SelectIonisationDiffFile(const std::string& icePhase)
+{
+  const std::string defaultFile = "sigmadiff_ionisation_e_emfietzoglou.dat";
+  if (icePhase.empty()) {
+    return defaultFile;
+  }
+  const std::string phaseFile =
+      "sigmadiff_ionisation_e_" + icePhase + "_ice_emfietzoglou_kyriakou.dat";
+  const char* dataDir = std::getenv("G4LEDATA");
+  if (FileExists(BuildDnaPath(dataDir, phaseFile))) {
+    return phaseFile;
+  }
+  return defaultFile;
+}
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-RunAction::RunAction() : G4UserRunAction()
+RunAction::RunAction() : G4UserRunAction(), fConfigNtupleId(-1)
 {
   // Create analysis manager
   G4cout << "##### Create analysis manager "
@@ -57,7 +130,7 @@ RunAction::RunAction() : G4UserRunAction()
   auto analysisManager = G4AnalysisManager::Instance();
 
   analysisManager->SetDefaultFileType("root");
-  analysisManager->SetNtupleMerging(true);
+  analysisManager->SetNtupleMerging(ReadEnvFlag("DNA_NTUPLE_MERGE", true));
 
   G4cout << "Using " << analysisManager->GetType() << " analysis manager" << G4endl;
 
@@ -88,8 +161,10 @@ RunAction::RunAction() : G4UserRunAction()
   // Optional: per-channel microscopic cross-section (cm^2) if available
   analysisManager->CreateNtupleDColumn("channelMicroXS");
   // Optional: process/model name strings
-  analysisManager->CreateNtupleSColumn("processName");
-  analysisManager->CreateNtupleSColumn("modelName");
+  if (ReadEnvFlag("DNA_NTUPLE_STRINGS", true)) {
+    analysisManager->CreateNtupleSColumn("processName");
+    analysisManager->CreateNtupleSColumn("modelName");
+  }
   analysisManager->FinishNtuple();
 
   // Track information ntuple
@@ -105,6 +180,14 @@ RunAction::RunAction() : G4UserRunAction()
   analysisManager->CreateNtupleIColumn("trackID");
   analysisManager->CreateNtupleIColumn("parentID");
   analysisManager->FinishNtuple();
+
+  // Configuration metadata ntuple (key/value pairs)
+  if (ReadEnvFlag("DNA_NTUPLE_STRINGS", true)) {
+    fConfigNtupleId = analysisManager->CreateNtuple("config", "dnaphysics");
+    analysisManager->CreateNtupleSColumn("key");
+    analysisManager->CreateNtupleSColumn("value");
+    analysisManager->FinishNtuple();
+  }
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -121,8 +204,39 @@ void RunAction::BeginOfRunAction(const G4Run*)
   G4String fileName = "dna";
   analysisManager->OpenFile(fileName);
 
+  if (fConfigNtupleId >= 0) {
+    const std::string physRaw = ReadEnvString("DNA_PHYSICS");
+    std::string physChoice = physRaw.empty() ? "ice" : ToLower(physRaw);
+    std::string icePhase = NormalizeIcePhase(ReadEnvString("DNA_ICE_PHASE"));
+
+    if (icePhase.empty()) {
+      if (physChoice == "ice_hex" || physChoice == "ice_hexagonal" ||
+          physChoice == "ice_hexagon" || physChoice == "ice_h") {
+        icePhase = "hexagonal";
+        physChoice = "ice";
+      } else if (physChoice == "ice_am" || physChoice == "ice_amorphous" ||
+                 physChoice == "ice_amo") {
+        icePhase = "amorphous";
+        physChoice = "ice";
+      }
+    }
+
+    auto appendConfig = [&](const std::string& key, const std::string& value) {
+      analysisManager->FillNtupleSColumn(fConfigNtupleId, 0, key);
+      analysisManager->FillNtupleSColumn(fConfigNtupleId, 1, value);
+      analysisManager->AddNtupleRow(fConfigNtupleId);
+    };
+
+    appendConfig("DNA_PHYSICS", physRaw.empty() ? "ice" : physRaw);
+    appendConfig("physics_list", physChoice);
+    appendConfig("ice_phase", icePhase.empty() ? "default" : icePhase);
+  }
+
   // Clear any previous step logs so this run starts fresh
+  SteppingAction::SetLoggingEnabled(kPrintPostRunStepSummary);
   SteppingAction::ClearLogs();
+  SteppingAction::ClearObservedModels();
+  ModelDataRegistry::Instance().Clear();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -134,6 +248,30 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
 
   // Print histogram statistics
   auto analysisManager = G4AnalysisManager::Instance();
+
+  if (fConfigNtupleId >= 0) {
+    auto observed = SteppingAction::ObservedModels();
+    int idx = 0;
+    for (const auto& entry : observed) {
+      std::ostringstream key;
+      key << "observed_model_" << std::setfill('0') << std::setw(3) << idx++;
+      analysisManager->FillNtupleSColumn(fConfigNtupleId, 0, key.str());
+      analysisManager->FillNtupleSColumn(fConfigNtupleId, 1, entry);
+      analysisManager->AddNtupleRow(fConfigNtupleId);
+    }
+
+    auto appendConfig = [&](const std::string& key, const std::string& value) {
+      analysisManager->FillNtupleSColumn(fConfigNtupleId, 0, key);
+      analysisManager->FillNtupleSColumn(fConfigNtupleId, 1, value);
+      analysisManager->AddNtupleRow(fConfigNtupleId);
+    };
+
+    // Resolve elastic reference based on observed elastic model(s).
+    auto refs = ModelDataRegistry::Instance().Snapshot();
+    for (const auto& kv : refs) {
+      appendConfig(kv.first, kv.second);
+    }
+  }
 
   // Save histograms
   analysisManager->Write();
