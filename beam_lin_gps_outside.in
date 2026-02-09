@@ -1,0 +1,51 @@
+# Verbosity
+/control/verbose 0
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 1
+
+# ===== Parameters =====
+# N = number of particles AND threads
+/control/alias N 1000000
+/control/alias EMIN 1      # min energy value (numeric)
+/control/alias EMAX 200      # max energy value (numeric)
+/control/alias EUNIT eV     # unit for energies
+
+# Threads: set equal to N (must be before initialize)
+/run/numberOfThreads 1
+
+# Material
+/dna/test/setMat G4_WATER
+
+# Size of World volume
+/dna/test/setSize 0.01 um
+
+# Atomic deexcitation
+/process/em/fluo true
+/process/em/auger true
+/process/em/augerCascade true
+/process/em/deexcitationIgnoreCut true
+
+# Initialize
+/run/initialize
+
+# ===== GPS-based random energies (same scalar setup) =====
+# One primary per event, energies sampled from Lin[EMIN, EMAX]
+/gps/particle e-
+/gps/ene/type Pow
+/gps/ene/min {EMIN} {EUNIT}
+/gps/ene/max {EMAX} {EUNIT}
+/gps/ene/gradient 0
+/gps/ene/intercept 1
+
+# Point source 1 nm outside the cube along -Z; direction +Z
+# Cube half-size is 5 nm (0.01 um / 2). Start at z = -6 nm.
+/gps/pos/type Point
+/gps/pos/centre 0 0 -6 nm
+/gps/direction 0 0 1
+
+# Emit one particle per event
+/gps/number 1
+
+# Fire N events (enables event-level parallelism across {N} threads)
+/run/beamOn {N}

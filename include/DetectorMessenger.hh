@@ -50,6 +50,7 @@ class G4UIcmdWithAString;
 class G4UIcmdWithABool;
 class G4UIcommand;
 class G4UIcmdWithADoubleAndUnit;
+class G4UIcmdWith3VectorAndUnit;
 
 class DetectorMessenger : public G4UImessenger
 {
@@ -68,6 +69,7 @@ class DetectorMessenger : public G4UImessenger
     G4UIcmdWithABool* fpTrackingCutCmd;
     G4UIcommand* fDensityCmd;
     G4UIcmdWithADoubleAndUnit* fSizeCmd;
+    G4UIcmdWith3VectorAndUnit* fIceSizeCmd;
 };
 
 #endif

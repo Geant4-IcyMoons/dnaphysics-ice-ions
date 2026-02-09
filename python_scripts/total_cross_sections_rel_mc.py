@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os, sys
+import shutil
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
@@ -39,7 +40,7 @@ from constants import (
 import emfietzoglou_model_finite_q as model
 
 # Select ice structure: "amorphous" or "hexagonal"
-ICE_TYPE = "amorphous"
+ICE_TYPE = "hexagonal"
 ICE_LABEL = f"{ICE_TYPE}_ice"
 # Extend DCS grid beyond Born table using a linear T grid.
 DCS_T_MAX_EEV = 1.0e7
@@ -1242,15 +1243,23 @@ def plot_channel_cross_sections_two_panel(
     max_x = max(float(np.max(T_a)), float(np.max(T_h)))
     ax_a.set_xlim(1.0, max_x)
     ax_h.set_xlim(1.0, max_x)
+    ax_a.set_ylim(bottom = 1e-25)
+    ax_h.set_ylim(bottom = 1e-25)
 
     from matplotlib.lines import Line2D
     from matplotlib.ticker import LogFormatterMathtext, LogLocator, NullLocator
 
-    handles, _ = ax_a.get_legend_handles_labels()
+    handles, labels = ax_a.get_legend_handles_labels()
     n_exc = len(sigma_a[0].get("excitation_sigma_pwba", [])) if sigma_a else 0
     n_ion = len(sigma_a[0].get("ionization_sigma_pwba", [])) if sigma_a else 0
     exc_handles = handles[:n_exc]
     ion_handles = handles[n_exc:n_exc + n_ion]
+    kshell_handle = None
+    if "K-shell" in labels:
+        try:
+            kshell_handle = handles[labels.index("K-shell")]
+        except Exception:
+            kshell_handle = None
 
     gs_leg = GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1, :], height_ratios=[1.0, 1.0], hspace=0.30)
     ax_leg_exc = fig.add_subplot(gs_leg[0, 0])
@@ -1261,12 +1270,13 @@ def plot_channel_cross_sections_two_panel(
     if exc_handles:
         exc_labels = ["Excitation"] + [str(i + 1) for i in range(n_exc)]
         exc_handles = [Line2D([], [], color="none", linestyle="none")] + exc_handles
+        exc_ncol = max(1, len(exc_labels))
         ax_leg_exc.legend(
             exc_handles,
             exc_labels,
             loc="center",
             bbox_to_anchor=(0.5, 0.5),
-            ncol=max(1, n_exc + 1),
+            ncol=exc_ncol,
             frameon=False,
             columnspacing=0.9,
             handlelength=2.2,
@@ -1276,12 +1286,16 @@ def plot_channel_cross_sections_two_panel(
     if ion_handles:
         ion_labels = ["Ionization"] + [str(i + 1) for i in range(n_ion)]
         ion_handles = [Line2D([], [], color="none", linestyle="none")] + ion_handles
+        if kshell_handle is not None:
+            ion_labels.append("K-shell")
+            ion_handles.append(kshell_handle)
+        ion_ncol = max(1, len(ion_labels))
         ax_leg_ion.legend(
             ion_handles,
             ion_labels,
             loc="center",
             bbox_to_anchor=(0.5, 0.5),
-            ncol=max(1, n_ion + 1),
+            ncol=ion_ncol,
             frameon=False,
             columnspacing=0.9,
             handlelength=2.2,
@@ -1322,6 +1336,7 @@ def plot_corrected_exc_ion_scaled(
 
     exc_scaled = np.zeros((len(T_arr), n_exc), float)
     ion_scaled = np.zeros((len(T_arr), n_ion), float)
+    kshell_scaled = np.full(len(T_arr), np.nan, float)
 
     for i, Tj in enumerate(T_arr):
         sigma = sigma_list[i]
@@ -1346,6 +1361,16 @@ def plot_corrected_exc_ion_scaled(
             exc_scaled[i, j] = float(exc_vals[j])
         for j in range(min(n_ion, len(ion_vals))):
             ion_scaled[i, j] = float(ion_vals[j])
+        kshell_val = None
+        if use_rel_long and sigma.get("kshell_sigma_rel", None) is not None:
+            kshell_val = sigma.get("kshell_sigma_rel", None)
+        else:
+            kshell_val = sigma.get("kshell_sigma", None)
+        if kshell_val is not None:
+            try:
+                kshell_scaled[i] = float(kshell_val)
+            except Exception:
+                kshell_scaled[i] = np.nan
 
     for j in range(n_exc):
         ax.loglog(
@@ -1366,6 +1391,16 @@ def plot_corrected_exc_ion_scaled(
             ls="-",
             color=ion_colors[j % len(ion_colors)],
             label=f"{j+1}",
+        )
+    if np.any(np.isfinite(kshell_scaled)):
+        ax.loglog(
+            T_arr,
+            kshell_scaled,
+            lw=linewidth,
+            alpha=alpha,
+            ls="-",
+            color="purple",
+            label="K-shell",
         )
     ax.set_xlabel("Electron Energy ($T$; eV)", labelpad=1)
     ax.set_ylabel(r"Cross-Section (cm$^2$)")
@@ -1812,6 +1847,103 @@ def _write_dcs_tables_from_data(dcs_data, exc_out, ion_out):
             exc_handle.write(_format_dcs_row(T_line[i], E_line[i], exc_vals[i]))
             ion_handle.write(_format_dcs_row(T_line[i], E_line[i], ion_vals[i]))
 
+def _load_dcs_table(path):
+    data = np.loadtxt(path)
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+    if data.shape[1] < 3:
+        raise ValueError(f"DCS table {path} has fewer than 3 columns.")
+    T_line = np.asarray(data[:, 0], float)
+    E_line = np.asarray(data[:, 1], float)
+    vals = np.asarray(data[:, 2:], float)
+    return T_line, E_line, vals
+
+def _load_dcs_pair(exc_path, ion_path):
+    T_exc, E_exc, exc_vals = _load_dcs_table(exc_path)
+    T_ion, E_ion, ion_vals = _load_dcs_table(ion_path)
+    if (T_exc.shape != T_ion.shape) or (E_exc.shape != E_ion.shape):
+        raise ValueError("Excitation and ionization DCS grids have different shapes.")
+    if not np.allclose(T_exc, T_ion) or not np.allclose(E_exc, E_ion):
+        raise ValueError("Excitation and ionization DCS grids do not match.")
+    return {
+        "T_line": T_exc,
+        "E_line": E_exc,
+        "exc_vals": exc_vals,
+        "ion_vals": ion_vals,
+    }
+
+def _integrate_dcs_to_totals(T_line, E_line, vals):
+    T_line = np.asarray(T_line, float)
+    E_line = np.asarray(E_line, float)
+    vals = np.asarray(vals, float)
+    if vals.ndim == 1:
+        vals = vals.reshape(-1, 1)
+    if (T_line.size != E_line.size) or (T_line.size != vals.shape[0]):
+        raise ValueError("DCS arrays must have matching lengths.")
+
+    unique_T = []
+    totals = []
+    n = T_line.size
+    start = 0
+    for i in range(1, n + 1):
+        if i == n or T_line[i] != T_line[start]:
+            Tval = float(T_line[start])
+            E_seg = np.asarray(E_line[start:i], float)
+            V_seg = np.asarray(vals[start:i], float)
+            if E_seg.size == 0:
+                start = i
+                continue
+            order = np.argsort(E_seg)
+            E_sorted = E_seg[order]
+            V_sorted = V_seg[order]
+            row = [_simpson_integrate(V_sorted[:, j], E_sorted) for j in range(V_sorted.shape[1])]
+            unique_T.append(Tval)
+            totals.append(row)
+            start = i
+    return np.asarray(unique_T, float), np.asarray(totals, float)
+
+def _write_total_table(T_vals, totals, out_path):
+    with open(out_path, "w") as handle:
+        for Tval, row in zip(T_vals, totals):
+            fields = [f"{Tval:.9E}"]
+            fields.extend(f"{val:.9E}" for val in row)
+            handle.write(" ".join(fields) + "\n")
+
+def _write_total_tables_from_dcs(dcs_data, exc_out, ion_out):
+    T_line = np.asarray(dcs_data.get("T_line", []), float)
+    E_line = np.asarray(dcs_data.get("E_line", []), float)
+    exc_vals = np.asarray(dcs_data.get("exc_vals", []), float)
+    ion_vals = np.asarray(dcs_data.get("ion_vals", []), float)
+    if T_line.size == 0 or E_line.size == 0:
+        raise ValueError("DCS data is empty; cannot compute totals.")
+    T_exc, exc_totals = _integrate_dcs_to_totals(T_line, E_line, exc_vals)
+    T_ion, ion_totals = _integrate_dcs_to_totals(T_line, E_line, ion_vals)
+    if not np.allclose(T_exc, T_ion):
+        raise ValueError("Excitation and ionization totals have mismatched T grids.")
+    _write_total_table(T_exc, exc_totals, exc_out)
+    _write_total_table(T_ion, ion_totals, ion_out)
+
+def _export_to_custom_geant4(paths):
+    roots = []
+    for root in (CUSTOM_DATA_ROOT_GEANT4, CUSTOM_DATA_ROOT_PROJECT):
+        if root is None:
+            continue
+        dna_dir = root / "G4EMLOW8.6.1" / "dna"
+        if dna_dir.exists():
+            roots.append(dna_dir)
+    if not roots:
+        print("No custom Geant4 DNA data dir found; skipping export.")
+        return
+    for dna_dir in roots:
+        for path in paths:
+            if path is None:
+                continue
+            if not path.exists():
+                raise FileNotFoundError(f"Missing file for export: {path}")
+            dest = dna_dir / path.name
+            shutil.copy2(path, dest)
+        print(f"Exported {len(paths)} files to {dna_dir}")
+
 _DCS_WORKER_S = None
 _DCS_WORKER_C = None
 _DCS_WORKER_T_LINE = None
@@ -1985,39 +2117,42 @@ def write_emfietzoglou_dcs_tables(
         ice_label = ICE_LABEL
     exc_out = out_dir / f"sigmadiff_excitation_e_{ice_label}_emfietzoglou_kyriakou.dat"
     ion_out = out_dir / f"sigmadiff_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat"
+    exc_total_out = out_dir / f"sigma_excitation_e_{ice_label}_emfietzoglou_kyriakou.dat"
+    ion_total_out = out_dir / f"sigma_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat"
 
-    if template_path is None:
-        dna_dir = _geant4_dna_dir()
-        if dna_dir is None:
-            raise FileNotFoundError("Could not locate Geant4 DNA data directory.")
-        emfi_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
-        if not os.path.exists(emfi_path):
-            raise FileNotFoundError(f"Missing DCS template file: {emfi_path}")
-        grid_low = _load_dcs_template_grid(emfi_path)
-
-        grid = grid_low
-        born_path = dna_dir / "sigmadiff_ionisation_e_born.dat"
-        if os.path.exists(born_path) and grid_low:
-            t_switch = max(grid_low.keys())
-            grid_high = _load_dcs_template_grid(
-                born_path, t_min=t_switch, include_min=False
-            )
-            if grid_high:
-                grid = _merge_dcs_template_grids(grid_low, grid_high)
-        if DCS_T_MAX_EEV > max(grid.keys()):
-            grid = _extend_dcs_grid(grid, DCS_T_MAX_EEV, DCS_T_STEP_EEV)
-    else:
-        if not os.path.exists(template_path):
-            raise FileNotFoundError(f"Missing DCS template file: {template_path}")
-        grid = _load_dcs_template_grid(template_path)
-
-    expected_lines = sum(len(v) for v in grid.values())
-    if dcs_data is not None:
-        cached_lines = np.asarray(dcs_data.get("T_line", []), float).size
-        if cached_lines != expected_lines:
+    if dcs_data is None and exc_out.exists() and ion_out.exists():
+        try:
+            dcs_data = _load_dcs_pair(exc_out, ion_out)
+            print(f"Loaded existing DCS from {exc_out} and {ion_out}")
+        except Exception as exc:
+            print(f"Failed to load existing DCS tables: {exc}")
             dcs_data = None
 
     if dcs_data is None:
+        if template_path is None:
+            dna_dir = _geant4_dna_dir()
+            if dna_dir is None:
+                raise FileNotFoundError("Could not locate Geant4 DNA data directory.")
+            emfi_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
+            if not os.path.exists(emfi_path):
+                raise FileNotFoundError(f"Missing DCS template file: {emfi_path}")
+            grid_low = _load_dcs_template_grid(emfi_path)
+
+            grid = grid_low
+            born_path = dna_dir / "sigmadiff_ionisation_e_born.dat"
+            if os.path.exists(born_path) and grid_low:
+                t_switch = max(grid_low.keys())
+                grid_high = _load_dcs_template_grid(
+                    born_path, t_min=t_switch, include_min=False
+                )
+                if grid_high:
+                    grid = _merge_dcs_template_grids(grid_low, grid_high)
+            if DCS_T_MAX_EEV > max(grid.keys()):
+                grid = _extend_dcs_grid(grid, DCS_T_MAX_EEV, DCS_T_STEP_EEV)
+        else:
+            if not os.path.exists(template_path):
+                raise FileNotFoundError(f"Missing DCS template file: {template_path}")
+            grid = _load_dcs_template_grid(template_path)
 
         T_line = []
         E_line = []
@@ -2117,9 +2252,13 @@ def write_emfietzoglou_dcs_tables(
         }
 
     _write_dcs_tables_from_data(dcs_data, exc_out, ion_out)
+    _write_total_tables_from_dcs(dcs_data, exc_total_out, ion_total_out)
+    _export_to_custom_geant4([exc_out, ion_out, exc_total_out, ion_total_out])
 
     print(f"Saved excitation DCS to {exc_out}")
     print(f"Saved ionization DCS to {ion_out}")
+    print(f"Saved excitation total to {exc_total_out}")
+    print(f"Saved ionization total to {ion_total_out}")
     if return_data:
         return dcs_data
     return None

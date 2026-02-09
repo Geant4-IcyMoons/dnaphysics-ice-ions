@@ -40,6 +40,7 @@ using namespace std;
 
 namespace {
 thread_local G4int g_lastBornExcLevelTracked = -1;
+thread_local G4double g_lastBornExcSigmaTracked_cm2 = -1.0;
 }
 
 G4int G4DNABornExcitationModel1Tracked::GetLastExcitationIndex()
@@ -50,6 +51,17 @@ G4int G4DNABornExcitationModel1Tracked::GetLastExcitationIndex()
 void G4DNABornExcitationModel1Tracked::ClearLastExcitationIndex()
 {
   g_lastBornExcLevelTracked = -1;
+  g_lastBornExcSigmaTracked_cm2 = -1.0;
+}
+
+G4double G4DNABornExcitationModel1Tracked::GetLastPartialSigma_cm2()
+{
+  return g_lastBornExcSigmaTracked_cm2;
+}
+
+void G4DNABornExcitationModel1Tracked::ClearLastPartialSigma_cm2()
+{
+  g_lastBornExcSigmaTracked_cm2 = -1.0;
 }
 
 G4DNABornExcitationModel1Tracked::G4DNABornExcitationModel1Tracked(const G4ParticleDefinition*,
@@ -114,7 +126,7 @@ void G4DNABornExcitationModel1Tracked::Initialise(const G4ParticleDefinition* pa
     fLowEnergy = 9*eV;
     fHighEnergy = 1*MeV;
     ModelDataRegistry::Instance().Record(
-      "ref_excitation_born",
+      std::string("model_ref:") + GetName(),
       ModelDataRegistry::NormalizeDatBasename(fTableFile));
   }
   else if(particle->GetParticleName() == "proton")
@@ -251,6 +263,7 @@ G4double G4DNABornExcitationModel1Tracked::GetPartialCrossSection(const G4Materi
 G4int G4DNABornExcitationModel1Tracked::RandomSelect(G4double k)
 {
   G4int level = 0;
+  g_lastBornExcSigmaTracked_cm2 = -1.0;
 
   auto  valuesBuffer = new G4double[fTableData->NumberOfComponents()];
   const auto  n = (G4int)fTableData->NumberOfComponents();
@@ -273,6 +286,7 @@ G4int G4DNABornExcitationModel1Tracked::RandomSelect(G4double k)
 
     if (valuesBuffer[i] > value)
     {
+      g_lastBornExcSigmaTracked_cm2 = valuesBuffer[i] / (cm * cm);
       delete[] valuesBuffer;
       return i;
     }

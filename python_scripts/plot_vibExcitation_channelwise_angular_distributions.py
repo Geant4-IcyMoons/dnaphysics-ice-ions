@@ -42,6 +42,7 @@ from constants import (
     VIB_TARGET_NAMES,
     rcparams_with_fontsize,
 )
+from root_utils import resolve_root_paths, resolve_first_root
 
 # Absolute paths used elsewhere in this repo
 # Resolve paths relative to project root (dnaphysics-ice)
@@ -234,13 +235,9 @@ def plot_hg_for_channel_with_gamma(channel_idx: int, energies_eV: list[float]):
     arrs = None
     try:
         import uproot  # optional dependency
-        # Resolve default ROOT path relative to project root: build/dna.root
-        default_root = PROJECT_ROOT / "build" / "dna.root"
-        # If not found next to script, try CWD/build/dna.root
-        alt_root = pathlib.Path.cwd() / "build" / "dna.root"
-        root_path = default_root if default_root.exists() else alt_root
-        if root_path.exists():
-            with uproot.open(str(root_path)) as f:
+        root_paths = resolve_root_paths(PROJECT_ROOT / "build" / "dna.root")
+        if root_paths:
+            with uproot.open(root_paths[0]) as f:
                 tree = f["step"]
                 arrs = tree.arrays(["cosTheta", "channelIndex", "kineticEnergy", "flagProcess"], library="np")
         else:
@@ -346,7 +343,8 @@ def compare_at_nearest_event_energy(root_file: str,
     except Exception as exc:
         raise ImportError("compare_at_nearest_event_energy requires uproot. pip install uproot") from exc
 
-    with uproot.open(root_file) as f:
+    root_path = resolve_first_root(root_file)
+    with uproot.open(root_path) as f:
         tree = f["step"]
         arrs = tree.arrays(["cosTheta", "channelIndex", "kineticEnergy", "flagProcess"], library="np")
 

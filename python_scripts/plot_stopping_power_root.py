@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import uproot
 
+from root_utils import resolve_root_paths
 from constants import (
     FONT_COURIER,
     FONTSIZE_24,
@@ -42,9 +43,12 @@ LOAD_EXISTING_RANGES = False
 
 
 def _load_step_tree(path: Path, tree_name: str) -> dict[str, np.ndarray]:
-    with uproot.open(path) as f:
+    paths = resolve_root_paths(path)
+    if not paths:
+        raise FileNotFoundError(path)
+    with uproot.open(paths[0]) as f:
         if tree_name not in f:
-            raise KeyError(f"Tree '{tree_name}' not found in {path}")
+            raise KeyError(f"Tree '{tree_name}' not found in {paths[0]}")
         tree = f[tree_name]
         cols = [
             "kineticEnergy",
@@ -57,7 +61,9 @@ def _load_step_tree(path: Path, tree_name: str) -> dict[str, np.ndarray]:
             "flagProcess",
             "processName",
         ]
-        data = {name: tree[name].array(library="np") for name in cols if name in tree.keys()}
+        available = [name for name in cols if name in tree.keys()]
+    tree_spec = [f"{p}:{tree_name}" for p in paths]
+    data = uproot.concatenate(tree_spec, available, library="np")
     return data
 
 
@@ -420,6 +426,7 @@ def _collect_combined_series(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Plot stopping power from dnaphysics ROOT output.")
+    parser.add_argument("--root", type=Path, default=None, help="Path or glob to ROOT file(s)")
     parser.add_argument("--out", type=Path, default=None, help="Output PNG path")
     parser.add_argument(
         "--material",
@@ -475,7 +482,7 @@ def main() -> None:
     parser.add_argument("--label", type=str, default="Cumulative", help="Legend label for total")
     args = parser.parse_args()
 
-    root_path = _default_root_path()
+    root_path = args.root if args.root is not None else _default_root_path()
     material = args.material.lower()
     npz_path = args.npz if args.npz is not None else _default_npz_path(material)
     out_path = (

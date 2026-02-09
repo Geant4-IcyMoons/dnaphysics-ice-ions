@@ -101,7 +101,7 @@ void G4DNAMichaudAttachmentModel::Initialise(const G4ParticleDefinition* particl
   G4double scaleFactor = 1e-16*cm2;
   G4String fileElectron("dna/sigma_attachment_e_michaud");
   ModelDataRegistry::Instance().Record(
-    "ref_attachment",
+    std::string("model_ref:") + GetName(),
     ModelDataRegistry::NormalizeDatBasename(fileElectron));
   fData = new G4DNACrossSectionDataSet(new G4LogLogInterpolation(),
                                         eV, scaleFactor);

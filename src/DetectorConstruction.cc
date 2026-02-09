@@ -45,26 +45,33 @@
 #include "G4RunManager.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4UserLimits.hh"
+#include <algorithm>
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
 DetectorConstruction::DetectorConstruction(G4VModularPhysicsList* ptr)
   : G4VUserDetectorConstruction(),
     fpWaterMaterial(nullptr),
+    fpWorldMaterial(nullptr),
     fLogicWorld(nullptr),
-    fPhysiWorld(nullptr)
+    fLogicIce(nullptr),
+    fPhysiWorld(nullptr),
+    fPhysiIce(nullptr)
 {
   // Create commands for interactive definition of the detector
   fDetectorMessenger = new DetectorMessenger(this, ptr);
 
   // Default values
   //
-  // World size
-  fWorldSize = 100 *um;
+  // Ice size (cube by default)
+  fIceSizeX = 100 * um;
+  fIceSizeY = 100 * um;
+  fIceSizeZ = 100 * um;
+  fWorldSize = 0.;
   // and material
   G4NistManager* man = G4NistManager::Instance();
-  G4Material* H2O = man->FindOrBuildMaterial("G4_WATER");
-  fpWaterMaterial = H2O;
+  fpWaterMaterial = man->FindOrBuildMaterial("G4_ICE");
+  fpWorldMaterial = man->FindOrBuildMaterial("G4_Galactic");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
@@ -82,6 +89,7 @@ void DetectorConstruction::DefineMaterials()
   G4NistManager* man = G4NistManager::Instance();
 
   G4Material* H2O = man->FindOrBuildMaterial("G4_ICE");
+  G4Material* vacuum = man->FindOrBuildMaterial("G4_Galactic");
 
   /*
    If one wishes to test other density value for water material,
@@ -95,7 +103,12 @@ void DetectorConstruction::DefineMaterials()
    Both materials are created and can be selected from dna.mac
    */
 
-  fpWaterMaterial = H2O;
+  if (!fpWaterMaterial) {
+    fpWaterMaterial = H2O;
+  }
+  if (!fpWorldMaterial) {
+    fpWorldMaterial = vacuum;
+  }
 
   // G4cout << "-> Density of water material (g/cm3)="
   //  << fpWaterMaterial->GetDensity()/(g/cm/cm/cm) << G4endl;
@@ -128,17 +141,21 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     return fPhysiWorld;
   }
 
-  // World volume
-  G4double worldSizeX = fWorldSize;
-  G4double worldSizeY = worldSizeX;
-  G4double worldSizeZ = worldSizeX;
+  DefineMaterials();
+
+  // World volume: vacuum cube sized from ice dimensions.
+  const G4double iceMax = std::max({fIceSizeX, fIceSizeY, fIceSizeZ});
+  G4double worldSize = 1.5 * iceMax;
+  // Ensure world contains an ice slab that starts at z=0.
+  worldSize = std::max(worldSize, 2.0 * fIceSizeZ);
+  fWorldSize = worldSize;
 
   G4Box* solidWorld = new G4Box("World",  // its name
-                                worldSizeX / 2, worldSizeY / 2, worldSizeZ / 2);
+                                worldSize / 2, worldSize / 2, worldSize / 2);
                                 // its size
 
   fLogicWorld = new G4LogicalVolume(solidWorld,  // its solid
-                                    fpWaterMaterial,  // its material
+                                    fpWorldMaterial,  // its material
                                     "World");  // its name
 
   fPhysiWorld = new G4PVPlacement(0,  // no rotation
@@ -154,8 +171,17 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   worldVisAtt->SetVisibility(true);
   fLogicWorld->SetVisAttributes(worldVisAtt);
 
-  G4VisAttributes* worldVisAtt1 = new G4VisAttributes(G4Colour(1.0, 0.0, 0.0));
-  worldVisAtt1->SetVisibility(true);
+  // Ice slab placed from z=0 to z=+fIceSizeZ
+  G4Box* solidIce = new G4Box("Ice", fIceSizeX / 2, fIceSizeY / 2, fIceSizeZ / 2);
+  fLogicIce = new G4LogicalVolume(solidIce, fpWaterMaterial, "Ice");
+
+  const G4ThreeVector iceCenter(0.0, 0.0, fIceSizeZ / 2.0);
+  fPhysiIce = new G4PVPlacement(0, iceCenter, "Ice", fLogicIce, fPhysiWorld,
+                                false, 0);
+
+  G4VisAttributes* iceVis = new G4VisAttributes(G4Colour(0.0, 0.0, 1.0));
+  iceVis->SetVisibility(true);
+  fLogicIce->SetVisAttributes(iceVis);
 
   // Shows how to introduce a 20 eV tracking cut
   // logicWorld->SetUserLimits(new G4UserLimits(DBL_MAX,DBL_MAX,DBL_MAX,20*eV));
@@ -173,8 +199,8 @@ void DetectorConstruction::SetMaterial(const G4String& materialChoice)
 
   if (pttoMaterial) {
     fpWaterMaterial = pttoMaterial;
-    if (fLogicWorld) {
-      fLogicWorld->SetMaterial(fpWaterMaterial);
+    if (fLogicIce) {
+      fLogicIce->SetMaterial(fpWaterMaterial);
     }
     G4RunManager::GetRunManager()->GeometryHasBeenModified();
   }
@@ -184,6 +210,16 @@ void DetectorConstruction::SetMaterial(const G4String& materialChoice)
 
 void DetectorConstruction::SetSize(G4double value)
 {
-  fWorldSize = value;
+  fIceSizeX = value;
+  fIceSizeY = value;
+  fIceSizeZ = value;
+  G4RunManager::GetRunManager()->ReinitializeGeometry();
+}
+
+void DetectorConstruction::SetIceSize(G4double x, G4double y, G4double z)
+{
+  fIceSizeX = x;
+  fIceSizeY = y;
+  fIceSizeZ = z;
   G4RunManager::GetRunManager()->ReinitializeGeometry();
 }

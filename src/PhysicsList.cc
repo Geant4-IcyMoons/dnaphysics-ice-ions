@@ -63,6 +63,9 @@
 #include "G4SystemOfUnits.hh"
 #include "G4UserSpecialCuts.hh"
 #include "G4PhysicsListHelper.hh"
+#include "G4VEmProcess.hh"
+#include "G4VEmModel.hh"
+#include "G4ProcessManager.hh"
 
 //****** ICE *****
 #include "G4DNAVibExcitation.hh"
@@ -80,6 +83,17 @@
 #include "G4DNAEmfietzoglou_iceExcitationModel.hh"
 #include "G4DNAEmfietzoglou_iceIonisationModel.hh"
 //****** END ICE *****
+
+//****** High-energy standard EM models (>10 MeV) *****
+#include "G4eMultipleScattering.hh"
+#include "G4eBremsstrahlung.hh"
+#include "G4eIonisation.hh"
+#include "G4MollerBhabhaModel.hh"
+#include "G4SeltzerBergerModel.hh"
+#include "G4UrbanMscModel.hh"
+#include "G4WentzelVIModel.hh"
+#include "G4CoulombScattering.hh"
+//****** END High-energy *****
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -150,17 +164,17 @@ auto* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
 
 // 4) Blended low + high tiled
 theDNAElasticProcess->SetMinKinEnergy(2.*eV);
-theDNAElasticProcess->SetMaxKinEnergy(9.99999*MeV);
+theDNAElasticProcess->SetMaxKinEnergy(10.*MeV);
 auto* low = new G4DNAMichaud_ELSEPA_LOW_ElasticModel();
 low->SetLowEnergyLimit(2.*eV);
-low->SetHighEnergyLimit(199.*eV);
+low->SetHighEnergyLimit(200.*eV);
 theDNAElasticProcess->SetEmModel(low); // sets default so SR is not re-inserted
 auto* high = new G4DNAMichaud_ELSEPA_HIGH_ElasticModel();
 high->SetLowEnergyLimit(200.*eV);
-high->SetHighEnergyLimit(9.99999*MeV);
+high->SetHighEnergyLimit(10.*MeV);
 theDNAElasticProcess->AddEmModel(2, high);
 
-// ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
+ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
 
 // ----- Vibrational excitation (uncomment to enable) -----
 auto* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
@@ -177,11 +191,50 @@ auto* theDNAExcitationProcess = new G4DNAExcitation("e-_G4DNAExcitation_ICE");
 theDNAExcitationProcess->SetEmModel(new G4DNAEmfietzoglou_iceExcitationModel());
 ph->RegisterProcess(theDNAExcitationProcess, G4Electron::ElectronDefinition());
 
-// ----- Ionisation -----
+  // ----- Ionisation -----
 auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
 theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglou_iceIonisationModel());
 ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
   //****** END ICE *****
+
+  // -------- High-energy fallback (>= 10 MeV): standard EM option4 models --------
+  {
+    const G4double kHighMin = 10. * MeV;
+    const G4double kHighMax = 1. * GeV;
+
+    // Multiple scattering (>= 10 MeV)
+    // Note: MSC is a continuous process without SetMinKinEnergy; energy range controlled by model
+    auto* msc = new G4eMultipleScattering();
+    auto* mscModel = new G4UrbanMscModel();
+    mscModel->SetLowEnergyLimit(kHighMin);
+    mscModel->SetHighEnergyLimit(kHighMax);
+    msc->SetEmModel(mscModel);
+    ph->RegisterProcess(msc, G4Electron::ElectronDefinition());
+
+    // Ionisation high-energy model (>= 10 MeV) - add to existing DNA ionisation process
+    auto* highIonModel = new G4MollerBhabhaModel();
+    highIonModel->SetLowEnergyLimit(kHighMin);
+    highIonModel->SetHighEnergyLimit(kHighMax);
+    theDNAIonisationProcess->AddEmModel(10, highIonModel);
+
+    // Bremsstrahlung (>= 10 MeV)
+    auto* brem = new G4eBremsstrahlung();
+    brem->SetMinKinEnergy(kHighMin);
+    auto* bremModel = new G4SeltzerBergerModel();
+    bremModel->SetLowEnergyLimit(kHighMin);
+    bremModel->SetHighEnergyLimit(kHighMax);
+    brem->SetEmModel(bremModel);
+    ph->RegisterProcess(brem, G4Electron::ElectronDefinition());
+
+    // Coulomb scattering (>= 10 MeV)
+    auto* cs = new G4CoulombScattering();
+    cs->SetMinKinEnergy(kHighMin);
+    auto* csModel = new G4WentzelVIModel();
+    csModel->SetLowEnergyLimit(kHighMin);
+    csModel->SetHighEnergyLimit(kHighMax);
+    cs->SetEmModel(csModel);
+    ph->RegisterProcess(cs, G4Electron::ElectronDefinition());
+  }
 
   /*
   fEmPhysicsList->ConstructProcess();

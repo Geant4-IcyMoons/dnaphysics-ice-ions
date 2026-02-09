@@ -41,7 +41,7 @@ G4DNAMichaud_ELSEPA_HIGH_ElasticModel::
 G4DNAMichaud_ELSEPA_HIGH_ElasticModel(const G4ParticleDefinition*, const G4String& nam) :
     G4VEmModel(nam) 
 {
-  // Tables start just above 200 eV and extend to ~1 MeV
+  // Tables start at 200 eV and extend to 10 MeV
   SetLowEnergyLimit(200. * eV);
   SetHighEnergyLimit(10.0 * MeV);
 
@@ -101,7 +101,7 @@ void G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Initialise(const G4ParticleDefinitio
     G4cout << "G4DNAMichaud_ELSEPA_HIGH_ElasticModel: high energy limit decreased from "
            << HighEnergyLimit()/eV << " eV to " << 1e7 << " eV"
            << G4endl;
-    SetHighEnergyLimit(1.*MeV);
+    SetHighEnergyLimit(10.*MeV);
   }
 
   if (isInitialised) { return; }
@@ -110,7 +110,7 @@ void G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Initialise(const G4ParticleDefinitio
   G4double scaleFactor = 1e-16*cm*cm;
   G4String fileElectron("dna/sigma_elastic_e_michaud_elsepa_high");
   ModelDataRegistry::Instance().Record(
-    "ref_elastic_high",
+    std::string("model_ref:") + GetName(),
     ModelDataRegistry::NormalizeDatBasename(fileElectron));
 
   fpData = new G4DNACrossSectionDataSet(new G4LogLogInterpolation(),
@@ -288,6 +288,12 @@ G4double G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Theta(G4double k,
   G4double xs21 = 0;
   G4double xs22 = 0;
 
+  if (eTdummyVec.size() < 2) {
+    G4Exception("G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Theta",
+                "em0003",
+                FatalException,
+                "Elastic data table is empty or invalid.");
+  }
   auto t2 = std::upper_bound(eTdummyVec.begin(), eTdummyVec.end(), k);
   if (t2 == eTdummyVec.begin())
   {
@@ -300,11 +306,23 @@ G4double G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Theta(G4double k,
   auto t1 = t2 - 1;
 
   auto &vec1 = eVecm[(*t1)];
+  if (vec1.size() < 2) {
+    G4Exception("G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Theta",
+                "em0003",
+                FatalException,
+                "Elastic data table has insufficient CDF entries (t1).");
+  }
   auto e12 = std::upper_bound(vec1.begin(), vec1.end(), integrDiff);
   if (e12 == vec1.end()) { e12 = vec1.end() - 1; }
   auto e11 = e12 - 1;
 
   auto &vec2 = eVecm[(*t2)];
+  if (vec2.size() < 2) {
+    G4Exception("G4DNAMichaud_ELSEPA_HIGH_ElasticModel::Theta",
+                "em0003",
+                FatalException,
+                "Elastic data table has insufficient CDF entries (t2).");
+  }
   auto e22 = std::upper_bound(vec2.begin(), vec2.end(), integrDiff);
   if (e22 == vec2.end()) { e22 = vec2.end() - 1; }
   auto e21 = e22 - 1;
@@ -390,6 +408,13 @@ G4double G4DNAMichaud_ELSEPA_HIGH_ElasticModel::QuadInterpolator(G4double e11,
 
 G4double G4DNAMichaud_ELSEPA_HIGH_ElasticModel::RandomizeCosTheta(G4double k)
 {
+
+  if (k < LowEnergyLimit() || k > HighEnergyLimit()) {
+    G4Exception("G4DNAMichaud_ELSEPA_HIGH_ElasticModel::RandomizeCosTheta",
+                "em0002",
+                FatalException,
+                "Elastic model called outside its energy limits.");
+  }
 
   G4double integrdiff = 0;
   G4double uniformRand = G4UniformRand();

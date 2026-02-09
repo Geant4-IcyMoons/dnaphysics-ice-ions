@@ -2,11 +2,11 @@
 """
 Generate a dnaphysics-ice GPS macro for a Europa lat/lon (west) region.
 
-Uses the same hemisphere logic and energy bounds as generate_europa_electron_bins.py,
-and matches the legacy geometry assumptions:
-  - XY dimensions: 1,000,000 mm for electron runs
-  - z_range: identical binning to the legacy depth grid
-  - beam starts at z = -z_max/2 - 10 mm, with +z as depth direction
+Uses the same hemisphere logic and energy bounds as generate_europa_electron_bins.py.
+Geometry assumptions:
+  - ice slab spans z = 0 to z = z_max (from legacy z_range)
+  - ice size set via /dna/test/setIceSize X Y Z (full lengths)
+  - beam starts just outside the ice surface (default z = -0.001 mm)
   - angular distribution: isotropic in the +z hemisphere (phi uniform, mu=cos(theta) uniform)
 """
 
@@ -57,9 +57,9 @@ def _write_macro(
     delta_e: float,
     centers: np.ndarray,
     n_per_bin: int,
-    world_size_mm: float,
     xy_half_mm: float,
     z_start_mm: float,
+    ice_z_mm: float,
     material: str,
 ) -> None:
     lines: list[str] = []
@@ -67,7 +67,7 @@ def _write_macro(
     lines.append(f"# Lat/Lon W: {lat:.3f}, {lon_w:.3f} ({hemisphere})")
     lines.append(f"# Energy range (MeV): {e_min:.6g} to {e_max:.6g}")
     lines.append(f"# deltaE (MeV): {delta_e:.6g}; bins: {len(centers)}")
-    lines.append(f"# XY half-size (mm): {xy_half_mm:.3f}; world size (mm): {world_size_mm:.3f}")
+    lines.append(f"# Ice size (mm): X=Y={xy_half_mm*2:.3f}, Z={ice_z_mm:.3f}")
     lines.append(f"# Beam start z (mm): {z_start_mm:.3f}")
     lines.append("")
 
@@ -78,7 +78,7 @@ def _write_macro(
         "/tracking/verbose 0",
         "",
         f"/dna/test/setMat {material}",
-        f"/dna/test/setSize {world_size_mm:.6g} mm",
+        f"/dna/test/setIceSize {xy_half_mm*2:.6g} {xy_half_mm*2:.6g} {ice_z_mm:.6g} mm",
         "",
         "/run/initialize",
         "",
@@ -119,8 +119,10 @@ def main() -> None:
     ap.add_argument("--leading-cap", type=float, default=100.0, help="Leading max energy (MeV).")
     ap.add_argument("--trailing-min", type=float, default=0.01, help="Trailing min energy (MeV).")
     ap.add_argument("--material", default="G4_ICE", help="Material for /dna/test/setMat.")
-    ap.add_argument("--xy-size-mm", type=float, default=1_000_000.0,
-                    help="Full XY size in mm for the legacy electron geometry.")
+    ap.add_argument("--xy-size-mm", type=float, default=1.0,
+                    help="Full XY size in mm for the ice slab.")
+    ap.add_argument("--source-z-mm", type=float, default=-0.001,
+                    help="Beam start z (mm), relative to ice surface at z=0.")
     ap.add_argument("--snap", action="store_true",
                     help="Use nearest grid point instead of interpolating.")
     ap.add_argument("--out", type=Path, default=None, help="Output macro path.")
@@ -174,9 +176,8 @@ def main() -> None:
 
     z_range = _legacy_z_range_mm()
     z_max = z_range[-1] + (z_range[-1] - z_range[-2])
-    z_start = - (z_max / 2.0) - 10.0
+    z_start = float(args.source_z_mm)
     xy_half = args.xy_size_mm / 2.0
-    world_size = max(args.xy_size_mm, z_max + 20.0)
 
     if args.out is None:
         name_hemi = "leading" if (0.0 <= lon_w < 180.0) else "trailing"
@@ -195,9 +196,9 @@ def main() -> None:
         delta_e=delta_e,
         centers=centers,
         n_per_bin=args.n_per_bin,
-        world_size_mm=world_size,
         xy_half_mm=xy_half,
         z_start_mm=z_start,
+        ice_z_mm=z_max,
         material=args.material,
     )
 

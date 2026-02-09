@@ -89,6 +89,8 @@ public:
 
   static G4int GetLastShellIndex();
   static void ClearLastShellIndex();
+  static G4double GetLastPartialSigma_cm2();
+  static void ClearLastPartialSigma_cm2();
 
 protected:
 

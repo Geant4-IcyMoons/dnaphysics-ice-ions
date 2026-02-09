@@ -206,6 +206,16 @@ def main():
     cdf_hi = cdf_raw[cdf_raw[:, 0] >= E_SPLIT]
     if cdf_hi.size == 0:
         raise RuntimeError("ELSEPA muffin CDF has no energies >= split energy.")
+    # Ensure the high-branch CDF starts exactly at E_SPLIT.
+    uniq_E = np.unique(cdf_hi[:, 0])
+    if not np.isclose(uniq_E[0], E_SPLIT):
+        block_first = cdf_hi[cdf_hi[:, 0] == uniq_E[0]]
+        if block_first.size == 0:
+            raise RuntimeError("ELSEPA muffin CDF is missing its first energy block.")
+        block_split = block_first.copy()
+        block_split[:, 0] = E_SPLIT
+        cdf_hi = np.vstack([block_split, cdf_hi])
+        cdf_hi = cdf_hi[np.argsort(cdf_hi[:, 0])]
     last_E = cdf_hi[-1, 0]
     if last_E < E_MAX:
         block_last = cdf_hi[cdf_hi[:, 0] == last_E]

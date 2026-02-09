@@ -59,23 +59,30 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     G4VPhysicalVolume* Construct() override;
     
     void SetMaterial(const G4String&);
-    void SetSize(G4double); 
+    void SetSize(G4double);
+    void SetIceSize(G4double, G4double, G4double);
 
   public:
     
     G4Material* 
     MaterialWithDensity(G4String, G4double); 
-    G4double GetSize() {return fWorldSize;};
+    G4double GetSize() { return fWorldSize; }
      
   private:
    
+    G4double fIceSizeX = 0.;
+    G4double fIceSizeY = 0.;
+    G4double fIceSizeZ = 0.;
     G4double fWorldSize = 0.;
     
     void DefineMaterials();
 
     DetectorMessenger* fDetectorMessenger;
     G4Material* fpWaterMaterial;
+    G4Material* fpWorldMaterial;
     G4LogicalVolume* fLogicWorld;
+    G4LogicalVolume* fLogicIce;
     G4PVPlacement* fPhysiWorld;
+    G4PVPlacement* fPhysiIce;
 };
 #endif

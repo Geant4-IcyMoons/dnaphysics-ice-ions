@@ -131,7 +131,7 @@ void G4DNAMichaudElasticModel::Initialise(const G4ParticleDefinition* particle,
 
   G4String fileElectron("dna/sigma_elastic_e_michaud");
   ModelDataRegistry::Instance().Record(
-    "ref_elastic_blend",
+    std::string("model_ref:") + GetName(),
     ModelDataRegistry::NormalizeDatBasename(fileElectron));
 
   fpData = new G4DNACrossSectionDataSet(new G4LogLogInterpolation(),

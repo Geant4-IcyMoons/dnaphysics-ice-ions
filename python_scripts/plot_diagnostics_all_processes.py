@@ -31,6 +31,7 @@ Notes
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 from pathlib import Path
@@ -41,13 +42,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import uproot
 
+from root_utils import resolve_root_paths, resolve_first_root
 from constants import (
     CROSS_SECTIONS_DIR,
     CUSTOM_DATA_ROOT_GEANT4,
-    EMFIETZOGLOU_SCALE_1E16,
     EMFI_EXCITATION_EEV,
     EMFI_EXCITATION_TOL_EEV,
     EMFI_ION_BINDING_EEV,
+    EV_TO_MEV,
+    FM2_TO_CM2,
     FONT_COURIER,
     FONTSIZE_16,
     GEANT4_PROJECTS_ROOT,
@@ -57,6 +60,12 @@ from constants import (
     OUTPUT_DIR,
     PROJECT_ROOT,
     RC_BASE_STANDARD,
+    SR_ALPHA_1,
+    SR_BETA_1,
+    SR_CONST_K,
+    SR_E_SQUARED_MEV_FM,
+    SR_ELECTRON_MASS_MEV,
+    SR_Z_WATER,
     rcparams_with_fontsize,
 )
 
@@ -67,6 +76,10 @@ plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
 FONTSIZE = FONTSIZE_16
 plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
+
+# Emfietzoglou tables use a model scale factor in Geant4 DNA.
+# Convert raw table values to cm^2, then apply the same plot scaling as sim.
+EMFI_REF_TO_CM2 = (1e-22 / 3.343) * 1e4
 
 # -------- Paths and data locations --------
 # This script lives under dnaphysics-ice/python_scripts
@@ -121,10 +134,10 @@ def _find_backup_dat(basename: str) -> str | None:
 
 def load_config_from_root(path: str, tree_name: str = "config") -> dict[str, str]:
     """Load key/value metadata from the ROOT config tree, if present."""
-    path = _resolve_path(path)
-    if not os.path.exists(path):
+    paths = resolve_root_paths(path)
+    if not paths:
         return {}
-    with uproot.open(path) as f:
+    with uproot.open(paths[0]) as f:
         if tree_name not in f:
             return {}
         t = f[tree_name]
@@ -162,6 +175,23 @@ def _resolve_reference_from_value(value: str | None) -> str | None:
         p = _find_backup_dat(base)
     return p
 
+
+def _prefer_total_ref(path: str | None, pcode: int) -> str | None:
+    """If a differential ref is provided for ionisation/excitation, prefer total sigma file."""
+    if not path or int(pcode) not in (12, 13):
+        return path
+    base = os.path.basename(path)
+    if base.startswith("sigmadiff_") or base.startswith("sigmadiff_cumulated_"):
+        repl = base
+        if base.startswith("sigmadiff_cumulated_"):
+            repl = base.replace("sigmadiff_cumulated_", "sigma_", 1)
+        elif base.startswith("sigmadiff_"):
+            repl = base.replace("sigmadiff_", "sigma_", 1)
+        cand = _resolve_reference_from_value(repl)
+        if cand:
+            return cand
+    return path
+
 def resolve_config_reference_paths(config: dict[str, str]) -> dict[str, str]:
     """Resolve reference file paths from config keys."""
     keys = [
@@ -184,13 +214,47 @@ def resolve_config_reference_paths(config: dict[str, str]) -> dict[str, str]:
             out[key] = path
     return out
 
-def _scale_reference_if_needed(path: str | None, ref_by_ch: list[np.ndarray]) -> list[np.ndarray]:
-    """Apply unit fixes for known table formats (e.g., Emfietzoglou)."""
+def resolve_model_reference_paths(config: dict[str, str]) -> dict[str, str]:
+    """Extract model->reference mapping from config keys like 'model_ref:<ModelName>'."""
+    out: dict[str, str] = {}
+    for key, val in config.items():
+        if not key.startswith("model_ref:"):
+            continue
+        model = key.split("model_ref:", 1)[1].strip()
+        if not model:
+            continue
+        path = _resolve_reference_from_value(val)
+        if path:
+            out[model] = path
+    return out
+
+def resolve_model_lineshapes(config: dict[str, str]) -> dict[str, dict]:
+    """Extract model->lineshape metadata from config keys like 'model_lineshape:<ModelName>'."""
+    out: dict[str, dict] = {}
+    if not config:
+        return out
+    for key, val in config.items():
+        if not key.startswith("model_lineshape:"):
+            continue
+        model = key.split("model_lineshape:", 1)[1].strip()
+        if not model:
+            continue
+        try:
+            data = json.loads(val)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            out[model] = data
+    return out
+
+def _scale_reference_if_needed(path: str | None, ref_by_ch: list[np.ndarray], scale: float) -> list[np.ndarray]:
+    """Apply unit fixes for known table formats (e.g., Emfietzoglou) and plot scaling."""
     if not path or not ref_by_ch:
         return ref_by_ch
     base = os.path.basename(path).lower()
     if "emfietzoglou" in base:
-        return [arr * EMFIETZOGLOU_SCALE_1E16 for arr in ref_by_ch]
+        factor = EMFI_REF_TO_CM2 * scale
+        return [arr * factor for arr in ref_by_ch]
     return ref_by_ch
 
 
@@ -223,10 +287,81 @@ def _decode_to_str_array(arr: np.ndarray | None) -> np.ndarray | None:
     """Convert a numpy array of bytes/strings into a str array (None -> None)."""
     if arr is None:
         return None
+    # Handle fixed-width byte arrays cleanly (e.g., char[32])
+    if isinstance(arr, np.ndarray):
+        if arr.dtype.kind == "S":
+            return np.char.decode(arr, errors="ignore").astype(object)
+        if arr.dtype.kind == "U":
+            return arr.astype(object)
+        if arr.dtype.kind in ("u", "i") and arr.ndim == 2:
+            out = []
+            for row in arr:
+                try:
+                    s = bytes(row).decode(errors="ignore")
+                except Exception:
+                    s = str(row)
+                if "\x00" in s:
+                    s = s.split("\x00", 1)[0]
+                out.append(s.strip())
+            return np.asarray(out, dtype=object)
     out: list[str] = []
     for v in np.asarray(arr, dtype=object):
         out.append(_clean_string(v))
     return np.asarray(out, dtype=object)
+
+def _canonicalize_model_names(names: list[str] | set[str]) -> tuple[list[str], dict[str, str]]:
+    """Deduplicate model names by collapsing substrings/rotations into a canonical form."""
+    cleaned: list[str] = []
+    alias: dict[str, str] = {}
+    for n in sorted([x for x in names if x], key=len, reverse=True):
+        if not n:
+            continue
+        matched = None
+        for c in cleaned:
+            if len(n) == len(c) and n in (c + c):
+                matched = c
+                break
+            if n in c:
+                matched = c
+                break
+        if matched is None:
+            cleaned.append(n)
+            alias[n] = n
+        else:
+            alias[n] = matched
+    return cleaned, alias
+
+def _apply_model_alias_to_meta(meta: dict) -> dict:
+    """Collapse model-name aliases inside meta (ke_min/max, chan_max, models_by_proc)."""
+    models_all: set[str] = set()
+    for names in meta.get("models_by_proc", {}).values():
+        models_all.update([n for n in names if n])
+    if not models_all:
+        return meta
+    canon, alias = _canonicalize_model_names(models_all)
+    meta["model_alias"] = alias
+    # Update models_by_proc
+    new_models_by_proc = {}
+    for p, names in meta.get("models_by_proc", {}).items():
+        new_models_by_proc[p] = set(alias.get(n, n) for n in names if n)
+    meta["models_by_proc"] = new_models_by_proc
+    # Remap keyed dicts
+    def _remap_dict(d: dict, combine):
+        out = {}
+        for (p, m), v in d.items():
+            m2 = alias.get(m, m)
+            key = (p, m2)
+            if key in out:
+                out[key] = combine(out[key], v)
+            else:
+                out[key] = v
+        return out
+    meta["ke_min"] = _remap_dict(meta.get("ke_min", {}), min)
+    meta["ke_max"] = _remap_dict(meta.get("ke_max", {}), max)
+    meta["chan_max"] = _remap_dict(meta.get("chan_max", {}), max)
+    meta["has_chan_micro"] = _remap_dict(meta.get("has_chan_micro", {}), lambda a, b: a or b)
+    meta = _apply_model_alias_to_meta(meta)
+    return meta
 
 
 def _resolve_elastic_reference_path(
@@ -314,29 +449,401 @@ def print_root_processes(arrs) -> None:
 # -------- Data I/O --------
 def load_arrays(path: str, tree_name: str = "step"):
     """Load ROOT ntuple arrays from the given file, selecting known columns."""
-    path = _resolve_path(path)
-    with uproot.open(path) as f:
+    paths = resolve_root_paths(path)
+    if not paths:
+        raise FileNotFoundError(path)
+    wanted = [
+        "flagParticle",
+        "kineticEnergy",
+        "flagProcess",
+        "vibCrossSection",
+        "channelIndex",
+        "channelMicroXS",
+        "kineticEnergyDifference",
+        "cosTheta",
+        "x","y","z",
+        "processName",
+        "modelName",
+    ]
+    # Determine available columns from first file
+    with uproot.open(paths[0]) as f:
         if tree_name not in f:
-            raise RuntimeError(f"Tree '{tree_name}' not found in {path}")
+            raise RuntimeError(f"Tree '{tree_name}' not found in {paths[0]}")
         t = f[tree_name]
-        wanted = [
-            "flagParticle",
-            "kineticEnergy",
-            "flagProcess",
-            "vibCrossSection",
-            "channelIndex",
-            "channelMicroXS",
-            "kineticEnergyDifference",
-            "cosTheta",
-            "x","y","z",
-            "processName",
-            "modelName",
-        ]
         available = [name for name in wanted if name in t.keys()]
-        # uproot string interpretation can emit harmless overflow warnings; silence them for cleaner CLI output
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="overflow encountered in scalar add", category=RuntimeWarning)
-            return t.arrays(available, library="np")
+    tree_spec = [f"{p}:{tree_name}" for p in paths]
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="overflow encountered in scalar add", category=RuntimeWarning)
+        return uproot.concatenate(tree_spec, available, library="np")
+
+def _iter_root_arrays(path: str, tree_name: str, columns: list[str], step_size: int):
+    """Yield ROOT arrays in batches to avoid loading the full tree into memory."""
+    paths = resolve_root_paths(path)
+    if not paths:
+        raise FileNotFoundError(path)
+    tree_spec = [f"{p}:{tree_name}" for p in paths]
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="overflow encountered in scalar add", category=RuntimeWarning)
+        for chunk in uproot.iterate(tree_spec, columns, library="np", step_size=step_size):
+            yield chunk
+
+def _make_energy_bins(e_min: float, e_max: float, nbins: int = 60) -> tuple[np.ndarray, np.ndarray, bool] | None:
+    """Create energy bins and centers; returns (bins, centers, is_log) or None."""
+    if not (np.isfinite(e_min) and np.isfinite(e_max)):
+        return None
+    if e_min <= 0 or e_max <= 0 or e_max <= e_min:
+        return None
+    if e_max / max(e_min, 1e-30) > 1e3:
+        bins = np.logspace(np.log10(e_min), np.log10(e_max), nbins + 1)
+        centers = np.sqrt(bins[:-1] * bins[1:])
+        return bins, centers, True
+    bins = np.linspace(e_min, e_max, nbins + 1)
+    centers = 0.5 * (bins[:-1] + bins[1:])
+    return bins, centers, False
+
+def _stream_collect_meta(path: str, tree_name: str, step_size: int) -> dict:
+    """Collect metadata (min/max, channels, models) in a streaming pass."""
+    meta = {
+        "proc_counts": {},
+        "models_by_proc": {},
+        "process_names": {},
+        "ke_min": {},
+        "ke_max": {},
+        "chan_max": {},
+        "has_chan_micro": {},
+        "kmax_electron": 0.0,
+        "vib_channels": set(),
+        "vib_dE_max": {},
+    }
+    columns = [
+        "flagProcess",
+        "kineticEnergy",
+        "channelIndex",
+        "channelMicroXS",
+        "kineticEnergyDifference",
+        "flagParticle",
+        "modelName",
+        "processName",
+    ]
+    for chunk in _iter_root_arrays(path, tree_name, columns, step_size):
+        if "flagProcess" not in chunk or "kineticEnergy" not in chunk:
+            continue
+        flag_proc = np.asarray(chunk["flagProcess"], dtype=int)
+        kinE = np.asarray(chunk["kineticEnergy"], dtype=float)
+        model_arr = _decode_to_str_array(chunk.get("modelName"))
+        proc_names = _decode_to_str_array(chunk.get("processName"))
+
+        uniq, counts = np.unique(flag_proc, return_counts=True)
+        for p, c in zip(uniq.tolist(), counts.tolist()):
+            meta["proc_counts"][p] = meta["proc_counts"].get(p, 0) + int(c)
+
+        if model_arr is None:
+            model_arr = np.full(flag_proc.shape, "", dtype=object)
+
+        for p in uniq:
+            m = (flag_proc == int(p))
+            if proc_names is not None:
+                names = np.unique(proc_names[m])
+                if p not in meta["process_names"]:
+                    meta["process_names"][p] = set()
+                meta["process_names"][p].update([n for n in names if n])
+            if p not in meta["models_by_proc"]:
+                meta["models_by_proc"][p] = set()
+            meta["models_by_proc"][p].update([n for n in np.unique(model_arr[m]) if n or n == ""])
+
+        # Per (process, model) min/max and channels
+        for p in uniq:
+            m_p = (flag_proc == int(p))
+            if not np.any(m_p):
+                continue
+            models = np.unique(model_arr[m_p])
+            for mdl in models:
+                key = (int(p), str(mdl))
+                m = m_p & (model_arr == mdl)
+                if not np.any(m):
+                    continue
+                ke = kinE[m]
+                ke_pos = ke[np.isfinite(ke) & (ke > 0)]
+                if ke_pos.size:
+                    meta["ke_min"][key] = min(meta["ke_min"].get(key, float("inf")), float(np.min(ke_pos)))
+                    meta["ke_max"][key] = max(meta["ke_max"].get(key, 0.0), float(np.max(ke_pos)))
+                if "channelIndex" in chunk:
+                    ch = np.asarray(chunk["channelIndex"], dtype=int)[m]
+                    if np.any(ch >= 0):
+                        meta["chan_max"][key] = max(meta["chan_max"].get(key, -1), int(np.max(ch[ch >= 0])))
+                if "channelMicroXS" in chunk:
+                    cm = np.asarray(chunk["channelMicroXS"], dtype=float)[m]
+                    if np.any(cm > 0.0):
+                        meta["has_chan_micro"][key] = True
+
+        # Electron kmax for summary
+        if "flagParticle" in chunk:
+            fp = np.asarray(chunk["flagParticle"], dtype=int)
+            m_e = (fp == 1)
+            if np.any(m_e):
+                meta["kmax_electron"] = max(meta["kmax_electron"], float(np.nanmax(kinE[m_e])))
+
+        # Vib energy loss ranges
+        m_vib = (flag_proc == 15)
+        if np.any(m_vib) and "kineticEnergyDifference" in chunk and "channelIndex" in chunk:
+            dE = np.asarray(chunk["kineticEnergyDifference"], dtype=float)[m_vib]
+            ch = np.asarray(chunk["channelIndex"], dtype=int)[m_vib]
+            valid = ch >= 0
+            if np.any(valid):
+                for cidx in np.unique(ch[valid]).tolist():
+                    meta["vib_channels"].add(int(cidx))
+                    vmax = float(np.nanmax(dE[ch == cidx])) if np.any(ch == cidx) else 0.0
+                    meta["vib_dE_max"][int(cidx)] = max(meta["vib_dE_max"].get(int(cidx), 0.0), vmax)
+
+    return meta
+
+def _print_root_processes_stream(meta: dict) -> None:
+    if not meta or "proc_counts" not in meta:
+        print("No ROOT data loaded; nothing to list.")
+        return
+    uniq = sorted(meta["proc_counts"].keys())
+    print(f"Found {len(uniq)} unique flagProcess entries in ROOT:")
+    for code in uniq:
+        cnt = meta["proc_counts"].get(code, 0)
+        label = _process_name_map().get(int(code), f"proc{int(code)}")
+        names = sorted(meta.get("process_names", {}).get(code, []))
+        models = sorted(meta.get("models_by_proc", {}).get(code, []))
+        names_str = f" | processName: {', '.join(names)}" if names else ""
+        models_str = f" | modelName: {', '.join(models)}" if models else ""
+        print(f"  {int(code):>4d}  {label:<12} steps={cnt}{names_str}{models_str}")
+
+def _init_stream_acc(meta: dict, nH2O_cm3: float) -> dict:
+    acc = {
+        "xs": {},
+        "deflection": {},
+        "vib": {"bins": {}, "hist": {}, "hist_by_model": {}, "models": []},
+        "summary": {},
+    }
+
+    # Energy bins per (process, model)
+    for key, e_min in meta.get("ke_min", {}).items():
+        e_max = meta.get("ke_max", {}).get(key, 0.0)
+        bins_info = _make_energy_bins(e_min, e_max, nbins=60)
+        if bins_info is None:
+            continue
+        bins, centers, is_log = bins_info
+        nbins = len(bins) - 1
+        chan_max = meta.get("chan_max", {}).get(key, -1)
+        n_channels = max(1, int(chan_max) + 1)
+        acc["xs"][key] = {
+            "bins": bins,
+            "centers": centers,
+            "is_log": is_log,
+            "sum_total": np.zeros(nbins, dtype=float),
+            "count_total": np.zeros(nbins, dtype=int),
+            "sum_ch": {ch: np.zeros(nbins, dtype=float) for ch in range(n_channels)},
+            "count_ch": {ch: np.zeros(nbins, dtype=int) for ch in range(n_channels)},
+            "use_counts": int(key[0]) in (12, 13),
+        }
+        acc["deflection"][key] = np.zeros(90, dtype=int)
+
+    # Vib hist bins
+    vib_models = sorted([m for m in meta.get("models_by_proc", {}).get(15, set()) if m])
+    acc["vib"]["models"] = vib_models
+    for ch in sorted(meta.get("vib_channels", [])):
+        vmax = meta.get("vib_dE_max", {}).get(int(ch), 1.0)
+        vmax = float(vmax) if np.isfinite(vmax) and vmax > 0 else 1.0
+        bins = np.linspace(0.0, vmax, 81)
+        acc["vib"]["bins"][int(ch)] = bins
+        acc["vib"]["hist"][int(ch)] = np.zeros(len(bins) - 1, dtype=int)
+        for m in vib_models:
+            acc["vib"]["hist_by_model"].setdefault(m, {})[int(ch)] = np.zeros(len(bins) - 1, dtype=int)
+
+    # Summary accumulators
+    summary = {}
+    summary["proc_counts"] = {}
+    summary["x_bins"] = np.linspace(0, 2000, 101)
+    summary["x_hist_by_proc"] = {pid: np.zeros(100, dtype=int) for pid in (10, 11, 12, 13, 14, 15)}
+    kmax = meta.get("kmax_electron", 0.0)
+    if not np.isfinite(kmax) or kmax <= 0:
+        kmax = 2000.0
+    summary["k_bins"] = np.linspace(0, float(kmax), 101)
+    summary["k_hist"] = np.zeros(100, dtype=int)
+    summary["scatter"] = {"x": np.array([], dtype=float), "y": np.array([], dtype=float), "z": np.array([], dtype=float)}
+    summary["scatter_max"] = 50000
+    summary["rng"] = np.random.default_rng(0)
+    acc["summary"] = summary
+    return acc
+
+def _stream_accumulate(path: str, tree_name: str, step_size: int, nH2O_cm3: float, meta: dict, acc: dict) -> None:
+    macro_keys = ["vibCrossSection", "macroCrossSection", "processCrossSection"]
+    columns = [
+        "flagProcess",
+        "kineticEnergy",
+        "channelIndex",
+        "channelMicroXS",
+        "kineticEnergyDifference",
+        "cosTheta",
+        "flagParticle",
+        "x","y","z",
+        "processName",
+        "modelName",
+        *macro_keys,
+    ]
+    theta_bins = np.linspace(0, 180, 91)
+
+    for chunk in _iter_root_arrays(path, tree_name, columns, step_size):
+        if "flagProcess" not in chunk or "kineticEnergy" not in chunk:
+            continue
+        flag_proc = np.asarray(chunk["flagProcess"], dtype=int)
+        kinE = np.asarray(chunk["kineticEnergy"], dtype=float)
+        model_arr = _decode_to_str_array(chunk.get("modelName"))
+        if model_arr is None:
+            model_arr = np.full(flag_proc.shape, "", dtype=object)
+        alias = meta.get("model_alias")
+        if alias:
+            model_arr = np.asarray([alias.get(m, m) for m in model_arr], dtype=object)
+
+        # Total cross-section (macro->micro)
+        xs_macro = None
+        for k in macro_keys:
+            if k in chunk:
+                xs_macro = np.asarray(chunk[k], dtype=float)
+                break
+        if xs_macro is None:
+            xs_macro = np.zeros_like(kinE)
+        total_xs_micro = _to_micro_cm2(xs_macro, nH2O_cm3)
+
+        chan_idx_all = np.asarray(chunk["channelIndex"], dtype=int) if "channelIndex" in chunk else None
+        chan_micro_all = np.asarray(chunk["channelMicroXS"], dtype=float) if "channelMicroXS" in chunk else None
+        dE_all = np.asarray(chunk["kineticEnergyDifference"], dtype=float) if "kineticEnergyDifference" in chunk else None
+
+        # Update per (process, model) accumulators
+        for key, data in acc["xs"].items():
+            pcode, model = key
+            m = (flag_proc == int(pcode))
+            if model:
+                m = m & (model_arr == model)
+            if not np.any(m):
+                continue
+            ke = kinE[m]
+            bins = data["bins"]
+            nbins = len(bins) - 1
+            idx = np.searchsorted(bins, ke, side="right") - 1
+            valid = (idx >= 0) & (idx < nbins) & np.isfinite(ke)
+            if not np.any(valid):
+                continue
+            idx_v = idx[valid]
+
+            xs_tot = total_xs_micro[m][valid]
+            np.add.at(data["sum_total"], idx_v, xs_tot)
+            np.add.at(data["count_total"], idx_v, 1)
+
+            ch = None
+            if chan_idx_all is not None:
+                ch = chan_idx_all[m]
+            if ch is None or not np.any(ch >= 0):
+                if int(pcode) in (12, 13) and dE_all is not None:
+                    ch = _infer_channel_indices(int(pcode), dE_all[m])
+                else:
+                    ch = np.zeros_like(ke, dtype=int)
+
+            if data["use_counts"]:
+                for cidx in data["count_ch"].keys():
+                    m_ch = (ch == int(cidx)) & valid
+                    if not np.any(m_ch):
+                        continue
+                    np.add.at(data["count_ch"][cidx], idx[m_ch], 1)
+                continue
+
+            micro = total_xs_micro[m]
+            if chan_micro_all is not None:
+                cm = chan_micro_all[m]
+                micro = np.where(cm > 0.0, cm, micro)
+            micro = micro[valid]
+            ch_valid = ch[valid]
+            for cidx in data["sum_ch"].keys():
+                m_ch = (ch_valid == int(cidx))
+                if not np.any(m_ch):
+                    continue
+                np.add.at(data["sum_ch"][cidx], idx_v[m_ch], micro[m_ch])
+                np.add.at(data["count_ch"][cidx], idx_v[m_ch], 1)
+
+        # Deflection angles
+        if "cosTheta" in chunk:
+            cos_theta = np.asarray(chunk["cosTheta"], dtype=float)
+            cos_theta = np.clip(cos_theta, -1.0, 1.0)
+            theta_deg = np.degrees(np.arccos(cos_theta))
+            for key in acc["deflection"].keys():
+                pcode, model = key
+                m = (flag_proc == int(pcode))
+                if model:
+                    m = m & (model_arr == model)
+                if not np.any(m):
+                    continue
+                hist, _ = np.histogram(theta_deg[m], bins=theta_bins)
+                acc["deflection"][key] += hist
+
+        # Vib energy-loss histograms
+        if dE_all is not None and chan_idx_all is not None:
+            m_vib = (flag_proc == 15)
+            if np.any(m_vib):
+                dE = dE_all[m_vib]
+                ch = chan_idx_all[m_vib]
+                models_vib = model_arr[m_vib] if model_arr is not None else None
+                for cidx, bins in acc["vib"]["bins"].items():
+                    m_ch = (ch == int(cidx))
+                    if not np.any(m_ch):
+                        continue
+                    h, _ = np.histogram(dE[m_ch], bins=bins)
+                    acc["vib"]["hist"][int(cidx)] += h
+                    if models_vib is not None and acc["vib"]["hist_by_model"]:
+                        for mname, hist_by_ch in acc["vib"]["hist_by_model"].items():
+                            m_model = (models_vib == mname) & m_ch
+                            if not np.any(m_model):
+                                continue
+                            hm, _ = np.histogram(dE[m_model], bins=bins)
+                            hist_by_ch[int(cidx)] += hm
+
+        # Summary accumulators
+        summary = acc["summary"]
+        uniq, counts = np.unique(flag_proc, return_counts=True)
+        for p, c in zip(uniq.tolist(), counts.tolist()):
+            summary["proc_counts"][p] = summary["proc_counts"].get(p, 0) + int(c)
+
+        if "x" in chunk:
+            x_nm = np.asarray(chunk["x"], dtype=float)
+            for pid in summary["x_hist_by_proc"].keys():
+                m = (flag_proc == int(pid))
+                if not np.any(m):
+                    continue
+                h, _ = np.histogram(x_nm[m], bins=summary["x_bins"])
+                summary["x_hist_by_proc"][pid] += h
+
+        if "flagParticle" in chunk:
+            fp = np.asarray(chunk["flagParticle"], dtype=int)
+            m_e = (fp == 1)
+            if np.any(m_e):
+                h, _ = np.histogram(kinE[m_e], bins=summary["k_bins"])
+                summary["k_hist"] += h
+                # Reservoir-ish sample for scatter
+                if "x" in chunk and "y" in chunk and "z" in chunk:
+                    x = np.asarray(chunk["x"], dtype=float)[m_e]
+                    y = np.asarray(chunk["y"], dtype=float)[m_e]
+                    z = np.asarray(chunk["z"], dtype=float)[m_e]
+                    if x.size:
+                        sx = summary["scatter"]["x"]
+                        sy = summary["scatter"]["y"]
+                        sz = summary["scatter"]["z"]
+                        max_n = summary["scatter_max"]
+                        combined_n = sx.size + x.size
+                        if combined_n <= max_n:
+                            summary["scatter"]["x"] = np.concatenate([sx, x])
+                            summary["scatter"]["y"] = np.concatenate([sy, y])
+                            summary["scatter"]["z"] = np.concatenate([sz, z])
+                        else:
+                            combined_x = np.concatenate([sx, x])
+                            combined_y = np.concatenate([sy, y])
+                            combined_z = np.concatenate([sz, z])
+                            idx = summary["rng"].choice(combined_x.size, size=max_n, replace=False)
+                            summary["scatter"]["x"] = combined_x[idx]
+                            summary["scatter"]["y"] = combined_y[idx]
+                            summary["scatter"]["z"] = combined_z[idx]
 
 def load_reference_from_path(fpath: str):
     """Load reference partial XS from a .dat file.
@@ -384,6 +891,54 @@ def load_reference_from_path(fpath: str):
 def _to_micro_cm2(xs_macro_mm_inv_subset: np.ndarray, nH2O_cm3: float) -> np.ndarray:
     """Convert macroscopic mm^-1 to microscopic cm^2 using number density."""
     return (xs_macro_mm_inv_subset * 10.0) / float(nH2O_cm3)
+
+def _energy_grid_for_ref(energy_eV: np.ndarray) -> np.ndarray:
+    """Build a smooth energy grid from simulation energies."""
+    e = np.asarray(energy_eV, dtype=float)
+    e = e[np.isfinite(e) & (e > 0.0)]
+    if e.size == 0:
+        return np.logspace(0.0, 7.0, 240)  # 1 eV to 10 MeV
+    e_min = float(np.nanmin(e))
+    e_max = float(np.nanmax(e))
+    if e_max <= e_min:
+        return np.array([e_min], dtype=float)
+    if e_max / max(e_min, 1e-30) > 100.0:
+        return np.logspace(np.log10(e_min), np.log10(e_max), 240)
+    return np.linspace(e_min, e_max, 240)
+
+def _screened_rutherford_sigma_cm2(energy_eV: np.ndarray) -> np.ndarray:
+    """Screened Rutherford total elastic σ (cm^2)."""
+    E = np.asarray(energy_eV, dtype=float)
+    out = np.zeros_like(E)
+    pos = E > 0.0
+    if not np.any(pos):
+        return out
+    k_MeV = E[pos] * EV_TO_MEV
+    m = SR_ELECTRON_MASS_MEV
+    length_fm = (SR_E_SQUARED_MEV_FM * (k_MeV + m)) / (k_MeV * (k_MeV + 2.0 * m))
+    sigma_ruth_fm2 = SR_Z_WATER * (SR_Z_WATER + 1.0) * length_fm**2
+    numerator = (SR_ALPHA_1 + SR_BETA_1 * np.log(E[pos])) * SR_CONST_K * (SR_Z_WATER ** (2.0 / 3.0))
+    denom = (k_MeV / m) * (2.0 + (k_MeV / m))
+    n = np.where(denom > 0.0, numerator / denom, 0.0)
+    sigma_fm2 = np.pi * sigma_ruth_fm2 / (n * (n + 1.0))
+    out[pos] = sigma_fm2 * FM2_TO_CM2
+    return out
+
+def _analytic_reference(pcode: int, model_hints: list[str], energy_eV: np.ndarray, scale: float):
+    """Fallback analytic/reference curves for analytic models."""
+    hints = [m.lower() for m in model_hints if m]
+    if int(pcode) == 11 and any(("screenedrutherford" in m) or ("rutherfordelastic" in m) for m in hints):
+        egrid = _energy_grid_for_ref(energy_eV)
+        sigma_cm2 = _screened_rutherford_sigma_cm2(egrid)
+        # Reference is plotted in 1e-16 cm^2 units (same as sim*scale)
+        return egrid, [sigma_cm2 * scale], "ScreenedRutherford (analytic)"
+    if int(pcode) == 14 and any("melton" in m for m in hints):
+        p = _find_g4ledata_file("sigma_attachment_e_melton.dat")
+        if p:
+            ref_E, ref_by_ch = load_reference_from_path(p)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch, scale)
+            return ref_E, ref_by_ch, Path(p).name
+    return None, None, None
 
 def _infer_channel_indices(pcode: int, dE_eV: np.ndarray) -> np.ndarray:
     """Infer channel indices from energy loss for excitation/ionisation."""
@@ -571,20 +1126,21 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
     ref_by_ch = None
     ref_label = None
     if dat_path:
+        dat_path = _prefer_total_ref(dat_path, int(pcode))
         ref_E, ref_by_ch = load_reference_from_path(dat_path)
-        ref_by_ch = _scale_reference_if_needed(dat_path, ref_by_ch)
+        ref_by_ch = _scale_reference_if_needed(dat_path, ref_by_ch, scale)
         ref_label = Path(dat_path).name
     elif int(pcode) == 11 and model_hints:
         p = _resolve_elastic_reference_path(model_hints, config_refs=config_refs)
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
-            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch, scale)
             ref_label = Path(p).name
     elif int(pcode) == 15:
         p = config_refs.get("ref_vib") if config_refs else None
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
-            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch, scale)
             ref_label = Path(p).name
     elif int(pcode) == 12:
         p = None
@@ -593,8 +1149,9 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
         if not p:
             p = config_refs.get("ref_excitation") if config_refs else None
         if p:
+            p = _prefer_total_ref(p, int(pcode))
             ref_E, ref_by_ch = load_reference_from_path(p)
-            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch, scale)
             ref_label = Path(p).name
     elif int(pcode) == 13:
         p = None
@@ -603,15 +1160,18 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
         if not p:
             p = config_refs.get("ref_ionisation") if config_refs else None
         if p:
+            p = _prefer_total_ref(p, int(pcode))
             ref_E, ref_by_ch = load_reference_from_path(p)
-            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch, scale)
             ref_label = Path(p).name
     elif int(pcode) == 14:
         p = config_refs.get("ref_attachment") if config_refs else None
         if p:
             ref_E, ref_by_ch = load_reference_from_path(p)
-            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch, scale)
             ref_label = Path(p).name
+    if ref_E is None or not ref_by_ch:
+        ref_E, ref_by_ch, ref_label = _analytic_reference(int(pcode), model_hints, ke_all, scale)
 
     channels: List[int] = []
     if chan_idx is not None:
@@ -633,44 +1193,80 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
     pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
     legend_added = False
 
+    # Precompute counts-based series for ionisation/excitation (more robust than per-step micro XS)
+    use_counts = int(pcode) in (12, 13)
+    series_by_ch = None
+    total_series = None
+    if use_counts and chan_idx is not None and np.any(chan_idx >= 0):
+        xs_macro_all = None
+        for k in macro_keys:
+            if k in arrs:
+                xs_macro_all = np.asarray(arrs[k], dtype=float)[mask_proc]
+                break
+        if xs_macro_all is None:
+            xs_macro_all = np.zeros_like(ke_all)
+        total_xs_micro = _to_micro_cm2(xs_macro_all, nH2O_cm3)
+        n_channels = int(np.max(chan_idx[chan_idx >= 0])) + 1
+        series_by_ch, _ = _estimate_partial_xs_by_counts(
+            ke_all, total_xs_micro, chan_idx, n_channels
+        )
+
     for i, ch in enumerate(channels):
         r, c = divmod(i, ncols)
         ax = axes[r][c]
-        if chan_idx is not None and np.any(chan_idx >= 0):
-            m = (chan_idx == ch)
+        if use_counts:
+            if series_by_ch is None or ch not in series_by_ch:
+                ax.set_visible(False)
+                continue
+            x, y = series_by_ch[ch]
+            if x.size == 0:
+                ax.set_visible(False)
+                continue
+            line_sim, = ax.plot(
+                x,
+                y * scale,
+                "--",
+                linewidth=2,
+                c="dodgerblue",
+                label="Simulation (counts)",
+                zorder=2,
+            )
         else:
-            m = np.ones_like(ke_all, dtype=bool)
-        if not np.any(m):
-            ax.set_visible(False)
-            continue
+            if chan_idx is not None and np.any(chan_idx >= 0):
+                m = (chan_idx == ch)
+            else:
+                m = np.ones_like(ke_all, dtype=bool)
+            if not np.any(m):
+                ax.set_visible(False)
+                continue
 
-        ke = ke_all[m]
-        if ke.size == 0:
-            ax.set_visible(False)
-            continue
-        ke_order = np.argsort(ke)
+            ke = ke_all[m]
+            if ke.size == 0:
+                ax.set_visible(False)
+                continue
+            ke_order = np.argsort(ke)
 
-        xs_macro = None
-        for k in macro_keys:
-            if k in arrs:
-                xs_macro = np.asarray(arrs[k], dtype=float)[mask_proc][m]
-                break
-        if xs_macro is None:
-            xs_macro = np.zeros_like(ke)
-        xs_micro_cm2 = _to_micro_cm2(xs_macro, nH2O_cm3)
-        if chan_micro is not None:
-            xs_micro_sel = chan_micro[m]
-            xs_micro_cm2 = np.where(xs_micro_sel > 0.0, xs_micro_sel, xs_micro_cm2)
+            xs_macro = None
+            for k in macro_keys:
+                if k in arrs:
+                    xs_macro = np.asarray(arrs[k], dtype=float)[mask_proc][m]
+                    break
+            if xs_macro is None:
+                xs_macro = np.zeros_like(ke)
+            xs_micro_cm2 = _to_micro_cm2(xs_macro, nH2O_cm3)
+            if chan_micro is not None:
+                xs_micro_sel = chan_micro[m]
+                xs_micro_cm2 = np.where(xs_micro_sel > 0.0, xs_micro_sel, xs_micro_cm2)
 
-        line_sim, = ax.plot(
-            ke[ke_order],
-            xs_micro_cm2[ke_order] * scale,
-            "--",
-            linewidth=2,
-            c="dodgerblue",
-            label="Simulation",
-            zorder=2,
-        )
+            line_sim, = ax.plot(
+                ke[ke_order],
+                xs_micro_cm2[ke_order] * scale,
+                "--",
+                linewidth=2,
+                c="dodgerblue",
+                label="Simulation",
+                zorder=2,
+            )
 
         lines_ref = []
         if ref_E is not None and ref_by_ch:
@@ -691,8 +1287,9 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
             if pos_ref.size:
                 span_vals.append(np.nanmin(pos_ref))
                 span_vals.append(np.nanmax(pos_ref))
-        if ke.size:
-            kpos = ke[ke > 0]
+        ke_panel = x if use_counts else ke
+        if ke_panel.size:
+            kpos = ke_panel[ke_panel > 0]
             if kpos.size:
                 span_vals.append(np.nanmin(kpos))
                 span_vals.append(np.nanmax(kpos))
@@ -780,6 +1377,8 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
     if "channelMicroXS" in arrs:
         chan_micro = np.asarray(arrs["channelMicroXS"], dtype=float)[mask_proc]
     use_chan_micro = chan_micro is not None and np.any(chan_micro > 0.0)
+    if int(pcode) in (12, 13):
+        use_chan_micro = False
 
     # Reference data
     ref_E = None
@@ -788,8 +1387,9 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
     if dat_path:
         ref_path = dat_path
     if ref_path:
+        ref_path = _prefer_total_ref(ref_path, int(pcode))
         ref_E, ref_by_ch = load_reference_from_path(ref_path)
-        ref_by_ch = _scale_reference_if_needed(ref_path, ref_by_ch)
+        ref_by_ch = _scale_reference_if_needed(ref_path, ref_by_ch, scale)
 
     sim_channels = np.unique(chan_idx[chan_idx >= 0]) if chan_idx is not None else np.array([], dtype=int)
     n_ref = len(ref_by_ch) if ref_by_ch else 0
@@ -896,6 +1496,387 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
     print(f"Wrote {outpath}")
     plt.close(fig)
     return outpath
+
+def plot_cross_sections_for_process_stream(acc: dict, pcode: int, model: str, ncols: int,
+                                           scale: float, out_path: str,
+                                           dat_path: str | None = None,
+                                           config_refs: dict[str, str] | None = None):
+    """Streaming version of per-channel XS plots."""
+    key = (int(pcode), str(model))
+    if "xs" not in acc or key not in acc["xs"]:
+        return None
+    data = acc["xs"][key]
+    centers = data["centers"]
+    use_counts = data["use_counts"]
+
+    count_total = data["count_total"].astype(float)
+    sum_total = data["sum_total"]
+    mean_total = np.divide(sum_total, count_total, out=np.zeros_like(sum_total), where=count_total > 0)
+
+    channels = [ch for ch in data["count_ch"].keys() if np.any(data["count_ch"][ch] > 0)]
+    if not channels:
+        channels = list(data["count_ch"].keys())
+    if not channels:
+        return None
+
+    ref_E = None
+    ref_by_ch = None
+    ref_label = None
+    if dat_path:
+        dat_path = _prefer_total_ref(dat_path, int(pcode))
+        ref_E, ref_by_ch = load_reference_from_path(dat_path)
+        ref_by_ch = _scale_reference_if_needed(dat_path, ref_by_ch, scale)
+        ref_label = Path(dat_path).name
+    elif int(pcode) == 11 and config_refs:
+        hints = [model, _process_name_map().get(int(pcode), "")]
+        p = _resolve_elastic_reference_path(hints, config_refs=config_refs)
+        if p:
+            ref_E, ref_by_ch = load_reference_from_path(p)
+            ref_by_ch = _scale_reference_if_needed(p, ref_by_ch, scale)
+            ref_label = Path(p).name
+    if ref_E is None or not ref_by_ch:
+        ref_E, ref_by_ch, ref_label = _analytic_reference(int(pcode), [model], centers, scale)
+
+    n = len(channels)
+    ncols = max(1, min(ncols, n))
+    nrows = math.ceil(n / ncols)
+    figsize = (10, 6) if n == 1 else (5 * ncols, 4.5 * nrows)
+    fig, axes = plt.subplots(
+        nrows=nrows, ncols=ncols, figsize=figsize,
+        squeeze=False, sharex=True, sharey='row', constrained_layout=False
+    )
+
+    pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
+    legend_added = False
+    for i, ch in enumerate(channels):
+        r, c = divmod(i, ncols)
+        ax = axes[r][c]
+        count_ch = data["count_ch"][ch].astype(float)
+        if use_counts:
+            frac = np.divide(count_ch, count_total, out=np.zeros_like(count_total), where=count_total > 0)
+            y = frac * mean_total
+        else:
+            sum_ch = data["sum_ch"][ch]
+            y = np.divide(sum_ch, count_ch, out=np.zeros_like(sum_ch), where=count_ch > 0)
+
+        mask = (count_ch > 0) & np.isfinite(y)
+        if not np.any(mask):
+            ax.set_visible(False)
+            continue
+        line_sim, = ax.plot(
+            centers[mask],
+            y[mask] * scale,
+            "--",
+            linewidth=2,
+            c="dodgerblue",
+            label="Simulation (binned)",
+            zorder=2,
+        )
+
+        lines_ref = []
+        if ref_E is not None and ref_by_ch:
+            if 0 <= ch < len(ref_by_ch):
+                y_ref = ref_by_ch[ch]
+            else:
+                y_ref = np.sum(np.vstack(ref_by_ch), axis=0)
+            lr, = ax.plot(ref_E, y_ref, color="black", linewidth=2.5, alpha=0.9, label=ref_label or "Reference", zorder=1)
+            lines_ref.append(lr)
+
+        ax.set_xlabel("Kinetic Energy (eV)")
+        ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
+        ax.set_title(f"{pname}_ch{ch}")
+        if data["is_log"]:
+            ax.set_xscale("log")
+
+        if not legend_added and (lines_ref or line_sim is not None):
+            handles = []
+            labels = []
+            if lines_ref:
+                handles.extend(lines_ref)
+                labels.extend([lr.get_label() for lr in lines_ref])
+            if line_sim is not None:
+                handles.append(line_sim); labels.append(line_sim.get_label())
+            if handles:
+                ax.legend(handles, labels, loc="best", frameon=True)
+                legend_added = True
+
+    total_axes = nrows * ncols
+    for j in range(n, total_axes):
+        r, c = divmod(j, ncols)
+        axes[r][c].set_visible(False)
+
+    fig.align_ylabels([axes[r][0] for r in range(nrows) if axes[r][0].get_visible()])
+    fig.tight_layout()
+    outpath = _resolve_output(out_path)
+    plt.show()
+    fig.savefig(outpath, bbox_inches="tight")
+    print(f"Wrote {outpath}")
+    plt.close(fig)
+    return outpath
+
+def plot_channel_overlay_for_process_stream(acc: dict, pcode: int, model: str, scale: float,
+                                            out_path: str, dat_path: str | None = None):
+    """Streaming overlay for ionisation/excitation: all channels + total in one panel."""
+    key = (int(pcode), str(model))
+    if "xs" not in acc or key not in acc["xs"]:
+        return None
+    data = acc["xs"][key]
+    centers = data["centers"]
+    count_total = data["count_total"].astype(float)
+    sum_total = data["sum_total"]
+    mean_total = np.divide(sum_total, count_total, out=np.zeros_like(sum_total), where=count_total > 0)
+
+    ref_E = None
+    ref_by_ch = None
+    if dat_path:
+        dat_path = _prefer_total_ref(dat_path, int(pcode))
+        ref_E, ref_by_ch = load_reference_from_path(dat_path)
+        ref_by_ch = _scale_reference_if_needed(dat_path, ref_by_ch, scale)
+
+    channels = sorted(data["count_ch"].keys())
+    if not channels:
+        channels = [0]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
+    cmap = plt.cm.tab10 if len(channels) <= 10 else plt.cm.tab20
+    colors = cmap(np.linspace(0, 1, len(channels)))
+
+    # Reference per-channel
+    if ref_E is not None and ref_by_ch:
+        for i, ch in enumerate(channels):
+            if ch >= len(ref_by_ch):
+                continue
+            ax.plot(ref_E, ref_by_ch[ch], color=colors[i], linewidth=2.0, label=f"ch{ch} ref")
+
+    # Simulation per-channel (counts-based)
+    for i, ch in enumerate(channels):
+        count_ch = data["count_ch"][ch].astype(float)
+        frac = np.divide(count_ch, count_total, out=np.zeros_like(count_total), where=count_total > 0)
+        y = frac * mean_total
+        mask = (count_ch > 0) & np.isfinite(y)
+        if not np.any(mask):
+            continue
+        ax.plot(
+            centers[mask],
+            y[mask] * scale,
+            linestyle="--",
+            marker="o",
+            markersize=3,
+            color=colors[i],
+            label=f"ch{ch} sim",
+        )
+
+    if ref_E is not None and ref_by_ch:
+        ref_cum = np.sum(np.vstack(ref_by_ch), axis=0)
+        ax.plot(ref_E, ref_cum, color="gray", linewidth=4, label="total ref")
+
+    if np.any(count_total > 0):
+        mask = count_total > 0
+        ax.plot(
+            centers[mask],
+            mean_total[mask] * scale,
+            color="black",
+            linestyle="--",
+            linewidth=2.0,
+            label="total sim",
+        )
+
+    ax.set_xlabel("Kinetic Energy (eV)")
+    ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
+    ax.set_title(pname)
+    if data["is_log"]:
+        ax.set_xscale("log")
+    ax.legend(loc="best", frameon=True, ncol=2)
+    fig.tight_layout()
+    outpath = _resolve_output(out_path)
+    plt.show()
+    fig.savefig(outpath, bbox_inches="tight")
+    print(f"Wrote {outpath}")
+    plt.close(fig)
+    return outpath
+
+def _overlay_lineshape(ax, shape: str, centers: list[float], widths: list[float] | None, bins):
+    if not centers:
+        return
+    if shape == "gaussian" and widths:
+        vmax = float(bins[-1]) if len(bins) else max(centers)
+        for omega, b in zip(centers, widths):
+            xg = np.linspace(0.0, vmax, 500)
+            g = (1.0 / (np.sqrt(np.pi) * b)) * np.exp(-((xg - omega) ** 2) / (b * b))
+            if np.max(g) > 0:
+                g = g / np.max(g)
+            ax.plot(xg, g, color="black", linewidth=2.5, alpha=0.95, zorder=3)
+    elif shape == "delta":
+        for omega in centers:
+            ax.axvline(omega, color="black", linewidth=2.5, alpha=0.95, zorder=3)
+        ax.set_ylim(0, 1.05)
+
+def _plot_vib_hist(chans, bins_by_ch, hist_by_ch, ncols, out_path, model, lineshape):
+    n = len(chans)
+    ncols = max(1, min(ncols, n))
+    nrows = int(math.ceil(n / ncols))
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(5 * ncols, 4 * nrows), squeeze=False, sharex=True)
+    for i, cidx in enumerate(chans):
+        r, c = divmod(i, ncols)
+        ax = axes[r][c]
+        bins = bins_by_ch[int(cidx)]
+        hist = hist_by_ch[int(cidx)]
+        if hist.size:
+            hmax = float(np.max(hist)) if np.max(hist) > 0 else 1.0
+            hist_norm = hist / hmax
+            centers = 0.5 * (bins[:-1] + bins[1:])
+            ax.bar(centers, hist_norm, width=(bins[1] - bins[0]), color="lightgray", alpha=0.6, zorder=1)
+            if lineshape:
+                shape = lineshape.get("shape", "")
+                centers_ls = lineshape.get("centers", [])
+                widths_ls = lineshape.get("widths", None)
+                if isinstance(centers_ls, list) and centers_ls:
+                    if shape == "gaussian" and widths_ls and int(cidx) < len(centers_ls):
+                        _overlay_lineshape(ax, "gaussian", [centers_ls[int(cidx)]], [widths_ls[int(cidx)]], bins)
+                    elif shape == "delta" and int(cidx) < len(centers_ls):
+                        _overlay_lineshape(ax, "delta", [centers_ls[int(cidx)]], None, bins)
+            ax.set_ylim(0, 1.05)
+        title = f"vib_{int(cidx)}"
+        if model:
+            title = f"{title} [{model}]"
+        ax.set_title(title)
+        ax.set_ylabel("Counts")
+        ax.tick_params(axis="x", which="both", length=4, width=1.5, labelbottom=True)
+
+    total_axes = nrows * ncols
+    for j in range(len(chans), total_axes):
+        r, c = divmod(j, ncols)
+        axes[r][c].set_visible(False)
+    for c in range(ncols):
+        bottom_r = None
+        for r in range(nrows - 1, -1, -1):
+            if axes[r][c].get_visible():
+                bottom_r = r; break
+        if bottom_r is not None:
+            axb = axes[bottom_r][c]
+            axb.set_xlabel("Energy loss dE (eV)")
+            axb.tick_params(axis="x", which="both", labelbottom=True)
+
+    fig.tight_layout()
+    outpath = _resolve_output(out_path)
+    plt.show()
+    fig.savefig(outpath, bbox_inches="tight")
+    print(f"Wrote {outpath}")
+    plt.close(fig)
+    return outpath
+
+def plot_vib_energy_loss_hist_stream(acc: dict, ncols: int, out_path: str, lineshapes: dict[str, dict] | None = None):
+    """Streaming vib energy-loss histogram plotter."""
+    vib = acc.get("vib", {})
+    bins_by_ch = vib.get("bins", {})
+    hist_by_ch = vib.get("hist", {})
+    hist_by_model = vib.get("hist_by_model", {})
+    models = vib.get("models", [])
+    if lineshapes is None:
+        lineshapes = {}
+    if models and hist_by_model:
+        for model in models:
+            hbm = hist_by_model.get(model, {})
+            chans = sorted([c for c in bins_by_ch.keys() if c in hbm])
+            if not chans:
+                continue
+            _plot_vib_hist(chans, bins_by_ch, hbm, ncols, out_path, model, lineshapes.get(model))
+        return out_path
+    chans = sorted([c for c in bins_by_ch.keys() if c in hist_by_ch])
+    if not chans:
+        return None
+    _plot_vib_hist(chans, bins_by_ch, hist_by_ch, ncols, out_path, None, None)
+    return out_path
+
+def plot_summary_stream(acc: dict, out_path: str, fontsize: float):
+    """Streaming summary plot (4 panels)."""
+    summary = acc.get("summary", {})
+    if not summary:
+        return None
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5), squeeze=True, constrained_layout=True)
+
+    # Panel 1: histogram of flagProcess
+    ax1 = axs[0]
+    proc_counts = summary.get("proc_counts", {})
+    if proc_counts:
+        uniq = np.array(sorted(proc_counts.keys()), dtype=float)
+        counts = np.array([proc_counts[k] for k in uniq], dtype=float)
+        ax1.bar(uniq, counts, width=0.9, color="#dddddd", edgecolor="none", label="All")
+        cats = {
+            "Excitation": [12,15,22,32,42,52,62],
+            "Elastic": [11,21,31,41,51,61,110,210,410,510,710,120,220,420,520,720],
+            "Ionisation": [13,23,33,43,53,63,73,130,230,430,530,730],
+        }
+        colors = {"Excitation": "#2ca02c", "Elastic": "#1f77b4", "Ionisation": "#d62728"}
+        for name, ids in cats.items():
+            mask = np.isin(uniq, ids)
+            ax1.bar(uniq[mask], counts[mask], width=0.9, color=colors[name], alpha=0.7, label=name)
+    ax1.set_yscale("log"); ax1.set_xlabel("flagProcess"); ax1.set_ylabel("Counts")
+
+    # Panel 2: 3D scatter
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    ax2 = fig.add_subplot(1, 4, 2, projection="3d")
+    sx = summary["scatter"]["x"]; sy = summary["scatter"]["y"]; sz = summary["scatter"]["z"]
+    if sx.size:
+        ax2.scatter(sx, sy, sz, s=1, c="black", alpha=0.6)
+    ax2.set_xlabel("x (nm)"); ax2.set_ylabel("y (nm)"); ax2.set_zlabel("z (nm)")
+
+    # Panel 3: position histogram along x by process types
+    ax3 = axs[2]
+    centers = 0.5 * (summary["x_bins"][1:] + summary["x_bins"][:-1])
+    proc_sets = {10:("Solv",'#9467bd'),11:("Elastic",'#d62728'),12:("Excit",'#2ca02c'),13:("Ionis",'#1f77b4'),14:("Attach",'#8c564b'),15:("Vib",'#e377c2')}
+    for pid, (lab, col) in proc_sets.items():
+        h = summary["x_hist_by_proc"].get(pid)
+        if h is None:
+            continue
+        ax3.plot(centers, h, label=lab, color=col)
+    ax3.set_xlabel("x (nm)"); ax3.set_yscale("log"); ax3.set_ylabel("Counts")
+
+    # Panel 4: kinetic energy histogram for electrons
+    ax4 = axs[3]
+    k_centers = 0.5 * (summary["k_bins"][1:] + summary["k_bins"][:-1])
+    ax4.hist(k_centers, bins=summary["k_bins"], weights=summary["k_hist"], histtype="stepfilled", alpha=0.7, color="#d62728")
+    ax4.set_yscale("log"); ax4.set_xlabel("Kinetic Energy (eV)"); ax4.set_ylabel("Counts")
+
+    outpath = _resolve_output(out_path)
+    plt.show()
+    fig.savefig(outpath, bbox_inches="tight")
+    print(f"Wrote {outpath}")
+    plt.close(fig)
+    return outpath
+
+def plot_deflection_angles_all_stream(acc: dict, out_path: str, fontsize: float = FONTSIZE):
+    """Streaming deflection-angle plots per (process, model)."""
+    if out_path is None:
+        return None
+    if "deflection" not in acc:
+        return None
+    base, ext = os.path.splitext(out_path)
+    theta_bins = np.linspace(0, 180, 91)
+    theta_centers = 0.5 * (theta_bins[:-1] + theta_bins[1:])
+    for key, hist in acc["deflection"].items():
+        proc_code, model_name = key
+        if hist is None or not np.any(hist):
+            continue
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.hist(theta_centers, bins=theta_bins, weights=hist, histtype="stepfilled", alpha=0.8, color="lightgray")
+        ax.set_xlim(0, 180)
+        ax.set_xlabel(r"$\theta$ (deg)")
+        ax.set_ylabel("Counts")
+        title = model_name if model_name else f"proc {int(proc_code)}"
+        ax.set_title(title)
+        fig.tight_layout()
+        suffix = f"proc{int(proc_code)}"
+        if model_name:
+            suffix += f"_{_sanitize_label(model_name)}"
+        outname = f"{base}_{suffix}{ext or '.png'}"
+        out_resolved = _resolve_output(outname)
+        plt.show()
+        fig.savefig(out_resolved, bbox_inches="tight")
+        print(f"Wrote {out_resolved}")
+        plt.close(fig)
+    return out_path
 
 def plot_elastic_reference_vs_sim(arrs, ncols: int, scale: float, nH2O_cm3: float,
                                   out_path: str, dat_path: str | None = None,
@@ -1068,66 +2049,46 @@ def plot_elastic_reference_vs_sim(arrs, ncols: int, scale: float, nH2O_cm3: floa
     plt.close(fig)
     return outpath
 
-def plot_vib_energy_loss_hist(arrs, ncols: int, out_path: str):
+def plot_vib_energy_loss_hist(arrs, ncols: int, out_path: str, lineshapes: dict[str, dict] | None = None):
     """Plot energy-loss histograms per vib channel using kineticEnergyDifference."""
     if arrs is None or "kineticEnergyDifference" not in arrs or "channelIndex" not in arrs:
         return None
+    if lineshapes is None:
+        lineshapes = {}
     m_vib = (np.asarray(arrs["flagProcess"], dtype=float) == 15.0)
     if not np.any(m_vib):
         return None
-    dE = np.asarray(arrs["kineticEnergyDifference"], dtype=float)[m_vib]
-    ch = np.asarray(arrs["channelIndex"], dtype=int)[m_vib]
-    chans = np.unique(ch[ch >= 0])
-    if chans.size == 0:
-        return None
+    dE_all = np.asarray(arrs["kineticEnergyDifference"], dtype=float)[m_vib]
+    ch_all = np.asarray(arrs["channelIndex"], dtype=int)[m_vib]
+    model_all = _decode_to_str_array(arrs.get("modelName"))
+    if model_all is None:
+        model_all = np.full(m_vib.shape, "", dtype=object)
+    model_all = model_all[m_vib]
 
-    n = chans.size
-    ncols = max(1, min(ncols, n))
-    nrows = int(math.ceil(n / ncols))
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(5*ncols, 4*nrows), squeeze=False, sharex=True)
-    vib_centers = np.array([0.024, 0.061, 0.092, 0.205, 0.417, 0.460, 0.510, 0.834], dtype=float)
-    vib_b = np.array([0.025/1.665, 0.030/1.665, 0.040/1.665, 0.016/1.665, 0.050/1.665, 0.005/1.665, 0.040/1.665, 0.075/1.665], dtype=float)
+    models = sorted([m for m in np.unique(model_all) if m])
+    if not models:
+        models = [""]
 
-    for i, cidx in enumerate(chans):
-        r, c = divmod(i, ncols)
-        ax = axes[r][c]
-        vals = dE[ch == cidx]
-        if vals.size:
-            vmax = float(np.nanmax(vals)) if np.isfinite(np.nanmax(vals)) else 1.0
-            nbins = 80
-            h, be, _ = ax.hist(vals, bins=nbins, range=(0.0, vmax), color='lightgray', alpha=0.8)
-            if int(cidx) < vib_centers.size:
-                omega = vib_centers[int(cidx)]; b = vib_b[int(cidx)]
-                xg = np.linspace(0.0, vmax, 500)
-                g = (1.0/(np.sqrt(np.pi)*b)) * np.exp(-((xg - omega)**2)/(b*b))
-                binw = (be[1]-be[0]) if len(be) > 1 else (vmax/nbins if nbins>0 else 1.0)
-                scale = float(vals.size) * binw
-                ax.plot(xg, g*scale, color='black', linewidth=2.0, alpha=0.9, label='Gaussian')
-        ax.set_title(f"vib_{int(cidx)}")
-        ax.set_ylabel("Counts")
-        ax.tick_params(axis='x', which='both', length=4, width=1.5, labelbottom=True)
-
-    total_axes = nrows * ncols
-    for j in range(chans.size, total_axes):
-        r, c = divmod(j, ncols)
-        axes[r][c].set_visible(False)
-    for c in range(ncols):
-        bottom_r = None
-        for r in range(nrows-1, -1, -1):
-            if axes[r][c].get_visible():
-                bottom_r = r; break
-        if bottom_r is not None:
-            axb = axes[bottom_r][c]
-            axb.set_xlabel("Energy loss dE (eV)")
-            axb.tick_params(axis='x', which='both', labelbottom=True)
-
-    fig.tight_layout()
-    outpath = _resolve_output(out_path)
-    plt.show()
-    fig.savefig(outpath, bbox_inches='tight')
-    print(f"Wrote {outpath}")
-    plt.close(fig)
-    return outpath
+    for model in models:
+        m_model = (model_all == model) if model else np.ones_like(ch_all, dtype=bool)
+        if not np.any(m_model):
+            continue
+        dE = dE_all[m_model]
+        ch = ch_all[m_model]
+        chans = np.unique(ch[ch >= 0])
+        if chans.size == 0:
+            continue
+        bins_by_ch = {}
+        hist_by_ch = {}
+        for cidx in chans:
+            vals = dE[ch == cidx]
+            vmax = float(np.nanmax(vals)) if vals.size and np.isfinite(np.nanmax(vals)) else 1.0
+            bins = np.linspace(0.0, vmax, 81)
+            h, _ = np.histogram(vals, bins=bins)
+            bins_by_ch[int(cidx)] = bins
+            hist_by_ch[int(cidx)] = h
+        _plot_vib_hist(chans.tolist(), bins_by_ch, hist_by_ch, ncols, out_path, model or None, lineshapes.get(model))
+    return out_path
 
 def plot_summary(arrs, out_path: str, fontsize: float):
     """Create a compact 4-panel summary of the simulation arrays."""
@@ -1316,23 +2277,109 @@ def main():
     ap.add_argument("--nH2O_cm3", type=float, default=3.343e22, help="Number density (cm^-3) for macro→micro conversion")
     ap.add_argument("--fontsize", type=float, default=18, help="Base font size for ticks, labels, titles, legend")
     ap.add_argument("--summary", action="store_true", help="Also write the 4-panel summary figure")
+    ap.add_argument("--stream", action="store_true", help="Stream ROOT in batches (use for very large files)")
+    ap.add_argument("--step-size", type=int, default=200000, help="Entries per batch for --stream (default: 200000)")
     args = ap.parse_args()
 
     # Font sizes are controlled globally via FONTSIZE
 
-    arrs = None
-    root_path = _resolve_path(args.root)
-    if os.path.exists(root_path):
-        arrs = load_arrays(root_path, "step")
-
-    print_root_processes(arrs)
-
-    config = load_config_from_root(root_path)
+    root_arg = args.root
+    root_paths = resolve_root_paths(root_arg)
+    if not root_paths:
+        raise FileNotFoundError(root_arg)
+    root_path = root_paths[0]
+    config = load_config_from_root(root_arg)
     config_refs = resolve_config_reference_paths(config) if config else {}
+    model_refs = resolve_model_reference_paths(config) if config else {}
+    lineshapes = resolve_model_lineshapes(config) if config else {}
+
     if config_refs:
         print("ROOT config references:")
         for key in sorted(config_refs.keys()):
             print(f"  {key}: {config_refs[key]}")
+    if model_refs:
+        print("ROOT model references:")
+        for key in sorted(model_refs.keys()):
+            print(f"  {key}: {model_refs[key]}")
+    if lineshapes:
+        print("ROOT model lineshapes:")
+        for key in sorted(lineshapes.keys()):
+            shape = lineshapes[key].get("shape", "")
+            print(f"  {key}: {shape}")
+
+    if args.stream:
+        meta = _stream_collect_meta(root_arg, "step", args.step_size)
+        _print_root_processes_stream(meta)
+        acc = _init_stream_acc(meta, args.nH2O_cm3)
+        _stream_accumulate(root_arg, "step", args.step_size, args.nH2O_cm3, meta, acc)
+
+        # Determine processes to plot
+        if args.processes is None or str(args.processes).strip().lower() == "all":
+            proc_list = sorted(meta.get("proc_counts", {}).keys())
+        elif args.processes:
+            proc_list = [int(x.strip()) for x in str(args.processes).split(",") if x.strip()]
+        else:
+            proc_list = [int(args.process)]
+
+        base, ext = os.path.splitext(args.out)
+        pname_map = _process_name_map()
+        ref_by_proc: dict[int, str | None] = {}
+        if config_refs and args.dat is None:
+            ref_by_proc = {
+                12: config_refs.get("ref_excitation") or config_refs.get("ref_excitation_born"),
+                13: config_refs.get("ref_ionisation") or config_refs.get("ref_ionisation_born"),
+                14: config_refs.get("ref_attachment"),
+                15: config_refs.get("ref_vib"),
+            }
+
+        for pcode in proc_list:
+            dat_path = args.dat if args.dat else ref_by_proc.get(int(pcode))
+            suffix = pname_map.get(int(pcode), str(int(pcode)))
+            models = meta.get("models_by_proc", {}).get(int(pcode), set())
+            if not models:
+                models = {""}
+
+            if int(pcode) in (12, 13):
+                for model in sorted(models):
+                    msafe = f"_{_sanitize_label(model)}" if model else ""
+                    outname = f"{base}_{suffix}{msafe}{ext or '.png'}"
+                    ref_for_model = _prefer_total_ref(model_refs.get(model, dat_path), int(pcode))
+                    plot_channel_overlay_for_process_stream(
+                        acc=acc,
+                        pcode=int(pcode),
+                        model=model,
+                        scale=args.scale,
+                        out_path=outname,
+                        dat_path=ref_for_model,
+                    )
+                continue
+
+            for model in sorted(models):
+                msafe = f"_{_sanitize_label(model)}" if model else ""
+                outname = f"{base}_{suffix}{msafe}{ext or '.png'}"
+                ref_for_model = _prefer_total_ref(model_refs.get(model, dat_path), int(pcode))
+                plot_cross_sections_for_process_stream(
+                    acc=acc,
+                    pcode=int(pcode),
+                    model=model,
+                    ncols=args.ncols,
+                    scale=args.scale,
+                    out_path=outname,
+                    dat_path=ref_for_model,
+                    config_refs=config_refs,
+                )
+
+        plot_vib_energy_loss_hist_stream(acc, args.ncols, args.de_hist_out, lineshapes)
+        plot_summary_stream(acc, args.summary_out, fontsize=FONTSIZE)
+        plot_deflection_angles_all_stream(acc, args.deflection_out, fontsize=FONTSIZE)
+        return
+
+    # ---- non-streaming path ----
+    arrs = None
+    if os.path.exists(root_path):
+        arrs = load_arrays(root_arg, "step")
+
+    print_root_processes(arrs)
 
     # Determine processes to plot
     if arrs is not None and (args.processes is None or str(args.processes).strip().lower() == 'all'):
@@ -1357,6 +2404,27 @@ def main():
         dat_path = args.dat if args.dat else ref_by_proc.get(int(pcode))
         suffix = pname_map.get(int(pcode), str(int(pcode)))
         if int(pcode) in (12, 13):
+            # If model names are present, emit one plot per model using model_ref
+            if arrs is not None and "modelName" in arrs:
+                models_all = _decode_to_str_array(arrs["modelName"])
+                if models_all is not None:
+                    mproc = (np.asarray(arrs["flagProcess"], dtype=float) == float(pcode))
+                    uniq_models = np.unique(models_all[mproc])
+                    for mname in uniq_models:
+                        if not mname:
+                            continue
+                        msafe = _sanitize_label(mname)
+                        outname = f"{base}_{suffix}_{msafe}{ext or '.png'}"
+                        ref_for_model = _prefer_total_ref(model_refs.get(mname, dat_path), int(pcode))
+                        plot_channel_overlay_for_process(
+                            arrs=arrs,
+                            pcode=int(pcode),
+                            scale=args.scale,
+                            nH2O_cm3=args.nH2O_cm3,
+                            out_path=outname,
+                            dat_path=ref_for_model,
+                        )
+                    continue
             outname = f"{base}_{suffix}{ext or '.png'}"
             plot_channel_overlay_for_process(
                 arrs=arrs,
@@ -1367,29 +2435,30 @@ def main():
                 dat_path=dat_path,
             )
             continue
-        # If elastic has multiple models, emit one plot per model
-        if int(pcode) == 11 and arrs is not None and "modelName" in arrs:
+        # If multiple models exist, emit one plot per model using model_ref when available
+        if arrs is not None and "modelName" in arrs:
             models_all = _decode_to_str_array(arrs["modelName"])
             if models_all is not None:
                 mproc = (np.asarray(arrs["flagProcess"], dtype=float) == float(pcode))
                 uniq_models = np.unique(models_all[mproc])
-                for mname in uniq_models:
-                    if not mname:
-                        continue
-                    msafe = _sanitize_label(mname)
-                    outname = f"{base}_{suffix}_{msafe}{ext or '.png'}"
-                    plot_cross_sections_for_process(
-                        arrs=arrs,
-                        pcode=int(pcode),
-                        ncols=args.ncols,
-                        scale=args.scale,
-                        nH2O_cm3=args.nH2O_cm3,
-                        out_path=outname,
-                        dat_path=dat_path,
-                        model_filter=mname,
-                        config_refs=config_refs,
-                    )
-                continue
+                uniq_models = [m for m in uniq_models if m]
+                if uniq_models:
+                    for mname in uniq_models:
+                        msafe = _sanitize_label(mname)
+                        outname = f"{base}_{suffix}_{msafe}{ext or '.png'}"
+                        ref_for_model = _prefer_total_ref(model_refs.get(mname, dat_path), int(pcode))
+                        plot_cross_sections_for_process(
+                            arrs=arrs,
+                            pcode=int(pcode),
+                            ncols=args.ncols,
+                            scale=args.scale,
+                            nH2O_cm3=args.nH2O_cm3,
+                            out_path=outname,
+                            dat_path=ref_for_model,
+                            model_filter=mname,
+                            config_refs=config_refs,
+                        )
+                    continue
 
         outname = f"{base}_{suffix}{ext or '.png'}"
         plot_cross_sections_for_process(
@@ -1404,7 +2473,7 @@ def main():
         )
 
     # Vib energy-loss histograms (if available)
-    plot_vib_energy_loss_hist(arrs, args.ncols, args.de_hist_out)
+    plot_vib_energy_loss_hist(arrs, args.ncols, args.de_hist_out, lineshapes)
 
     # Summary and deflection angles
     plot_summary(arrs, args.summary_out, fontsize=FONTSIZE)

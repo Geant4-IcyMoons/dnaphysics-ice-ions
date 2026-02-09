@@ -48,10 +48,13 @@
 #include "G4Electron.hh"
 #include "G4Event.hh"
 #include "G4EventManager.hh"
+#include "G4String.hh"
 #include "G4Gamma.hh"
 #include "G4Proton.hh"
 #include "G4SteppingManager.hh"
 #include "G4SystemOfUnits.hh"
+#include "G4ProcessManager.hh"
+#include "G4VProcess.hh"
 
 #include "G4VEmProcess.hh"
 #include "G4EmCalculator.hh"
@@ -64,6 +67,7 @@
 #include "G4DNABornIonisationModel1Tracked.hh"
 #include "G4DNABornExcitationModel1Tracked.hh"
 #include "G4DNAMichaudExcitationModel.hh"
+#include "G4DNASancheExcitationModel.hh"
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -119,6 +123,35 @@ bool ReadEnvFlag(const char* name, bool defaultValue)
 }
 }
 
+namespace {
+void SetHighEnergyFallbackActive(const G4Track* track)
+{
+  if (!track) return;
+  if (track->GetDefinition() != G4Electron::ElectronDefinition()) return;
+  constexpr G4double kHighMin = 10. * MeV;
+  const bool enable = (track->GetKineticEnergy() >= kHighMin);
+  static thread_local int lastState = -1;
+  const int state = enable ? 1 : 0;
+  if (state == lastState) return;
+  lastState = state;
+
+  auto* pm = track->GetDefinition()->GetProcessManager();
+  if (!pm) return;
+  auto* plist = pm->GetProcessList();
+  if (!plist) return;
+  const size_t n = plist->size();
+  for (size_t i = 0; i < n; ++i) {
+    auto* proc = (*plist)[i];
+    if (!proc) continue;
+    const auto& name = proc->GetProcessName();
+    if (name == "msc" || name == "eIoni" || name == "eBrem" ||
+        name == "CoulombScat" || name == "CoulombScattering") {
+      pm->SetProcessActivation(proc, enable);
+    }
+  }
+}
+}
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 void SteppingAction::UserSteppingAction(const G4Step* step)
@@ -145,15 +178,20 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   if (partDef == instance->GetIon("alpha+")) flagParticle = 5;
   if (partDef == instance->GetIon("helium")) flagParticle = 6;
 
+  // Enforce high-energy fallback activation only above threshold
+  SetHighEnergyFallbackActive(step->GetTrack());
+
   // Process identification
   G4StepPoint* preStep = step->GetPreStepPoint();
   G4StepPoint* postStep = step->GetPostStepPoint();
   G4int procID = postStep->GetProcessDefinedStep()->GetProcessSubType();
   const G4String& processName = postStep->GetProcessDefinedStep()->GetProcessName();
-  std::string modelName;
+  G4String modelName;
   if (auto* emProc = dynamic_cast<const G4VEmProcess*>(postStep->GetProcessDefinedStep())) {
     auto* model = emProc->GetCurrentModel();
-    if (model) modelName = model->GetName();
+    if (model) {
+      modelName = model->GetName();
+    }
   }
 
 
@@ -415,9 +453,14 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     int chanIdx = -1;
     G4double chanMicroXS_cm2 = -1.0;
     if (processName.find("Vib") != std::string::npos) {
-      // Prefer exact info exposed by the active vib model (Michaud)
-      chanIdx = G4DNAMichaudExcitationModel::GetLastChannelIndex();
-      chanMicroXS_cm2 = G4DNAMichaudExcitationModel::GetLastPartialSigma_cm2();
+      if (modelName.find("Sanche") != std::string::npos) {
+        chanIdx = G4DNASancheExcitationModel::GetLastChannelIndex();
+        chanMicroXS_cm2 = G4DNASancheExcitationModel::GetLastPartialSigma_cm2();
+      } else {
+        // Prefer exact info exposed by the active vib model (Michaud)
+        chanIdx = G4DNAMichaudExcitationModel::GetLastChannelIndex();
+        chanMicroXS_cm2 = G4DNAMichaudExcitationModel::GetLastPartialSigma_cm2();
+      }
       if (chanIdx >= 0) {
         std::ostringstream ch;
         ch << "vib_" << chanIdx;
@@ -425,9 +468,13 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
       } else {
         // Fallback: approximate channel by nearest dE to known centers
         const G4double dE_eV = (preStep->GetKineticEnergy() - postStep->GetKineticEnergy())/eV;
-        static const G4double omega[8] = {0.024, 0.061, 0.092, 0.205, 0.417, 0.460, 0.510, 0.834};
+        static const G4double omega_michaud[8] = {0.024, 0.061, 0.092, 0.205, 0.417, 0.460, 0.510, 0.834};
+        static const G4double omega_sanche[9]  = {0.010, 0.024, 0.061, 0.092, 0.204, 0.417, 0.460, 0.500, 0.835};
+        const bool isSanche = (modelName.find("Sanche") != std::string::npos);
+        const G4double* omega = isSanche ? omega_sanche : omega_michaud;
+        const int nOmega = isSanche ? 9 : 8;
         int best = -1; G4double bestDiff = DBL_MAX;
-        for (int i=0;i<8;++i) {
+        for (int i=0;i<nOmega;++i) {
           const G4double diff = std::abs(dE_eV - omega[i]);
           if (diff < bestDiff) { bestDiff = diff; best = i; }
         }
@@ -445,10 +492,13 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
       int levelIdx = -1;
       if (isIceEmfi) {
         levelIdx = G4DNAEmfietzoglou_iceExcitationModel::GetLastExcitationIndex();
+        chanMicroXS_cm2 = G4DNAEmfietzoglou_iceExcitationModel::GetLastPartialSigma_cm2();
       } else if (isWaterEmfi) {
         levelIdx = G4DNAEmfietzoglouExcitationModelTracked::GetLastExcitationIndex();
+        chanMicroXS_cm2 = G4DNAEmfietzoglouExcitationModelTracked::GetLastPartialSigma_cm2();
       } else if (isBorn) {
         levelIdx = G4DNABornExcitationModel1Tracked::GetLastExcitationIndex();
+        chanMicroXS_cm2 = G4DNABornExcitationModel1Tracked::GetLastPartialSigma_cm2();
       }
       if (levelIdx >= 0) {
         chanIdx = levelIdx;
@@ -486,10 +536,13 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
       int shellIdx = -1;
       if (isIceEmfi) {
         shellIdx = G4DNAEmfietzoglou_iceIonisationModel::GetLastShellIndex();
+        chanMicroXS_cm2 = G4DNAEmfietzoglou_iceIonisationModel::GetLastPartialSigma_cm2();
       } else if (isWaterEmfi) {
         shellIdx = G4DNAEmfietzoglouIonisationModelTracked::GetLastShellIndex();
+        chanMicroXS_cm2 = G4DNAEmfietzoglouIonisationModelTracked::GetLastPartialSigma_cm2();
       } else if (isBorn) {
         shellIdx = G4DNABornIonisationModel1Tracked::GetLastShellIndex();
+        chanMicroXS_cm2 = G4DNABornIonisationModel1Tracked::GetLastPartialSigma_cm2();
       }
       if (shellIdx >= 0) {
         chanIdx = shellIdx;

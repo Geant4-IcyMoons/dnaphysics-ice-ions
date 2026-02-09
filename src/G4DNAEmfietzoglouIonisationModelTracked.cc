@@ -52,6 +52,7 @@ using namespace std;
 
 namespace {
 thread_local G4int g_lastIonShellTracked = -1;
+thread_local G4double g_lastIonSigmaTracked_cm2 = -1.0;
 }
 
 G4int G4DNAEmfietzoglouIonisationModelTracked::GetLastShellIndex()
@@ -62,6 +63,17 @@ G4int G4DNAEmfietzoglouIonisationModelTracked::GetLastShellIndex()
 void G4DNAEmfietzoglouIonisationModelTracked::ClearLastShellIndex()
 {
   g_lastIonShellTracked = -1;
+  g_lastIonSigmaTracked_cm2 = -1.0;
+}
+
+G4double G4DNAEmfietzoglouIonisationModelTracked::GetLastPartialSigma_cm2()
+{
+  return g_lastIonSigmaTracked_cm2;
+}
+
+void G4DNAEmfietzoglouIonisationModelTracked::ClearLastPartialSigma_cm2()
+{
+  g_lastIonSigmaTracked_cm2 = -1.0;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
@@ -137,9 +149,6 @@ void G4DNAEmfietzoglouIonisationModelTracked::Initialise(const G4ParticleDefinit
   // Energy limits
 
   G4String fileElectron("dna/sigma_ionisation_e_emfietzoglou");
-  ModelDataRegistry::Instance().Record(
-    "ref_ionisation",
-    ModelDataRegistry::NormalizeDatBasename(fileElectron));
 
   G4ParticleDefinition* electronDef = G4Electron::ElectronDefinition();
 
@@ -169,7 +178,10 @@ void G4DNAEmfietzoglouIonisationModelTracked::Initialise(const G4ParticleDefinit
   if (fasterCode) eFullFileName << path << "/dna/sigmadiff_cumulated_ionisation_e_emfietzoglou.dat";
   if (!fasterCode) eFullFileName << path << "/dna/sigmadiff_ionisation_e_emfietzoglou.dat";
   ModelDataRegistry::Instance().Record(
-    "model_ionisation_diff",
+    std::string("model_ref:") + GetName(),
+    ModelDataRegistry::NormalizeDatBasename(fileElectron));
+  ModelDataRegistry::Instance().Record(
+    std::string("model_ref_diff:") + GetName(),
     ModelDataRegistry::NormalizeDatBasename(eFullFileName.str()));
 
   std::ifstream eDiffCrossSection(eFullFileName.str().c_str());
@@ -774,6 +786,7 @@ G4int G4DNAEmfietzoglouIonisationModelTracked::RandomSelect(G4double k,
                                                      const G4String& particle)
 {
   G4int level = 0;
+  g_lastIonSigmaTracked_cm2 = -1.0;
 
   auto pos = tableData.find(particle);
 
@@ -805,6 +818,7 @@ G4int G4DNAEmfietzoglouIonisationModelTracked::RandomSelect(G4double k,
 
         if(valuesBuffer[i] > value)
         {
+          g_lastIonSigmaTracked_cm2 = valuesBuffer[i] / (cm * cm);
           delete[] valuesBuffer;
           return i;
         }

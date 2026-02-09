@@ -47,6 +47,7 @@ using namespace std;
 
 namespace {
 thread_local G4int g_lastExcitationLevelTracked = -1;
+thread_local G4double g_lastExcitationSigma_cm2 = -1.0;
 }
 
 G4int G4DNAEmfietzoglouExcitationModelTracked::GetLastExcitationIndex()
@@ -57,6 +58,17 @@ G4int G4DNAEmfietzoglouExcitationModelTracked::GetLastExcitationIndex()
 void G4DNAEmfietzoglouExcitationModelTracked::ClearLastExcitationIndex()
 {
   g_lastExcitationLevelTracked = -1;
+  g_lastExcitationSigma_cm2 = -1.0;
+}
+
+G4double G4DNAEmfietzoglouExcitationModelTracked::GetLastPartialSigma_cm2()
+{
+  return g_lastExcitationSigma_cm2;
+}
+
+void G4DNAEmfietzoglouExcitationModelTracked::ClearLastPartialSigma_cm2()
+{
+  g_lastExcitationSigma_cm2 = -1.0;
 }
 
 G4DNAEmfietzoglouExcitationModelTracked::G4DNAEmfietzoglouExcitationModelTracked(const G4ParticleDefinition*,
@@ -112,7 +124,7 @@ void G4DNAEmfietzoglouExcitationModelTracked::Initialise(const G4ParticleDefinit
 
     G4String fileElectron("dna/sigma_excitation_e_emfietzoglou");
     ModelDataRegistry::Instance().Record(
-      "ref_excitation",
+      std::string("model_ref:") + GetName(),
       ModelDataRegistry::NormalizeDatBasename(fileElectron));
 
     G4ParticleDefinition* electronDef = G4Electron::ElectronDefinition();
@@ -250,6 +262,7 @@ G4int G4DNAEmfietzoglouExcitationModelTracked::RandomSelect(G4double k, const G4
 {
 
     G4int level = 0;
+    g_lastExcitationSigma_cm2 = -1.0;
 
     std::map< G4String,G4DNACrossSectionDataSet*,std::less<G4String> >::iterator pos;
     pos = tableData.find(particle);
@@ -292,6 +305,7 @@ G4int G4DNAEmfietzoglouExcitationModelTracked::RandomSelect(G4double k, const G4
 
                 if (valuesBuffer[i] > value)
                 {
+                    g_lastExcitationSigma_cm2 = valuesBuffer[i] / (cm * cm);
                     delete[] valuesBuffer;
                     return i;
                 }

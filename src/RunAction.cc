@@ -40,11 +40,13 @@
 
 #include "G4AnalysisManager.hh"
 #include "G4Run.hh"
+#include "G4Threading.hh"
 #include "SteppingAction.hh"
 #include "ModelDataRegistry.hh"
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -117,6 +119,27 @@ std::string SelectIonisationDiffFile(const std::string& icePhase)
     return phaseFile;
   }
   return defaultFile;
+}
+
+void DeleteOldRootFiles(const std::string& baseName)
+{
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  const fs::path cwd = fs::current_path(ec);
+  if (ec) return;
+  for (const auto& entry : fs::directory_iterator(cwd, ec)) {
+    if (ec || !entry.is_regular_file()) {
+      continue;
+    }
+    const fs::path p = entry.path();
+    if (p.extension() != ".root") {
+      continue;
+    }
+    const std::string name = p.filename().string();
+    if (name.rfind(baseName, 0) == 0) {
+      fs::remove(p, ec);
+    }
+  }
 }
 }
 
@@ -202,6 +225,13 @@ void RunAction::BeginOfRunAction(const G4Run*)
 
   // Open an output file
   G4String fileName = "dna";
+  static G4bool cleaned = false;
+  if (!cleaned && G4Threading::IsMasterThread()) {
+    if (!ReadEnvFlag("DNA_KEEP_OLD_ROOT", false)) {
+      DeleteOldRootFiles(fileName);
+    }
+    cleaned = true;
+  }
   analysisManager->OpenFile(fileName);
 
   if (fConfigNtupleId >= 0) {
@@ -236,7 +266,6 @@ void RunAction::BeginOfRunAction(const G4Run*)
   SteppingAction::SetLoggingEnabled(kPrintPostRunStepSummary);
   SteppingAction::ClearLogs();
   SteppingAction::ClearObservedModels();
-  ModelDataRegistry::Instance().Clear();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

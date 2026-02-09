@@ -74,6 +74,8 @@ public:
 
   static G4int GetLastExcitationIndex();
   static void ClearLastExcitationIndex();
+  static G4double GetLastPartialSigma_cm2();
+  static void ClearLastPartialSigma_cm2();
 
 protected:
 

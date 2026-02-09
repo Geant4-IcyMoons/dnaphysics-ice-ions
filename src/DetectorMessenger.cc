@@ -47,6 +47,7 @@
 #include "G4UIdirectory.hh"
 #include "G4UIparameter.hh"
 #include "G4UIcmdWithADoubleAndUnit.hh"
+#include "G4UIcmdWith3VectorAndUnit.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -91,11 +92,18 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* Det, G4VModularPhysic
   fDensityCmd->AvailableForStates(G4State_PreInit,G4State_Idle);
 
   fSizeCmd = new G4UIcmdWithADoubleAndUnit("/dna/test/setSize",this);
-  fSizeCmd->SetGuidance("Set size of the World");
+  fSizeCmd->SetGuidance("Set ice cube size (legacy, isotropic).");
   fSizeCmd->SetParameterName("Size",false);
   fSizeCmd->SetRange("Size>0.");
   fSizeCmd->SetUnitCategory("Length");
   fSizeCmd->AvailableForStates(G4State_PreInit,G4State_Idle);
+
+  fIceSizeCmd = new G4UIcmdWith3VectorAndUnit("/dna/test/setIceSize", this);
+  fIceSizeCmd->SetGuidance("Set ice slab size: X Y Z (full lengths).");
+  fIceSizeCmd->SetParameterName("SizeX", "SizeY", "SizeZ", false);
+  fIceSizeCmd->SetRange("SizeX>0. && SizeY>0. && SizeZ>0.");
+  fIceSizeCmd->SetUnitCategory("Length");
+  fIceSizeCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -109,6 +117,7 @@ DetectorMessenger::~DetectorMessenger()
   delete fpTrackingCutCmd;
   delete fDensityCmd;
   delete fSizeCmd;
+  delete fIceSizeCmd;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -150,4 +159,9 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue)
 
   if (command == fSizeCmd)
     fpDetector->SetSize(fSizeCmd->GetNewDoubleValue(newValue));
+
+  if (command == fIceSizeCmd) {
+    const auto vec = fIceSizeCmd->GetNew3VectorValue(newValue);
+    fpDetector->SetIceSize(vec.x(), vec.y(), vec.z());
+  }
 }

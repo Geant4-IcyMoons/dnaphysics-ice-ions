@@ -2,13 +2,13 @@
 /control/verbose 0
 /run/verbose 0
 /event/verbose 0
-/tracking/verbose 1
+/tracking/verbose 0
 
 # ===== Parameters =====
 # N = number of particles AND threads
-/control/alias N 10000
-/control/alias EMIN 1      # min energy value (numeric)
-/control/alias EMAX 200      # max energy value (numeric)
+/control/alias N 1000
+/control/alias EMIN 200      # min energy value (numeric)
+/control/alias EMAX 30000000      # max energy value (numeric)
 /control/alias EUNIT eV     # unit for energies
 
 # Threads: set equal to N (must be before initialize)
@@ -17,8 +17,11 @@
 # Material
 /dna/test/setMat G4_WATER
 
-# Size of World volume
-/dna/test/setSize 0.01 um
+# Ice slab size (full lengths)
+/control/alias XSIZE 100   # mm
+/control/alias YSIZE 100   # mm
+/control/alias ZSIZE 10000   # mm
+/dna/test/setIceSize {XSIZE} {YSIZE} {ZSIZE} mm
 
 # Atomic deexcitation
 /process/em/fluo true
@@ -42,7 +45,7 @@
 /gps/pos/type Point
 /gps/pos/centre 0 0 0 mm
 # No random directions: set a fixed unit vector (along +x)
-/gps/direction 1 0 0
+/gps/direction 0 0 1
 
 # Emit one particle per event
 /gps/number 1

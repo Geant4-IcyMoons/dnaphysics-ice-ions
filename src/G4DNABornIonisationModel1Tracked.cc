@@ -45,6 +45,7 @@ using namespace std;
 
 namespace {
 thread_local G4int g_lastBornIonShellTracked = -1;
+thread_local G4double g_lastBornIonSigmaTracked_cm2 = -1.0;
 }
 
 G4int G4DNABornIonisationModel1Tracked::GetLastShellIndex()
@@ -55,6 +56,17 @@ G4int G4DNABornIonisationModel1Tracked::GetLastShellIndex()
 void G4DNABornIonisationModel1Tracked::ClearLastShellIndex()
 {
   g_lastBornIonShellTracked = -1;
+  g_lastBornIonSigmaTracked_cm2 = -1.0;
+}
+
+G4double G4DNABornIonisationModel1Tracked::GetLastPartialSigma_cm2()
+{
+  return g_lastBornIonSigmaTracked_cm2;
+}
+
+void G4DNABornIonisationModel1Tracked::ClearLastPartialSigma_cm2()
+{
+  g_lastBornIonSigmaTracked_cm2 = -1.0;
 }
 
 G4DNABornIonisationModel1Tracked::G4DNABornIonisationModel1Tracked(const G4ParticleDefinition*,
@@ -129,9 +141,6 @@ void G4DNABornIonisationModel1Tracked::Initialise(const G4ParticleDefinition* pa
   // Energy limits
 
   G4String fileElectron("dna/sigma_ionisation_e_born");
-  ModelDataRegistry::Instance().Record(
-    "ref_ionisation_born",
-    ModelDataRegistry::NormalizeDatBasename(fileElectron));
   G4String fileProton("dna/sigma_ionisation_p_born");
 
   G4ParticleDefinition* electronDef = G4Electron::ElectronDefinition();
@@ -167,7 +176,7 @@ void G4DNABornIonisationModel1Tracked::Initialise(const G4ParticleDefinition* pa
   if (fasterCode) eFullFileName << path << "/dna/sigmadiff_cumulated_ionisation_e_born_hp.dat";
   if (!fasterCode) eFullFileName << path << "/dna/sigmadiff_ionisation_e_born.dat";
   ModelDataRegistry::Instance().Record(
-    "model_ionisation_diff_born",
+    std::string("model_ref:") + GetName(),
     ModelDataRegistry::NormalizeDatBasename(eFullFileName.str()));
 
   std::ifstream eDiffCrossSection(eFullFileName.str().c_str());
@@ -1002,6 +1011,7 @@ G4int G4DNABornIonisationModel1Tracked::RandomSelect(G4double k,
                                               const G4String& particle)
 {
   G4int level = 0;
+  g_lastBornIonSigmaTracked_cm2 = -1.0;
 
   std::map<G4String, G4DNACrossSectionDataSet*, std::less<G4String> >::iterator pos;
   pos = tableData.find(particle);
@@ -1034,6 +1044,7 @@ G4int G4DNABornIonisationModel1Tracked::RandomSelect(G4double k,
 
         if (valuesBuffer[i] > value)
         {
+          g_lastBornIonSigmaTracked_cm2 = valuesBuffer[i] / (cm * cm);
           delete[] valuesBuffer;
           return i;
         }

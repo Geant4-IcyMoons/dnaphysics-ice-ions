@@ -38,6 +38,10 @@
 #include "G4DNAChemistryManager.hh"
 #include "G4DNAMolecularMaterial.hh"
 #include "ModelDataRegistry.hh"
+#include <cctype>
+#include <cstdlib>
+#include <fstream>
+#include <string>
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
@@ -47,6 +51,42 @@ using namespace std;
 
 namespace {
 thread_local G4int g_lastIceExcLevel = -1;
+thread_local G4double g_lastIceExcSigma_cm2 = -1.0;
+
+std::string ToLower(std::string value)
+{
+  for (auto& ch : value) ch = static_cast<char>(std::tolower(ch));
+  return value;
+}
+
+std::string NormalizeIcePhase(const char* raw)
+{
+  if (!raw) return {};
+  std::string phase = ToLower(raw);
+  if (phase == "ice_hex" || phase == "hex" || phase == "hexagonal" ||
+      phase == "crystalline") {
+    return "hexagonal";
+  }
+  if (phase == "ice_am" || phase == "am" || phase == "amo" ||
+      phase == "amorphous") {
+    return "amorphous";
+  }
+  return phase;
+}
+
+std::string BuildDataPath(const char* data_dir, const std::string& filename)
+{
+  if (!data_dir || !*data_dir) {
+    return std::string("dna/") + filename;
+  }
+  return std::string(data_dir) + "/dna/" + filename;
+}
+
+bool FileExists(const std::string& path)
+{
+  std::ifstream fin(path.c_str());
+  return fin.good();
+}
 }
 
 G4int G4DNAEmfietzoglou_iceExcitationModel::GetLastExcitationIndex()
@@ -57,6 +97,17 @@ G4int G4DNAEmfietzoglou_iceExcitationModel::GetLastExcitationIndex()
 void G4DNAEmfietzoglou_iceExcitationModel::ClearLastExcitationIndex()
 {
   g_lastIceExcLevel = -1;
+  g_lastIceExcSigma_cm2 = -1.0;
+}
+
+G4double G4DNAEmfietzoglou_iceExcitationModel::GetLastPartialSigma_cm2()
+{
+  return g_lastIceExcSigma_cm2;
+}
+
+void G4DNAEmfietzoglou_iceExcitationModel::ClearLastPartialSigma_cm2()
+{
+  g_lastIceExcSigma_cm2 = -1.0;
 }
 
 G4DNAEmfietzoglou_iceExcitationModel::G4DNAEmfietzoglou_iceExcitationModel(const G4ParticleDefinition*,
@@ -111,9 +162,38 @@ void G4DNAEmfietzoglou_iceExcitationModel::Initialise(const G4ParticleDefinition
         G4cout << "Calling G4DNAEmfietzoglou_iceExcitationModel::Initialise()" << G4endl;
 
     G4String fileElectron("dna/sigma_excitation_e_emfietzoglou");
+    // Require ice-specific total/differential excitation tables when phase is set.
+    std::string diffFileToUse;
+    const char* path = std::getenv("G4LEDATA");
+    const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_ICE_PHASE"));
+    if (!icePhase.empty()) {
+      const std::string phaseTotalFile =
+          "sigma_excitation_e_" + icePhase + "_ice_emfietzoglou_kyriakou";
+      const std::string phaseDiffFile =
+          "sigmadiff_excitation_e_" + icePhase + "_ice_emfietzoglou_kyriakou.dat";
+      const std::string totalPath = BuildDataPath(path, phaseTotalFile + ".dat");
+      const std::string phasePath = BuildDataPath(path, phaseDiffFile);
+      if (!FileExists(totalPath)) {
+        const std::string missing = "Missing data file: " + totalPath;
+        G4Exception("G4DNAEmfietzoglou_iceExcitationModel::Initialise",
+                    "em0003", FatalException, missing.c_str());
+      }
+      if (!FileExists(phasePath)) {
+        const std::string missing = "Missing data file: " + phasePath;
+        G4Exception("G4DNAEmfietzoglou_iceExcitationModel::Initialise",
+                    "em0003", FatalException, missing.c_str());
+      }
+      fileElectron = "dna/" + phaseTotalFile;
+      diffFileToUse = phaseDiffFile;
+    }
     ModelDataRegistry::Instance().Record(
-      "ref_excitation",
+      std::string("model_ref:") + GetName(),
       ModelDataRegistry::NormalizeDatBasename(fileElectron));
+    if (!diffFileToUse.empty()) {
+      ModelDataRegistry::Instance().Record(
+        std::string("model_ref_diff:") + GetName(),
+        ModelDataRegistry::NormalizeDatBasename(diffFileToUse));
+    }
 
     G4ParticleDefinition* electronDef = G4Electron::ElectronDefinition();
 
@@ -250,6 +330,7 @@ G4int G4DNAEmfietzoglou_iceExcitationModel::RandomSelect(G4double k, const G4Str
 {
 
     G4int level = 0;
+    g_lastIceExcSigma_cm2 = -1.0;
 
     std::map< G4String,G4DNACrossSectionDataSet*,std::less<G4String> >::iterator pos;
     pos = tableData.find(particle);
@@ -292,6 +373,7 @@ G4int G4DNAEmfietzoglou_iceExcitationModel::RandomSelect(G4double k, const G4Str
 
                 if (valuesBuffer[i] > value)
                 {
+                    g_lastIceExcSigma_cm2 = valuesBuffer[i] / (cm * cm);
                     delete[] valuesBuffer;
                     return i;
                 }

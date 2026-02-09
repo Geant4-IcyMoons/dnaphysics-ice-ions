@@ -30,6 +30,10 @@
 
 #include "G4EmDNAPhysics_option2.hh"
 #include "G4EmParameters.hh"
+#include "G4EmStandardPhysics_option4.hh"
+#include "G4VEmProcess.hh"
+#include "G4VEmModel.hh"
+#include "G4ProcessManager.hh"
 #include "G4ProductionCutsTable.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4PhysicsListHelper.hh"
@@ -38,12 +42,9 @@
 #include "G4DNAExcitation.hh"
 #include "G4DNAIonisation.hh"
 #include "G4DNAVibExcitation.hh"
+#include "G4DNASancheExcitationModel.hh"
 #include "G4DNAAttachment.hh"
 #include "G4Electron.hh"
-#include "G4DNABornExcitationModel1Tracked.hh"
-#include "G4DNABornIonisationModel1Tracked.hh"
-#include "G4DNAEmfietzoglouExcitationModelTracked.hh"
-#include "G4DNAEmfietzoglouIonisationModelTracked.hh"
 
 PhysicsList_Water::PhysicsList_Water() : G4VModularPhysicsList()
 {
@@ -79,30 +80,41 @@ void PhysicsList_Water::ConstructProcess()
   ph->RegisterProcess(elastic, electron);
 
   auto* vib = new G4DNAVibExcitation("e-_G4DNAVib_WATER");
+  vib->SetEmModel(new G4DNASancheExcitationModel());
   ph->RegisterProcess(vib, electron);
 
   auto* attachment = new G4DNAAttachment("e-_G4DNAAttachment_WATER");
   ph->RegisterProcess(attachment, electron);
 
   auto* excitation = new G4DNAExcitation("e-_G4DNAExcitation_WATER");
-  auto* exc_emfi = new G4DNAEmfietzoglouExcitationModelTracked();
-  exc_emfi->SetLowEnergyLimit(8. * eV);
-  exc_emfi->SetHighEnergyLimit(10. * keV);
-  excitation->SetEmModel(exc_emfi);
-  auto* exc_born = new G4DNABornExcitationModel1Tracked();
-  exc_born->SetLowEnergyLimit(10. * keV);
-  exc_born->SetHighEnergyLimit(1. * MeV);
-  excitation->AddEmModel(2, exc_born);
   ph->RegisterProcess(excitation, electron);
 
   auto* ionisation = new G4DNAIonisation("e-_G4DNAIonisation_WATER");
-  auto* ion_emfi = new G4DNAEmfietzoglouIonisationModelTracked();
-  ion_emfi->SetLowEnergyLimit(10. * eV);
-  ion_emfi->SetHighEnergyLimit(10. * keV);
-  ionisation->SetEmModel(ion_emfi);
-  auto* ion_born = new G4DNABornIonisationModel1Tracked();
-  ion_born->SetLowEnergyLimit(10. * keV);
-  ion_born->SetHighEnergyLimit(1. * MeV);
-  ionisation->AddEmModel(2, ion_born);
   ph->RegisterProcess(ionisation, electron);
+
+  // -------- High-energy fallback (>= 10 MeV): standard EM option4 --------
+  {
+    const G4double kHighMin = 10. * MeV;
+    auto* emHigh = new G4EmStandardPhysics_option4();
+    emHigh->ConstructProcess();
+
+    auto* pm = G4Electron::ElectronDefinition()->GetProcessManager();
+    if (pm) {
+      auto* plist = pm->GetProcessList();
+      for (size_t i = 0; i < plist->size(); ++i) {
+        auto* proc = (*plist)[i];
+        auto* emProc = dynamic_cast<G4VEmProcess*>(proc);
+        if (!emProc) continue;
+        const auto& pname = emProc->GetProcessName();
+        if (pname.find("G4DNA") != std::string::npos) continue;
+
+        emProc->SetMinKinEnergy(kHighMin);
+        const G4int nModels = emProc->NumberOfModels();
+        for (G4int m = 0; m < nModels; ++m) {
+          auto* model = emProc->GetModelByIndex(m);
+          if (model) model->SetLowEnergyLimit(kHighMin);
+        }
+      }
+    }
+  }
 }

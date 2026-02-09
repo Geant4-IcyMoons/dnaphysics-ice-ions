@@ -91,6 +91,7 @@ using namespace std;
 
 namespace {
 thread_local G4int g_lastIonShell = -1;
+thread_local G4double g_lastIonSigma_cm2 = -1.0;
 }
 
 G4int G4DNAEmfietzoglou_iceIonisationModel::GetLastShellIndex()
@@ -101,6 +102,17 @@ G4int G4DNAEmfietzoglou_iceIonisationModel::GetLastShellIndex()
 void G4DNAEmfietzoglou_iceIonisationModel::ClearLastShellIndex()
 {
   g_lastIonShell = -1;
+  g_lastIonSigma_cm2 = -1.0;
+}
+
+G4double G4DNAEmfietzoglou_iceIonisationModel::GetLastPartialSigma_cm2()
+{
+  return g_lastIonSigma_cm2;
+}
+
+void G4DNAEmfietzoglou_iceIonisationModel::ClearLastPartialSigma_cm2()
+{
+  g_lastIonSigma_cm2 = -1.0;
 }
 
 G4DNAEmfietzoglou_iceIonisationModel::G4DNAEmfietzoglou_iceIonisationModel(const G4ParticleDefinition*,
@@ -174,9 +186,6 @@ void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition
   // Energy limits
 
   G4String fileElectron("dna/sigma_ionisation_e_emfietzoglou");
-  ModelDataRegistry::Instance().Record(
-    "ref_ionisation",
-    ModelDataRegistry::NormalizeDatBasename(fileElectron));
 
   G4ParticleDefinition* electronDef = G4Electron::ElectronDefinition();
 
@@ -190,15 +199,6 @@ void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition
 
   electron = electronDef->GetParticleName();
 
-  tableFile[electron] = fileElectron;
-
-  // Cross section
-
-  auto  tableE = new G4DNACrossSectionDataSet(new G4LogLogInterpolation, eV,scaleFactor );
-  tableE->LoadData(fileElectron);
-
-  tableData[electron] = tableE;
-
   // Final state
 
   std::string defaultDiffFile = fasterCode
@@ -208,22 +208,41 @@ void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition
 
   const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_ICE_PHASE"));
   if (!icePhase.empty()) {
+    const std::string phaseTotalFile =
+        "sigma_ionisation_e_" + icePhase + "_ice_emfietzoglou_kyriakou";
     const std::string phaseDiffFile = fasterCode
         ? "sigmadiff_cumulated_ionisation_e_" + icePhase + "_ice_emfietzoglou_kyriakou.dat"
         : "sigmadiff_ionisation_e_" + icePhase + "_ice_emfietzoglou_kyriakou.dat";
+    const std::string totalPath = BuildDataPath(path, phaseTotalFile + ".dat");
     const std::string phasePath = BuildDataPath(path, phaseDiffFile);
-    if (FileExists(phasePath)) {
-      diffFileToUse = phaseDiffFile;
-    } else {
-      G4cout << "### dnaphysics Warning: DNA_ICE_PHASE='" << icePhase
-             << "' requested but data file not found: " << phasePath
-             << ". Using " << defaultDiffFile << " instead." << G4endl;
+    if (!FileExists(totalPath)) {
+      const std::string missing = "Missing data file: " + totalPath;
+      G4Exception("G4DNAEmfietzoglou_iceIonisationModel::Initialise",
+                  "em0003", FatalException, missing.c_str());
     }
+    if (!FileExists(phasePath)) {
+      const std::string missing = "Missing data file: " + phasePath;
+      G4Exception("G4DNAEmfietzoglou_iceIonisationModel::Initialise",
+                  "em0003", FatalException, missing.c_str());
+    }
+    fileElectron = "dna/" + phaseTotalFile;
+    diffFileToUse = phaseDiffFile;
   }
 
+  // Cross section (after potential ice-phase override)
+  tableFile[electron] = fileElectron;
+  auto  tableE = new G4DNACrossSectionDataSet(new G4LogLogInterpolation, eV,scaleFactor );
+  tableE->LoadData(fileElectron);
+  tableData[electron] = tableE;
+
   ModelDataRegistry::Instance().Record(
-    "model_ionisation_diff",
-    ModelDataRegistry::NormalizeDatBasename(diffFileToUse));
+    std::string("model_ref:") + GetName(),
+    ModelDataRegistry::NormalizeDatBasename(fileElectron));
+  if (!diffFileToUse.empty()) {
+    ModelDataRegistry::Instance().Record(
+      std::string("model_ref_diff:") + GetName(),
+      ModelDataRegistry::NormalizeDatBasename(diffFileToUse));
+  }
   const std::string diffPath = BuildDataPath(path, diffFileToUse);
   std::ifstream eDiffCrossSection(diffPath.c_str());
 
@@ -828,6 +847,7 @@ G4int G4DNAEmfietzoglou_iceIonisationModel::RandomSelect(G4double k,
                                                      const G4String& particle)
 {
   G4int level = 0;
+  g_lastIonSigma_cm2 = -1.0;
 
   auto pos = tableData.find(particle);
 
@@ -859,6 +879,7 @@ G4int G4DNAEmfietzoglou_iceIonisationModel::RandomSelect(G4double k,
 
         if(valuesBuffer[i] > value)
         {
+          g_lastIonSigma_cm2 = valuesBuffer[i] / (cm * cm);
           delete[] valuesBuffer;
           return i;
         }
