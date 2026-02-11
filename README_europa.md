@@ -168,6 +168,11 @@ Important interpretation:
 - Older ROOT files fall back to deposition-only mode.
 - To get `exact_event_tree`, rebuild `dnaphysics` and rerun the relevant macros
   with the updated executable.
+- Sub-threshold electron handling: in ice mode, electrons below `~2 eV` can
+  otherwise become pure-transport tracks and appear as artificial boundary
+  escapes in very large slabs. The executable now stops and locally deposits
+  sub-threshold electrons in `Ice` by default (`DNA_ELECTRON_STOP_BELOW_EV=2.0`).
+  Set `DNA_ELECTRON_STOP_BELOW_EV=0` to disable this behavior.
 
 ## 5) Notes
 

@@ -32,8 +32,6 @@
 #include "G4VModularPhysicsList.hh"
 #include "globals.hh"
 
-class G4VPhysicsConstructor;
-
 class PhysicsList_Water : public G4VModularPhysicsList
 {
   public:
@@ -42,9 +40,6 @@ class PhysicsList_Water : public G4VModularPhysicsList
 
     void ConstructParticle() override;
     void ConstructProcess() override;
-
-  private:
-    G4VPhysicsConstructor* fEmPhysicsList = nullptr;
 };
 
 #endif

@@ -127,6 +127,20 @@ bool ReadEnvFlag(const char* name, bool defaultValue)
   }
   return std::strcmp(env, "0") != 0;
 }
+
+G4double ReadEnvDouble(const char* name, G4double defaultValue)
+{
+  const char* env = std::getenv(name);
+  if (!env || !*env) {
+    return defaultValue;
+  }
+  char* end = nullptr;
+  const double value = std::strtod(env, &end);
+  if (end == env) {
+    return defaultValue;
+  }
+  return static_cast<G4double>(value);
+}
 }
 
 namespace {
@@ -217,6 +231,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   G4double flagParticle = -1.;
   G4double flagProcess = -1.;
   G4double x, y, z, xp, yp, zp;
+  G4double extraDepositedEnergy = 0.0;
+  G4bool killedBelowThreshold = false;
 
 // Particle identification
   G4ParticleDefinition* partDef = step->GetTrack()->GetDynamicParticle()->GetDefinition();
@@ -247,11 +263,29 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     }
   }
 
+  // In this ice setup, below ~2 eV there are no active electron interaction
+  // models. Deposit-and-kill sub-threshold electrons before escape accounting
+  // so low-energy transport tails are not misclassified as boundary escapes.
+  static const G4double kStopBelowElectronEnergy =
+    ReadEnvDouble("DNA_ELECTRON_STOP_BELOW_EV", 2.0) * eV;
   if (fEventAction && preStep && preStep->GetPhysicalVolume() &&
       preStep->GetPhysicalVolume()->GetName() == "Ice") {
     fEventAction->AddDepositedEnergy(step->GetTotalEnergyDeposit());
 
-    if (IsIceToWorldEscape(preStep, postStep)) {
+    if (kStopBelowElectronEnergy > 0.0 &&
+        partDef == G4Electron::ElectronDefinition()) {
+      const G4double kinetic = postStep->GetKineticEnergy();
+      if (kinetic > 0.0 && kinetic < kStopBelowElectronEnergy) {
+        fEventAction->AddDepositedEnergy(kinetic);
+        extraDepositedEnergy = kinetic;
+        killedBelowThreshold = true;
+        auto* track = step->GetTrack();
+        track->SetKineticEnergy(0.0);
+        track->SetTrackStatus(fStopAndKill);
+      }
+    }
+
+    if (!killedBelowThreshold && IsIceToWorldEscape(preStep, postStep)) {
       const G4int escapeFace = ClassifyEscapeFace(preStep, postStep);
       fEventAction->AddEscapedKineticEnergy(
         postStep->GetKineticEnergy(),
@@ -436,7 +470,9 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   else if (processName=="GenericIon_G4DNAIonisation")   flagProcess =73;
 
   */
-  if (processName != "Transportation") {
+  const G4bool forceRecordKilledTransport =
+    (killedBelowThreshold && RunAction::IsMinimalLogMode());
+  if (processName != "Transportation" || forceRecordKilledTransport) {
     x = preStep->GetPosition().x() / nanometer;
     y = preStep->GetPosition().y() / nanometer;
     z = preStep->GetPosition().z() / nanometer;
@@ -450,12 +486,14 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     G4AnalysisManager* analysisManager = G4AnalysisManager::Instance();
     const G4int eventId =
       G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID();
+    const G4double totalEnergyDepositForLog =
+      (step->GetTotalEnergyDeposit() + extraDepositedEnergy) / eV;
     if (RunAction::IsMinimalLogMode()) {
       analysisManager->FillNtupleDColumn(0, 0, flagParticle);
       analysisManager->FillNtupleDColumn(0, 1, xp);
       analysisManager->FillNtupleDColumn(0, 2, yp);
       analysisManager->FillNtupleDColumn(0, 3, zp);
-      analysisManager->FillNtupleDColumn(0, 4, step->GetTotalEnergyDeposit() / eV);
+      analysisManager->FillNtupleDColumn(0, 4, totalEnergyDepositForLog);
       analysisManager->FillNtupleDColumn(0, 5, preStep->GetKineticEnergy() / eV);
       analysisManager->FillNtupleIColumn(0, 6, eventId);
       analysisManager->FillNtupleIColumn(0, 7, step->GetTrack()->GetParentID());
@@ -469,7 +507,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     analysisManager->FillNtupleDColumn(2, xp);
     analysisManager->FillNtupleDColumn(3, yp);
     analysisManager->FillNtupleDColumn(4, zp);
-    analysisManager->FillNtupleDColumn(5, step->GetTotalEnergyDeposit() / eV);
+    analysisManager->FillNtupleDColumn(5, totalEnergyDepositForLog);
 
     analysisManager->FillNtupleDColumn(
       6, std::sqrt((x - xp) * (x - xp) + (y - yp) * (y - yp) + (z - zp) * (z - zp)));

@@ -234,7 +234,9 @@ def _orthonormal_axes_from_normal(
     normal = np.asarray([nx, ny, nz], dtype=float)
     normal /= np.linalg.norm(normal)
 
-    # Build two orthonormal vectors rot1, rot2 with rot1 x rot2 = normal.
+    # Build two orthonormal vectors for GPS angular rotation.
+    # GPS interprets the directed axis with rot2 x rot1, so we return vectors
+    # that satisfy rot2 x rot1 = normal.
     ref = np.asarray([0.0, 0.0, 1.0], dtype=float)
     if abs(float(np.dot(normal, ref))) > 0.95:
         ref = np.asarray([1.0, 0.0, 0.0], dtype=float)
@@ -247,9 +249,10 @@ def _orthonormal_axes_from_normal(
     rot2 = np.cross(normal, rot1)
     rot2 /= np.linalg.norm(rot2)
 
+    # rot1_old x rot2_old = normal. Return swapped so rot2 x rot1 = normal.
     return (
-        (float(rot1[0]), float(rot1[1]), float(rot1[2])),
         (float(rot2[0]), float(rot2[1]), float(rot2[2])),
+        (float(rot1[0]), float(rot1[1]), float(rot1[2])),
     )
 
 
