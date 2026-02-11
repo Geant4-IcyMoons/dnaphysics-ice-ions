@@ -2264,7 +2264,7 @@ def plot_deflection_angles_all(arrs, out_path: str, fontsize: float = FONTSIZE):
 # -------- CLI --------
 def main():
     ap = argparse.ArgumentParser(description="Plot cross-sections, deflection angles, and summaries from dna.root and optional reference .dat")
-    ap.add_argument("--root", default="build/europa_test_water.root", help="Path to ROOT file (default: build/dna.root)")
+    ap.add_argument("--root", default="build/europa_test_icehex.root", help="Path to ROOT file (default: build/dna.root)")
     ap.add_argument("--process", type=int, default=15, help="Single process code to plot when --processes is not given (default: 15)")
     ap.add_argument("--processes", default=None, help="Comma-separated process codes or 'all' to iterate over all present in ROOT")
     ap.add_argument("--dat", default=None, help="Absolute path to a reference .dat file (energy + partial XS columns). Overrides auto lookup")

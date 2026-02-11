@@ -312,11 +312,8 @@ G4WT11 > Accumulable registered as "accumulable_3"
 G4WT6 > Using  analysis manager
 G4WT2 > ##### Create analysis manager   0x770fed500
 G4WT2 > Accumulable registered as "accumulable_0"
-G4WT3 > ##### Create analysis manager   0x770fed680
-G4WT10 > Using  analysis manager
-G4WT2 > Accumulable registered as "accumulable_1"
-G4WT2 > Accumulable registered as "accumulable_2"
-G4WT2 > Accumulable registered as "accumulable_3"
+G4WT3 > ##### Create a./run_per_energy.sh: line 47: 52886 Killed: 9               DNA_PHYSICS="${PHYSICS}" DNA_NTUPLE_FILES=0 DNA_ROOT_BASENAME="${root_basename}" "${DNAPHYSICS_BIN}" "${macro_path}" "${THREADS}"
+red as "accumulable_3"
 G4WT0 > ##### Create analysis manager   0x770fee100
 G4WT0 > Accumulable registered as "accumulable_0"
 G4WT0 > Accumulable registered as "accumulable_1"

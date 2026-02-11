@@ -133,7 +133,19 @@ void G4DNAMichaud_ELSEPA_LOW_ElasticModel::Initialise(const G4ParticleDefinition
   // Tables use the same 10^-16 cm^2 units as standard G4DNA data.
   G4double scaleFactor = 1e-16*cm*cm;
 
-  G4String fileElectron("dna/sigma_elastic_e_michaud_elsepa_low");
+  // Simple table selector:
+  //   false -> legacy LOW tables
+  //   true  -> corrected-forward LOW tables
+  const G4bool useCorrectedForward = false;
+
+  const G4String sigmaFileBase = useCorrectedForward
+      ? "dna/sigma_elastic_e_michaud_elsepa_low_corrected_forward"
+      : "dna/sigma_elastic_e_michaud_elsepa_low";
+  const G4String cdfFileName = useCorrectedForward
+      ? "sigmadiff_cumulated_elastic_e_michaud_elsepa_low_corrected_forward.dat"
+      : "sigmadiff_cumulated_elastic_e_michaud_elsepa_low.dat";
+
+  G4String fileElectron(sigmaFileBase);
   ModelDataRegistry::Instance().Record(
     std::string("model_ref:") + GetName(),
     ModelDataRegistry::NormalizeDatBasename(fileElectron));
@@ -157,19 +169,28 @@ void G4DNAMichaud_ELSEPA_LOW_ElasticModel::Initialise(const G4ParticleDefinition
   }
 
   std::ostringstream eFullFileName;
-  eFullFileName << path << "/dna/sigmadiff_cumulated_elastic_e_michaud_elsepa_low.dat";
+  eFullFileName << path << "/dna/" << cdfFileName;
   std::ifstream eDiffCrossSection(eFullFileName.str().c_str());
 
   if (!eDiffCrossSection)
   {
     G4ExceptionDescription errMsg;
-    errMsg << "Missing data file:/dna/sigmadiff_cumulated_elastic_e_michaud_elsepa_low.dat";
+    errMsg << "Missing data file:/dna/" << cdfFileName;
     
     G4Exception("G4DNAMichaud_ELSEPA_LOW_ElasticModel::Initialise",
                 "em0003",
                 FatalException,
                 errMsg);
   }
+
+#ifdef MICHAUD_VERBOSE
+  if (verboseLevel > 0)
+  {
+    G4cout << "G4DNAMichaud_ELSEPA_LOW_ElasticModel: using LOW tables variant = "
+           << (useCorrectedForward ? "corrected_forward" : "legacy")
+           << G4endl;
+  }
+#endif
 
   // March 25th, 2014 - Vaclav Stepan, Sebastien Incerti
   // Added clear for MT
