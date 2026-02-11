@@ -37,6 +37,7 @@
 /// \brief Implementation of the TrackingAction class
 
 #include "TrackingAction.hh"
+#include "RunAction.hh"
 
 #include "G4Alpha.hh"
 #include "G4AnalysisManager.hh"
@@ -56,6 +57,10 @@ TrackingAction::TrackingAction() {}
 
 void TrackingAction::PreUserTrackingAction(const G4Track* aTrack)
 {
+  if (!RunAction::IsTrackNtupleEnabled()) {
+    return;
+  }
+
   G4double flagParticle = -1.;
   G4double x, y, z, dirx, diry, dirz;
 

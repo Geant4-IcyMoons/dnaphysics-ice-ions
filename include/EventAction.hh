@@ -32,13 +32,27 @@
 #include "G4UserEventAction.hh"
 #include "globals.hh"
 
+class RunAction;
+
 class EventAction : public G4UserEventAction
 {
   public:
-    EventAction();
+    enum EscapeFace
+    {
+      kEscapeUnknown = 0,
+      kEscapeTop = 1,
+      kEscapeBottom = 2,
+      kEscapeSide = 3
+    };
+
+    explicit EventAction(RunAction* runAction);
     ~EventAction() override = default;
 
+    void BeginOfEventAction(const G4Event* event) override;
     void EndOfEventAction(const G4Event* event) override;
+    void AddInelastic();
+    void AddDepositedEnergy(G4double eDep);
+    void AddEscapedKineticEnergy(G4double kineticEnergy, G4int particleFlag, G4int escapeFace);
 
   private:
     void MaybeRotate();
@@ -52,6 +66,17 @@ class EventAction : public G4UserEventAction
     G4long fMaxBytes {1024L * 1024L * 1024L};
     G4int fSplitEveryEvents {0};
     G4bool fInitialized {false};
+    RunAction* fRunAction {nullptr};
+    G4double fNbInelastic {0.0};
+    G4double fPrimaryEnergy {0.0};
+    G4bool fHasPrimaryEnergy {false};
+    G4double fDepositedEnergy {0.0};
+    G4double fEscapedEnergy {0.0};
+    G4double fEscapedBackEnergy {0.0};
+    G4double fEscapedForwardEnergy {0.0};
+    G4double fEscapedLateralEnergy {0.0};
+    G4int fEscapedTracks {0};
+    G4int fEscapedElectrons {0};
 };
 
 #endif

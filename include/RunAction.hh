@@ -41,23 +41,55 @@
 
 #include "DetectorConstruction.hh"
 
+#include "G4Accumulable.hh"
 #include "G4UserRunAction.hh"
 #include "globals.hh"
 
 #include <iostream>
+#include <string>
 
 class G4Run;
 
 class RunAction : public G4UserRunAction
 {
   public:
+    enum class LogMode
+    {
+      kFull,
+      kMinimal
+    };
+
     RunAction();
     virtual ~RunAction();
 
     virtual void BeginOfRunAction(const G4Run*);
     virtual void EndOfRunAction(const G4Run*);
+    void AccumulateEventIonisations(G4double nInelastic);
+    void AccumulatePrimaryEnergy(G4double energy);
+
+    static void SetLogMode(const G4String& mode);
+    static G4String GetLogModeName();
+    static G4bool IsFullLogMode();
+    static G4bool IsMinimalLogMode();
+    static G4bool IsStepModelDetailEnabled();
+    static G4bool IsTrackNtupleEnabled();
+    G4int GetEventNtupleId() const { return fEventNtupleId; }
 
   private:
+    static LogMode ParseLogMode(const std::string& mode);
+    void ConfigureNtuples();
+
+    void PrintWValueSummary(const G4Run* aRun);
     G4int fConfigNtupleId;
+    G4int fEventNtupleId;
+    G4bool fNtuplesBooked = false;
+    G4bool fEnableStringColumns = false;
+    LogMode fBookedMode = LogMode::kFull;
+    G4Accumulable<G4double> fInelasticSum = 0.0;
+    G4Accumulable<G4double> fInelasticSqSum = 0.0;
+    G4Accumulable<G4double> fPrimaryEnergySum = 0.0;
+    G4Accumulable<G4double> fPrimaryEnergyCount = 0.0;
+
+    static LogMode fLogMode;
 };
 #endif

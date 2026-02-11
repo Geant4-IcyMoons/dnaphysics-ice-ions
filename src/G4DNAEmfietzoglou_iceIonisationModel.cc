@@ -57,15 +57,14 @@ std::string NormalizeIcePhase(const char* raw)
 {
   if (!raw) return {};
   std::string phase = ToLower(raw);
-  if (phase == "ice_hex" || phase == "hex" || phase == "hexagonal" ||
-      phase == "crystalline") {
+  if (phase == "water") return {};
+  if (phase == "ice_hex") {
     return "hexagonal";
   }
-  if (phase == "ice_am" || phase == "am" || phase == "amo" ||
-      phase == "amorphous") {
+  if (phase == "ice_am") {
     return "amorphous";
   }
-  return phase;
+  return {};
 }
 
 std::string BuildDataPath(const char* data_dir, const std::string& filename)
@@ -206,7 +205,8 @@ void G4DNAEmfietzoglou_iceIonisationModel::Initialise(const G4ParticleDefinition
       : "sigmadiff_ionisation_e_emfietzoglou.dat";
   std::string diffFileToUse = defaultDiffFile;
 
-  const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_ICE_PHASE"));
+  // Phase is encoded in DNA_PHYSICS (water | ice_hex | ice_am).
+  const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_PHYSICS"));
   if (!icePhase.empty()) {
     const std::string phaseTotalFile =
         "sigma_ionisation_e_" + icePhase + "_ice_emfietzoglou_kyriakou";

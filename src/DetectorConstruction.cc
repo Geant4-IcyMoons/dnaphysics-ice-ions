@@ -46,6 +46,57 @@
 #include "G4SystemOfUnits.hh"
 #include "G4UserLimits.hh"
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <string>
+
+namespace {
+std::string ToLower(std::string s)
+{
+  for (auto& ch : s) ch = static_cast<char>(std::tolower(ch));
+  return s;
+}
+
+bool IsIcePhysicsEnabled()
+{
+  const char* env = std::getenv("DNA_PHYSICS");
+  if (!env || !*env) return true;  // project default is ice
+  const std::string val = ToLower(std::string(env));
+  return val != "water";
+}
+
+bool ResolveIcePhaseDensity(G4double& density, G4String& materialName)
+{
+  if (!IsIcePhysicsEnabled()) return false;
+
+  const char* env = std::getenv("DNA_PHYSICS");
+  if (!env || !*env) return false;
+  const std::string phase = ToLower(std::string(env));
+
+  if (phase == "ice_am") {
+    density = 0.94 * g / cm3;
+    materialName = "G4_WATER_ICE_AMORPHOUS";
+    return true;
+  }
+  if (phase == "ice_hex") {
+    density = 0.917 * g / cm3;
+    materialName = "G4_WATER_ICE_HEXAGONAL";
+    return true;
+  }
+  return false;
+}
+
+G4Material* BuildNominalIceMaterial()
+{
+  G4double density = 0.;
+  G4String name;
+  if (!ResolveIcePhaseDensity(density, name)) return nullptr;
+  if (auto* existing = G4Material::GetMaterial(name, false)) {
+    return existing;
+  }
+  return G4NistManager::Instance()->BuildMaterialWithNewDensity(name, "G4_WATER", density);
+}
+}  // namespace
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
@@ -88,8 +139,12 @@ void DetectorConstruction::DefineMaterials()
   // Water is defined from NIST material database
   G4NistManager* man = G4NistManager::Instance();
 
+  // Some DNA models query G4_WATER internally even when the target is ice.
+  // Ensure it is present in the material table to avoid null lookups.
+  man->FindOrBuildMaterial("G4_WATER");
   G4Material* H2O = man->FindOrBuildMaterial("G4_ICE");
   G4Material* vacuum = man->FindOrBuildMaterial("G4_Galactic");
+  G4Material* nominalIce = BuildNominalIceMaterial();
 
   /*
    If one wishes to test other density value for water material,
@@ -104,7 +159,12 @@ void DetectorConstruction::DefineMaterials()
    */
 
   if (!fpWaterMaterial) {
-    fpWaterMaterial = H2O;
+    fpWaterMaterial = nominalIce ? nominalIce : H2O;
+  }
+  if (nominalIce &&
+      (fpWaterMaterial->GetName() == "G4_WATER" ||
+       fpWaterMaterial->GetName() == "G4_ICE")) {
+    fpWaterMaterial = nominalIce;
   }
   if (!fpWorldMaterial) {
     fpWorldMaterial = vacuum;
@@ -193,9 +253,16 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
 void DetectorConstruction::SetMaterial(const G4String& materialChoice)
 {
-  // Search the material by its name
-  G4Material* pttoMaterial =
-    G4NistManager::Instance()->FindOrBuildMaterial(materialChoice);
+  G4Material* pttoMaterial = nullptr;
+  if (materialChoice == "G4_WATER") {
+    // In ice-physics mode, enforce nominal phase densities unless user later
+    // overrides with /dna/test/setMatDens.
+    pttoMaterial = BuildNominalIceMaterial();
+  }
+  if (!pttoMaterial) {
+    // Search the material by its name
+    pttoMaterial = G4NistManager::Instance()->FindOrBuildMaterial(materialChoice);
+  }
 
   if (pttoMaterial) {
     fpWaterMaterial = pttoMaterial;

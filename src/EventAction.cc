@@ -28,8 +28,13 @@
 
 #include "EventAction.hh"
 
+#include "RunAction.hh"
+
 #include "G4AnalysisManager.hh"
 #include "G4Event.hh"
+#include "G4PrimaryParticle.hh"
+#include "G4PrimaryVertex.hh"
+#include "G4RunManager.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4ios.hh"
 
@@ -37,6 +42,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <string>
 
@@ -64,9 +70,26 @@ bool FileExists(const std::string& path)
   std::error_code ec;
   return std::filesystem::exists(path, ec);
 }
+
+void WarnRotationDisabledInMT()
+{
+  static std::once_flag once;
+  std::call_once(once, []() {
+    G4cout << "EventAction: ROOT rotation is disabled in multi-thread mode."
+           << " Use multiple runs (separate output files) to keep files small."
+           << G4endl;
+  });
 }
 
-EventAction::EventAction()
+bool IsRotationUnsafeInCurrentRun()
+{
+  auto* runManager = G4RunManager::GetRunManager();
+  if (!runManager) return false;
+  return runManager->GetNumberOfThreads() > 1;
+}
+}
+
+EventAction::EventAction(RunAction* runAction) : fRunAction(runAction)
 {
   const G4long splitEvents = ReadEnvLong("DNA_ROOT_SPLIT_EVENTS", 10);
   if (splitEvents > 0) {
@@ -78,9 +101,64 @@ EventAction::EventAction()
   if (fCheckEvery < 1) fCheckEvery = 1;
 }
 
+void EventAction::BeginOfEventAction(const G4Event* event)
+{
+  fNbInelastic = 0.0;
+  fPrimaryEnergy = 0.0;
+  fHasPrimaryEnergy = false;
+  fDepositedEnergy = 0.0;
+  fEscapedEnergy = 0.0;
+  fEscapedBackEnergy = 0.0;
+  fEscapedForwardEnergy = 0.0;
+  fEscapedLateralEnergy = 0.0;
+  fEscapedTracks = 0;
+  fEscapedElectrons = 0;
+  if (!event) return;
+
+  const auto* vertex = event->GetPrimaryVertex();
+  if (!vertex) return;
+  const auto* particle = vertex->GetPrimary();
+  if (!particle) return;
+
+  fPrimaryEnergy = particle->GetKineticEnergy();
+  fHasPrimaryEnergy = true;
+}
+
 void EventAction::EndOfEventAction(const G4Event* event)
 {
   if (!event) return;
+  if (fRunAction) {
+    fRunAction->AccumulateEventIonisations(fNbInelastic);
+    if (fHasPrimaryEnergy) {
+      fRunAction->AccumulatePrimaryEnergy(fPrimaryEnergy);
+    }
+  }
+
+  auto* analysisManager = G4AnalysisManager::Instance();
+  if (analysisManager && fRunAction) {
+    const G4int eventNtupleId = fRunAction->GetEventNtupleId();
+    if (eventNtupleId >= 0) {
+      const G4double closureEnergy = fPrimaryEnergy - fDepositedEnergy - fEscapedEnergy;
+      const G4double closureFraction = (fPrimaryEnergy > 0.0) ? (closureEnergy / fPrimaryEnergy) : 0.0;
+      analysisManager->FillNtupleIColumn(eventNtupleId, 0, event->GetEventID());
+      analysisManager->FillNtupleDColumn(eventNtupleId, 1, fPrimaryEnergy / eV);
+      analysisManager->FillNtupleDColumn(eventNtupleId, 2, fDepositedEnergy / eV);
+      analysisManager->FillNtupleDColumn(eventNtupleId, 3, fEscapedEnergy / eV);
+      analysisManager->FillNtupleDColumn(eventNtupleId, 4, fEscapedBackEnergy / eV);
+      analysisManager->FillNtupleDColumn(eventNtupleId, 5, fEscapedForwardEnergy / eV);
+      analysisManager->FillNtupleDColumn(eventNtupleId, 6, fEscapedLateralEnergy / eV);
+      analysisManager->FillNtupleDColumn(eventNtupleId, 7, closureEnergy / eV);
+      analysisManager->FillNtupleDColumn(eventNtupleId, 8, closureFraction);
+      analysisManager->FillNtupleIColumn(eventNtupleId, 9, fEscapedTracks);
+      analysisManager->FillNtupleIColumn(eventNtupleId, 10, fEscapedElectrons);
+      analysisManager->AddNtupleRow(eventNtupleId);
+    }
+  }
+
+  if (IsRotationUnsafeInCurrentRun()) {
+    WarnRotationDisabledInMT();
+    return;
+  }
   const G4int eventId = event->GetEventID();
   if (fSplitEveryEvents > 0) {
     if (((eventId + 1) % fSplitEveryEvents) == 0) {
@@ -90,6 +168,43 @@ void EventAction::EndOfEventAction(const G4Event* event)
   }
   if ((eventId % fCheckEvery) != 0) return;
   MaybeRotate();
+}
+
+void EventAction::AddInelastic()
+{
+  ++fNbInelastic;
+}
+
+void EventAction::AddDepositedEnergy(G4double eDep)
+{
+  if (eDep <= 0.0) return;
+  fDepositedEnergy += eDep;
+}
+
+void EventAction::AddEscapedKineticEnergy(G4double kineticEnergy, G4int particleFlag, G4int escapeFace)
+{
+  if (kineticEnergy <= 0.0) return;
+
+  fEscapedEnergy += kineticEnergy;
+  ++fEscapedTracks;
+  if (particleFlag == 1) {
+    ++fEscapedElectrons;
+  }
+
+  switch (escapeFace) {
+    case EventAction::kEscapeTop:
+      fEscapedBackEnergy += kineticEnergy;
+      break;
+    case EventAction::kEscapeBottom:
+      fEscapedForwardEnergy += kineticEnergy;
+      break;
+    case EventAction::kEscapeSide:
+      fEscapedLateralEnergy += kineticEnergy;
+      break;
+    default:
+      // Keep unknown escapes in the total only.
+      break;
+  }
 }
 
 void EventAction::MaybeRotate()

@@ -39,9 +39,11 @@
 #include "SteppingAction.hh"
 
 #include "DetectorConstruction.hh"
+#include "EventAction.hh"
 #include "PrimaryGeneratorAction.hh"
 #include "RunAction.hh"
 
+#include "G4Box.hh"
 #include "G4Alpha.hh"
 #include "G4AnalysisManager.hh"
 #include "G4DNAGenericIonsManager.hh"
@@ -68,14 +70,18 @@
 #include "G4DNABornExcitationModel1Tracked.hh"
 #include "G4DNAMichaudExcitationModel.hh"
 #include "G4DNASancheExcitationModel.hh"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 #include <mutex>
 #include <set>
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-SteppingAction::SteppingAction() : G4UserSteppingAction() {}
+SteppingAction::SteppingAction(EventAction* eventAction)
+  : G4UserSteppingAction(), fEventAction(eventAction)
+{}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -152,6 +158,53 @@ void SetHighEnergyFallbackActive(const G4Track* track)
 }
 }
 
+namespace {
+bool IsIceToWorldEscape(const G4StepPoint* preStep, const G4StepPoint* postStep)
+{
+  if (!preStep || !postStep) return false;
+  if (postStep->GetStepStatus() != fGeomBoundary) return false;
+  const auto* postProc = postStep->GetProcessDefinedStep();
+  if (!postProc || postProc->GetProcessName() != "Transportation") return false;
+  const auto* prePV = preStep->GetPhysicalVolume();
+  const auto* postPV = postStep->GetPhysicalVolume();
+  if (!prePV || !postPV) return false;
+  return (prePV->GetName() == "Ice" && postPV->GetName() == "World");
+}
+
+G4int ClassifyEscapeFace(const G4StepPoint* preStep, const G4StepPoint* postStep)
+{
+  if (!preStep || !postStep) {
+    return EventAction::kEscapeUnknown;
+  }
+
+  const auto* prePV = preStep->GetPhysicalVolume();
+  if (!prePV || !prePV->GetLogicalVolume()) {
+    return EventAction::kEscapeUnknown;
+  }
+
+  const auto* box = dynamic_cast<const G4Box*>(prePV->GetLogicalVolume()->GetSolid());
+  if (!box) {
+    return EventAction::kEscapeUnknown;
+  }
+
+  const auto center = prePV->GetObjectTranslation();
+  const auto local = postStep->GetPosition() - center;
+  const G4double dx = std::abs(std::abs(local.x()) - box->GetXHalfLength());
+  const G4double dy = std::abs(std::abs(local.y()) - box->GetYHalfLength());
+  const G4double dz = std::abs(std::abs(local.z()) - box->GetZHalfLength());
+
+  if (dz <= dx && dz <= dy) {
+    return (local.z() < 0.0) ? EventAction::kEscapeTop : EventAction::kEscapeBottom;
+  }
+
+  if (dx <= dz || dy <= dz) {
+    return EventAction::kEscapeSide;
+  }
+
+  return EventAction::kEscapeUnknown;
+}
+}
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 void SteppingAction::UserSteppingAction(const G4Step* step)
@@ -192,6 +245,26 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     if (model) {
       modelName = model->GetName();
     }
+  }
+
+  if (fEventAction && preStep && preStep->GetPhysicalVolume() &&
+      preStep->GetPhysicalVolume()->GetName() == "Ice") {
+    fEventAction->AddDepositedEnergy(step->GetTotalEnergyDeposit());
+
+    if (IsIceToWorldEscape(preStep, postStep)) {
+      const G4int escapeFace = ClassifyEscapeFace(preStep, postStep);
+      fEventAction->AddEscapedKineticEnergy(
+        postStep->GetKineticEnergy(),
+        static_cast<G4int>(flagParticle),
+        escapeFace
+      );
+    }
+  }
+
+  if (fEventAction &&
+      partDef == G4Electron::ElectronDefinition() &&
+      processName.find("G4DNAIonisation") != std::string::npos) {
+    fEventAction->AddInelastic();
   }
 
 
@@ -375,6 +448,20 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     // get analysis manager
 
     G4AnalysisManager* analysisManager = G4AnalysisManager::Instance();
+    const G4int eventId =
+      G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID();
+    if (RunAction::IsMinimalLogMode()) {
+      analysisManager->FillNtupleDColumn(0, 0, flagParticle);
+      analysisManager->FillNtupleDColumn(0, 1, xp);
+      analysisManager->FillNtupleDColumn(0, 2, yp);
+      analysisManager->FillNtupleDColumn(0, 3, zp);
+      analysisManager->FillNtupleDColumn(0, 4, step->GetTotalEnergyDeposit() / eV);
+      analysisManager->FillNtupleDColumn(0, 5, preStep->GetKineticEnergy() / eV);
+      analysisManager->FillNtupleIColumn(0, 6, eventId);
+      analysisManager->FillNtupleIColumn(0, 7, step->GetTrack()->GetParentID());
+      analysisManager->AddNtupleRow(0);
+      return;
+    }
 
     // fill ntuple
     analysisManager->FillNtupleDColumn(0, flagParticle);
@@ -395,8 +482,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     analysisManager->FillNtupleDColumn(9, preStep->GetMomentumDirection()
                                             * postStep->GetMomentumDirection());
 
-    analysisManager->FillNtupleIColumn(
-      10, G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID());
+    analysisManager->FillNtupleIColumn(10, eventId);
 
     analysisManager->FillNtupleIColumn(11, step->GetTrack()->GetTrackID());
 
@@ -415,7 +501,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     }
 
     // Compute macroscopic cross section for the actual process (if available)
-    static G4EmCalculator* emCal = nullptr;
+    // G4EmCalculator keeps mutable state and must not be shared across worker threads.
+    static thread_local G4EmCalculator* emCal = nullptr;
     if (!emCal) {
       // Avoid destructor-order crashes at shutdown by keeping this alive.
       emCal = new G4EmCalculator();

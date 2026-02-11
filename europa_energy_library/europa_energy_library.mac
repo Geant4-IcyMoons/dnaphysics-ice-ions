@@ -1,0 +1,3228 @@
+# Global Europa energy-library macro (auto-generated)
+# One monoenergetic run per global energy bin center.
+# Reweight per-cell offline using the generated scaling table.
+# Energies: 1600 bins
+# Particles per energy: 1000
+# Angular distribution: none
+
+/control/verbose 0
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+
+/run/numberOfThreads 12
+/dna/test/setLogMode minimal
+
+/dna/test/setIceSize 1000 1000 1000 mm
+/dna/test/setMatDens G4_WATER_ICE_USER 0.5 g/cm3
+/dna/test/setMat G4_WATER_ICE_USER
+
+/run/initialize
+
+/gps/particle e-
+/gps/number 1
+/gps/pos/type Point
+/gps/pos/centre 0 0 -0.01 mm
+/gps/direction 0 0 1
+/gps/ene/type Mono
+
+/gps/ene/mono 0.00291062424 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00292969248 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00294888565 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00296820455 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00298765002 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00300722288 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00302692396 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00304675411 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00306671418 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00308680501 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00310702745 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00312738238 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00314787067 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00316849317 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00318925078 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00321014437 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00323117485 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0032523431 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00327365003 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00329509655 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00331668357 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00333841201 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0033602828 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00338229687 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00340445516 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00342675862 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00344920819 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00347180483 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00349454952 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0035174432 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00354048687 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0035636815 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00358702809 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00361052763 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00363418112 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00365798957 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00368195399 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00370607541 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00373035486 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00375479337 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00377939198 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00380415174 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00382907371 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00385415895 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00387940853 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00390482353 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00393040502 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00395615411 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00398207189 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00400815946 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00403441793 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00406084844 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00408745209 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00411423004 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00414118341 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00416831336 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00419562104 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00422310763 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00425077429 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0042786222 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00430665254 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00433486652 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00436326534 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00439185021 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00442062234 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00444958297 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00447873332 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00450807465 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0045376082 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00456733523 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00459725701 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00462737481 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00465768993 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00468820364 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00471891726 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0047498321 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00478094946 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00481227068 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00484379709 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00487553005 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00490747089 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00493962099 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0049719817 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00500455443 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00503734054 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00507034145 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00510355855 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00513699326 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00517064702 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00520452125 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0052386174 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00527293692 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00530748128 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00534225194 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0053772504 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00541247814 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00544793667 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00548362749 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00551955214 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00555571213 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00559210902 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00562874436 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0056656197 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00570273662 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00574009671 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00577770155 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00581555275 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00585365192 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00589200069 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00593060069 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00596945357 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00600856098 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0060479246 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0060875461 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00612742717 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00616756951 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00620797484 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00624864486 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00628958133 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00633078599 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00637226058 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00641400689 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00645602669 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00649832177 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00654089393 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.006583745 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0066268768 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00667029116 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00671398994 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00675797501 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00680224823 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00684681149 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0068916667 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00693681577 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00698226063 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0070280032 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00707404544 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00712038932 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00716703681 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0072139899 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00726125059 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0073088209 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00735670285 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00740489849 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00745340987 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00750223907 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00755138815 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00760085922 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00765065439 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00770077579 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00775122554 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00780200579 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00785311873 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00790456651 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00795635135 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00800847544 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00806094101 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00811375029 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00816690554 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00822040903 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00827426303 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00832846984 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00838303177 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00843795116 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00849323033 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00854887165 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00860487749 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00866125024 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00871799231 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0087751061 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00883259406 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00889045864 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00894870231 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00900732755 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00906633685 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00912573274 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00918551774 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00924569442 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00930626532 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00936723305 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00942860018 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00949036935 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00955254319 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00961512434 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00967811547 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00974151928 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00980533846 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00986957574 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00993423385 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.00999931555 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0100648236 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0101307609 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0101971301 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0102639341 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0103311757 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0103988579 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0104669835 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0105355553 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0106045765 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0106740498 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0107439782 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0108143647 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0108852124 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0109565242 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0110283032 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0111005524 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.011173275 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.011246474 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0113201525 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0113943137 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0114689607 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0115440968 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0116197252 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.011695849 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0117724714 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0118495959 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0119272256 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.012005364 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0120840142 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0121631796 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0122428637 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0123230698 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0124038014 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0124850619 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0125668547 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0126491834 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0127320514 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0128154624 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0128994197 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0129839271 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0130689881 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0131546064 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0132407856 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0133275294 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0134148414 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0135027255 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0135911853 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0136802246 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0137698473 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.013860057 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0139508578 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0140422535 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0141342478 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0142268449 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0143200486 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0144138629 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0145082918 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0146033393 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0146990095 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0147953065 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0148922343 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0149897972 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0150879992 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0151868445 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0152863374 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0153864821 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0154872829 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.015588744 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0156908699 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0157936648 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0158971331 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0160012793 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0161061077 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.016211623 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0163178295 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0164247317 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0165323343 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0166406419 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.016749659 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0168593903 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0169698404 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0170810142 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0171929163 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0173055515 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0174189246 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0175330404 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0176479038 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0177635198 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0178798931 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0179970289 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.018114932 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0182336075 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0183530606 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0184732961 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0185943194 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0187161356 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0188387498 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0189621672 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0190863932 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0192114331 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0193372921 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0194639756 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0195914891 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0197198379 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0198490276 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0199790637 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0201099516 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0202416971 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0203743056 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0205077829 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0206421346 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0207773665 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0209134843 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0210504939 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0211884011 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0213272117 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0214669317 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0216075671 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0217491238 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0218916078 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0220350253 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0221793824 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0223246852 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0224709399 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0226181528 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0227663301 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0229154781 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0230656033 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.023216712 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0233688106 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0235219056 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0236760036 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0238311112 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0239872349 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0241443814 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0243025574 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0244617697 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.024622025 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0247833301 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0249456921 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0251091177 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0252736139 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0254391878 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0256058464 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0257735969 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0259424463 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0261124019 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0262834709 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0264556606 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0266289784 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0268034317 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0269790278 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0271557743 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0273336787 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0275127486 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0276929917 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0278744155 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0280570279 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0282408367 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0284258496 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0286120746 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0287995197 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0289881927 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0291781017 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0293692549 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0295616604 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0297553264 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0299502611 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.030146473 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0303439702 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0305427613 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0307428547 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.030944259 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0311469828 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0313510346 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0315564233 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0317631575 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.031971246 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0321806978 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0323915218 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0326037269 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0328173223 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0330323169 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0332487201 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0334665409 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0336857888 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.033906473 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.034128603 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0343521882 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0345772381 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0348037624 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0350317708 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0352612729 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0354922785 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0357247975 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0359588397 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0361944153 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0364315341 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0366702064 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0369104423 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0371522521 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0373956459 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0376406344 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0378872278 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0381354367 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0383852717 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0386367434 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0388898626 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.03914464 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0394010866 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0396592131 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0399190308 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0401805505 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0404437836 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0407087412 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0409754345 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0412438751 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0415140742 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0417860435 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0420597946 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.042335339 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0426126887 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0428918553 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0431728508 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0434556871 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0437403764 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0440269308 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0443153625 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0446056838 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.044897907 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0451920447 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0454881093 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0457861135 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.04608607 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0463879917 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0466918912 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0469977817 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0473056762 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0476155878 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0479275297 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0482415152 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0485575577 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0488756706 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0491958676 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0495181623 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0498425685 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0501690999 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0504977704 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0508285942 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0511615853 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.051496758 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0518341264 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.052173705 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0525155083 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0528595508 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0532058472 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0535544123 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0539052609 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0542584081 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0546138688 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0549716582 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0553317915 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0556942842 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0560591517 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0564264096 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0567960734 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.057168159 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0575426822 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.057919659 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0582991055 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0586810378 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0590654723 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0594524253 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0598419133 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.060233953 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.060628561 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0610257542 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0614255495 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0618279639 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0622330147 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0626407191 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0630510945 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0634641583 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0638799282 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0642984219 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0647196573 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0651436523 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.065570425 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0659999937 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0664323765 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0668675919 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0673056586 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0677465952 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0681904204 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0686371533 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0690868128 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0695394182 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0699949887 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0704535437 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0709151029 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0713796859 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0718473124 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0723180025 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0727917762 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0732686538 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0737486554 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0742318017 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0747181132 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0752076107 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0757003149 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.076196247 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0766954281 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0771978795 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0777036225 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0782126788 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.07872507 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0792408181 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0797599449 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0802824727 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0808084237 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0813378203 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0818706851 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0824070409 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0829469105 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0834903169 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0840372833 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.084587833 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0851419895 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0856997764 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0862612176 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0868263368 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0873951583 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0879677064 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0885440053 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0891240797 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0897079543 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.090295654 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0908872039 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0914826292 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0920819553 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0926852077 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0932924122 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0939035946 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.094518781 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0951379977 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.095761271 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0963886276 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0970200941 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0976556975 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.098295465 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0989394237 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.0995876011 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.100240025 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.100896723 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.101557723 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.102223054 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.102892743 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.10356682 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.104245312 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.10492825 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.105615662 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.106307577 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.107004025 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.107705036 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.108410639 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.109120865 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.109835744 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.110555306 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.111279582 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.112008603 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.1127424 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.113481004 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.114224447 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.11497276 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.115725976 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.116484127 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.117247244 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.118015361 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.118788509 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.119566723 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.120350035 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.121138479 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.121932088 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.122730897 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.123534938 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.124344247 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.125158858 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.125978806 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.126804125 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.127634851 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.12847102 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.129312666 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.130159827 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.131012537 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.131870833 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.132734753 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.133604332 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.134479608 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.135360619 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.136247401 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.137139992 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.138038431 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.138942756 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.139853006 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.140769219 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.141691434 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.14261969 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.143554028 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.144494488 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.145441108 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.14639393 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.147352994 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.148318341 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.149290012 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.150268049 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.151252494 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.152243387 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.153240773 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.154244692 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.155255189 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.156272305 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.157296085 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.158326572 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.159363809 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.160407842 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.161458715 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.162516472 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.163581159 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.164652821 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.165731504 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.166817253 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.167910116 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.169010138 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.170117367 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.171231849 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.172353632 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.173482765 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.174619295 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.175763271 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.176914741 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.178073754 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.179240361 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.180414611 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.181596553 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.182786238 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.183983717 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.185189042 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.186402263 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.187623431 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.1888526 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.190089822 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.191335149 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.192588634 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.193850332 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.195120295 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.196398578 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.197685235 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.198980322 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.200283892 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.201596003 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.20291671 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.20424607 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.205584138 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.206930972 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.20828663 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.209651168 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.211024647 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.212407123 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.213798657 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.215199306 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.216609132 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.218028194 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.219456552 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.220894268 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.222341403 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.223798018 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.225264176 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.226739939 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.22822537 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.229720533 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.231225491 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.232740308 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.23426505 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.23579978 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.237344564 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.238899469 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.240464561 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.242039905 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.243625571 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.245221624 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.246828134 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.248445168 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.250072795 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.251711086 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.25336011 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.255019937 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.256690637 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.258372283 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.260064946 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.261768698 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.263483612 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.26520976 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.266947217 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.268696057 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.270456353 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.272228182 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.274011618 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.275806738 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.277613619 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.279432336 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.281262969 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.283105595 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.284960292 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.286827139 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.288706217 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.290597605 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.292501385 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.294417636 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.296346441 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.298287882 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.300242042 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.302209005 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.304188853 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.306181672 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.308187546 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.310206562 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.312238804 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.31428436 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.316343317 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.318415763 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.320501786 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.322601475 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.32471492 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.32684221 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.328983437 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.331138692 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.333308066 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.335491652 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.337689544 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.339901834 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.342128618 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.34436999 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.346626046 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.348896882 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.351182594 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.353483281 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.35579904 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.358129971 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.360476172 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.362837743 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.365214786 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.367607401 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.370015691 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.372439759 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.374879707 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.377335639 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.379807662 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.382295879 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.384800397 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.387321322 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.389858763 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.392412828 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.394983624 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.397571263 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.400175854 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.402797508 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.405436337 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.408092455 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.410765972 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.413457005 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.416165668 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.418892075 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.421636344 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.424398592 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.427178935 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.429977494 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.432794386 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.435629733 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.438483654 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.441356273 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.444247711 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.447158091 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.450087538 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.453036176 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.456004132 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.458991531 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.461998502 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.465025172 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.468071671 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.471138128 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.474224674 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.477331441 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.480458562 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.483606168 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.486774396 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.489963379 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.493173255 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.496404159 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.499656229 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.502929605 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.506224425 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.509540831 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.512878963 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.516238964 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.519620977 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.523025147 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.526451618 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.529900537 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.533372051 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.536866308 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.540383456 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.543923646 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.547487029 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.551073756 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.554683981 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.558317858 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.561975541 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.565657186 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.569362951 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.573092993 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.576847472 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.580626547 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.58443038 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.588259132 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.592112968 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.595992052 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.599896548 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.603826623 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.607782446 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.611764184 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.615772007 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.619806087 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.623866595 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.627953705 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.63206759 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.636208426 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.64037639 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.644571659 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.648794413 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.653044831 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.657323094 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.661629386 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.665963889 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.670326789 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.674718271 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.679138522 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.683587732 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.68806609 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.692573787 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.697111015 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.701677967 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.706274839 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.710901826 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.715559125 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.720246936 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.724965457 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.729714891 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.73449544 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.739307307 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.744150698 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.74902582 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.753932879 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.758872086 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.763843651 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.768847786 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.773884704 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.778954621 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.784057751 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.789194314 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.794364528 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.799568613 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.804806791 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.810079286 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.815386322 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.820728126 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.826104926 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.83151695 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.83696443 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.842447598 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.847966688 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.853521934 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.859113574 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.864741847 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.870406991 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.87610925 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.881848866 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.887626083 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.893441148 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.899294309 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.905185816 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.91111592 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.917084873 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.92309293 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.929140348 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.935227383 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.941354297 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.947521349 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.953728804 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.959976925 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.966265979 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.972596234 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.978967961 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.98538143 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.991836915 MeV
+/run/beamOn 1000
+/gps/ene/mono 0.998334692 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.00487504 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.01145823 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.01808455 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.02475428 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.03146771 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.03822512 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.0450268 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.05187304 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.05876412 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.06570036 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.07268203 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.07970945 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.0867829 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.09390269 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.10106913 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.10828251 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.11554316 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.12285136 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.13020745 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.13761173 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.14506451 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.15256612 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.16011688 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.1677171 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.17536711 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.18306724 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.19081782 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.19861917 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.20647163 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.21437554 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.22233122 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.23033902 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.23839929 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.24651236 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.25467858 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.2628983 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.27117187 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.27949964 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.28788197 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.29631921 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.30481173 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.31335989 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.32196404 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.33062457 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.33934183 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.3481162 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.35694805 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.36583777 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.37478572 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.38379229 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.39285787 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.40198284 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.41116758 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.4204125 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.42971799 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.43908444 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.44851225 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.45800182 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.46755356 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.47716788 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.48684519 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.49658589 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.5063904 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.51625915 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.52619255 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.53619103 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.54625501 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.55638492 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.5665812 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.57684427 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.58717458 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.59757257 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.60803867 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.61857335 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.62917703 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.63985019 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.65059327 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.66140672 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.67229102 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.68324663 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.69427401 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.70537363 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.71654597 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.7277915 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.7391107 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.75050406 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.76197206 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.77351519 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.78513394 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.79682881 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.80860029 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.8204489 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.83237512 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.84437948 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.85646248 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.86862464 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.88086648 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.89318852 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.90559128 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.91807529 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.93064109 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.94328922 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.9560202 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.96883459 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.98173293 MeV
+/run/beamOn 1000
+/gps/ene/mono 1.99471577 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.00778366 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.02093716 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.03417684 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.04750325 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.06091697 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.07441856 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.08800861 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.10168768 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.11545638 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.12931527 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.14326496 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.15730604 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.1714391 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.18566475 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.1999836 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.21439626 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.22890333 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.24350545 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.25820322 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.27299729 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.28788828 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.30287682 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.31796355 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.33314912 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.34843418 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.36381937 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.37930536 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.39489279 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.41058235 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.42637469 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.44227049 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.45827043 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.47437518 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.49058545 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.50690191 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.52332526 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.53985621 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.55649546 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.57324371 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.59010169 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.60707011 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.62414969 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.64134117 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.65864527 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.67606273 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.6935943 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.71124073 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.72900276 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.74688115 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.76487667 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.78299009 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.80122216 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.81957369 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.83804543 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.85663819 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.87535276 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.89418993 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.91315051 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.9322353 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.95144513 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.9707808 MeV
+/run/beamOn 1000
+/gps/ene/mono 2.99024314 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.00983299 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.02955117 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.04939854 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.06937592 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.08948419 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.10972419 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.13009679 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.15060285 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.17124326 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.19201888 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.21293061 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.23397934 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.25516597 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.27649139 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.29795652 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.31956228 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.34130958 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.36319935 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.38523253 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.40741005 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.42973287 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.45220192 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.47481818 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.4975826 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.52049616 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.54355983 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.56677459 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.59014145 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.61366138 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.6373354 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.66116451 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.68514974 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.70929209 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.73359261 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.75805233 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.78267229 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.80745355 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.83239715 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.85750416 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.88277566 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.90821271 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.93381641 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.95958785 MeV
+/run/beamOn 1000
+/gps/ene/mono 3.98552812 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.01163833 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.0379196 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.06437304 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.09099979 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.11780097 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.14477774 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.17193124 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.19926262 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.22677307 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.25446374 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.28233582 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.31039049 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.33862896 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.36705243 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.3956621 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.42445921 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.45344497 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.48262063 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.51198742 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.5415466 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.57129943 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.60124719 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.63139113 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.66173256 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.69227276 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.72301304 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.7539547 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.78509907 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.81644748 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.84800126 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.87976175 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.91173032 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.94390832 MeV
+/run/beamOn 1000
+/gps/ene/mono 4.97629713 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.00889812 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.04171269 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.07474224 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.10798817 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.14145191 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.17513487 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.2090385 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.24316424 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.27751355 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.31208789 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.34688874 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.38191757 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.41717589 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.45266519 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.48838699 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.52434282 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.5605342 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.59696268 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.63362981 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.67053716 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.7076863 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.74507881 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.78271629 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.82060034 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.85873258 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.89711463 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.93574814 MeV
+/run/beamOn 1000
+/gps/ene/mono 5.97463474 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.0137761 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.05317388 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.09282977 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.13274546 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.17292264 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.21336303 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.25406836 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.29504036 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.33628078 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.37779137 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.41957391 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.46163018 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.50396197 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.54657109 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.58945935 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.63262858 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.67608062 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.71981733 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.76384057 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.80815222 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.85275417 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.89764831 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.94283657 MeV
+/run/beamOn 1000
+/gps/ene/mono 6.98832086 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.03410314 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.08018534 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.12656945 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.17325742 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.22025127 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.26755298 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.31516457 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.36308809 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.41132556 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.45987904 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.50875062 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.55794236 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.60745637 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.65729476 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.70745966 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.75795319 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.80877753 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.85993482 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.91142727 MeV
+/run/beamOn 1000
+/gps/ene/mono 7.96325705 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.01542638 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.06793748 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.1207926 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.17399399 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.22754391 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.28144466 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.33569852 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.39030781 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.44527486 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.50060201 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.55629162 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.61234608 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.66876776 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.72555907 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.78272244 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.84026029 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.8981751 MeV
+/run/beamOn 1000
+/gps/ene/mono 8.95646932 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.01514543 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.07420596 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.1336534 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.19349029 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.2537192 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.31434268 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.37536332 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.43678372 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.4986065 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.56083429 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.62346976 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.68651557 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.74997441 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.81384898 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.87814201 MeV
+/run/beamOn 1000
+/gps/ene/mono 9.94285625 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.0079944 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.0735594 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.1395538 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.2059806 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.2728426 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.3401426 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.4078836 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.4760683 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.5446997 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.6137807 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.6833143 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.7533034 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.823751 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.8946602 MeV
+/run/beamOn 1000
+/gps/ene/mono 10.9660339 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.0378752 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.1101871 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.1829728 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.2562353 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.3299778 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.4042034 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.4789152 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.5541165 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.6298105 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.7060003 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.7826893 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.8598807 MeV
+/run/beamOn 1000
+/gps/ene/mono 11.9375779 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.015784 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.0945024 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.1737366 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.2534899 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.3337656 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.4145673 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.4958983 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.5777621 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.6601622 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.7431022 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.8265855 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.9106157 MeV
+/run/beamOn 1000
+/gps/ene/mono 12.9951965 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.0803313 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.1660239 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.2522779 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.339097 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.4264848 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.5144451 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.6029817 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.6920983 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.7817988 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.8720869 MeV
+/run/beamOn 1000
+/gps/ene/mono 13.9629664 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.0544414 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.1465156 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.2391931 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.3324777 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.4263734 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.5208842 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.6160143 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.7117675 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.8081481 MeV
+/run/beamOn 1000
+/gps/ene/mono 14.90516 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.0028075 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.1010948 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.2000259 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.2996051 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.3998368 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.500725 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.6022742 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.7044887 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.8073728 MeV
+/run/beamOn 1000
+/gps/ene/mono 15.910931 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.0151675 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.120087 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.2256938 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.3319925 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.4389875 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.5466835 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.6550851 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.7641968 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.8740233 MeV
+/run/beamOn 1000
+/gps/ene/mono 16.9845694 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.0958396 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.2078388 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.3205718 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.4340433 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.5482582 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.6632213 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.7789376 MeV
+/run/beamOn 1000
+/gps/ene/mono 17.8954119 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.0126493 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.1306548 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.2494334 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.3689901 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.48933 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.6104583 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.7323802 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.8551008 MeV
+/run/beamOn 1000
+/gps/ene/mono 18.9786254 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.1029592 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.2281076 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.3540758 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.4808693 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.6084935 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.7369537 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.8662555 MeV
+/run/beamOn 1000
+/gps/ene/mono 19.9964045 MeV
+/run/beamOn 1000
+/gps/ene/mono 20.127406 MeV
+/run/beamOn 1000
+/gps/ene/mono 20.2592658 MeV
+/run/beamOn 1000
+/gps/ene/mono 20.3919894 MeV
+/run/beamOn 1000
+/gps/ene/mono 20.5255826 MeV
+/run/beamOn 1000
+/gps/ene/mono 20.6600509 MeV
+/run/beamOn 1000
+/gps/ene/mono 20.7954002 MeV
+/run/beamOn 1000
+/gps/ene/mono 20.9316361 MeV
+/run/beamOn 1000
+/gps/ene/mono 21.0687646 MeV
+/run/beamOn 1000
+/gps/ene/mono 21.2067915 MeV
+/run/beamOn 1000
+/gps/ene/mono 21.3457226 MeV
+/run/beamOn 1000
+/gps/ene/mono 21.4855639 MeV
+/run/beamOn 1000
+/gps/ene/mono 21.6263213 MeV
+/run/beamOn 1000
+/gps/ene/mono 21.7680009 MeV
+/run/beamOn 1000
+/gps/ene/mono 21.9106086 MeV
+/run/beamOn 1000
+/gps/ene/mono 22.0541506 MeV
+/run/beamOn 1000
+/gps/ene/mono 22.198633 MeV
+/run/beamOn 1000
+/gps/ene/mono 22.3440619 MeV
+/run/beamOn 1000
+/gps/ene/mono 22.4904435 MeV
+/run/beamOn 1000
+/gps/ene/mono 22.6377842 MeV
+/run/beamOn 1000
+/gps/ene/mono 22.7860901 MeV
+/run/beamOn 1000
+/gps/ene/mono 22.9353676 MeV
+/run/beamOn 1000
+/gps/ene/mono 23.085623 MeV
+/run/beamOn 1000
+/gps/ene/mono 23.2368628 MeV
+/run/beamOn 1000
+/gps/ene/mono 23.3890935 MeV
+/run/beamOn 1000
+/gps/ene/mono 23.5423214 MeV
+/run/beamOn 1000
+/gps/ene/mono 23.6965532 MeV
+/run/beamOn 1000
+/gps/ene/mono 23.8517953 MeV
+/run/beamOn 1000
+/gps/ene/mono 24.0080545 MeV
+/run/beamOn 1000
+/gps/ene/mono 24.1653374 MeV
+/run/beamOn 1000
+/gps/ene/mono 24.3236507 MeV
+/run/beamOn 1000
+/gps/ene/mono 24.4830012 MeV
+/run/beamOn 1000
+/gps/ene/mono 24.6433956 MeV
+/run/beamOn 1000
+/gps/ene/mono 24.8048408 MeV
+/run/beamOn 1000
+/gps/ene/mono 24.9673436 MeV
+/run/beamOn 1000
+/gps/ene/mono 25.1309111 MeV
+/run/beamOn 1000
+/gps/ene/mono 25.2955501 MeV
+/run/beamOn 1000
+/gps/ene/mono 25.4612677 MeV
+/run/beamOn 1000
+/gps/ene/mono 25.628071 MeV
+/run/beamOn 1000
+/gps/ene/mono 25.795967 MeV
+/run/beamOn 1000
+/gps/ene/mono 25.964963 MeV
+/run/beamOn 1000
+/gps/ene/mono 26.1350661 MeV
+/run/beamOn 1000
+/gps/ene/mono 26.3062836 MeV
+/run/beamOn 1000
+/gps/ene/mono 26.4786228 MeV
+/run/beamOn 1000
+/gps/ene/mono 26.652091 MeV
+/run/beamOn 1000
+/gps/ene/mono 26.8266956 MeV
+/run/beamOn 1000
+/gps/ene/mono 27.0024442 MeV
+/run/beamOn 1000
+/gps/ene/mono 27.1793441 MeV
+/run/beamOn 1000
+/gps/ene/mono 27.3574029 MeV
+/run/beamOn 1000
+/gps/ene/mono 27.5366282 MeV
+/run/beamOn 1000
+/gps/ene/mono 27.7170277 MeV
+/run/beamOn 1000
+/gps/ene/mono 27.8986091 MeV
+/run/beamOn 1000
+/gps/ene/mono 28.08138 MeV
+/run/beamOn 1000
+/gps/ene/mono 28.2653483 MeV
+/run/beamOn 1000
+/gps/ene/mono 28.4505218 MeV
+/run/beamOn 1000
+/gps/ene/mono 28.6369084 MeV
+/run/beamOn 1000
+/gps/ene/mono 28.8245161 MeV
+/run/beamOn 1000
+/gps/ene/mono 29.0133529 MeV
+/run/beamOn 1000
+/gps/ene/mono 29.2034268 MeV
+/run/beamOn 1000
+/gps/ene/mono 29.3947459 MeV
+/run/beamOn 1000
+/gps/ene/mono 29.5873184 MeV
+/run/beamOn 1000
+/gps/ene/mono 29.7811525 MeV
+/run/beamOn 1000
+/gps/ene/mono 29.9762564 MeV
+/run/beamOn 1000
+/gps/ene/mono 30.1726385 MeV
+/run/beamOn 1000
+/gps/ene/mono 30.3703072 MeV
+/run/beamOn 1000
+/gps/ene/mono 30.5692708 MeV
+/run/beamOn 1000
+/gps/ene/mono 30.7695379 MeV
+/run/beamOn 1000
+/gps/ene/mono 30.971117 MeV
+/run/beamOn 1000
+/gps/ene/mono 31.1740167 MeV
+/run/beamOn 1000
+/gps/ene/mono 31.3782457 MeV
+/run/beamOn 1000
+/gps/ene/mono 31.5838126 MeV
+/run/beamOn 1000
+/gps/ene/mono 31.7907262 MeV
+/run/beamOn 1000
+/gps/ene/mono 31.9989954 MeV
+/run/beamOn 1000
+/gps/ene/mono 32.208629 MeV
+/run/beamOn 1000
+/gps/ene/mono 32.4196359 MeV
+/run/beamOn 1000
+/gps/ene/mono 32.6320252 MeV
+/run/beamOn 1000
+/gps/ene/mono 32.845806 MeV
+/run/beamOn 1000
+/gps/ene/mono 33.0609872 MeV
+/run/beamOn 1000
+/gps/ene/mono 33.2775782 MeV
+/run/beamOn 1000
+/gps/ene/mono 33.4955881 MeV
+/run/beamOn 1000
+/gps/ene/mono 33.7150263 MeV
+/run/beamOn 1000
+/gps/ene/mono 33.935902 MeV
+/run/beamOn 1000
+/gps/ene/mono 34.1582248 MeV
+/run/beamOn 1000
+/gps/ene/mono 34.3820041 MeV
+/run/beamOn 1000
+/gps/ene/mono 34.6072494 MeV
+/run/beamOn 1000
+/gps/ene/mono 34.8339703 MeV
+/run/beamOn 1000
+/gps/ene/mono 35.0621765 MeV
+/run/beamOn 1000
+/gps/ene/mono 35.2918778 MeV
+/run/beamOn 1000
+/gps/ene/mono 35.5230839 MeV
+/run/beamOn 1000
+/gps/ene/mono 35.7558047 MeV
+/run/beamOn 1000
+/gps/ene/mono 35.9900501 MeV
+/run/beamOn 1000
+/gps/ene/mono 36.2258301 MeV
+/run/beamOn 1000
+/gps/ene/mono 36.4631548 MeV
+/run/beamOn 1000
+/gps/ene/mono 36.7020342 MeV
+/run/beamOn 1000
+/gps/ene/mono 36.9424787 MeV
+/run/beamOn 1000
+/gps/ene/mono 37.1844983 MeV
+/run/beamOn 1000
+/gps/ene/mono 37.4281034 MeV
+/run/beamOn 1000
+/gps/ene/mono 37.6733045 MeV
+/run/beamOn 1000
+/gps/ene/mono 37.9201119 MeV
+/run/beamOn 1000
+/gps/ene/mono 38.1685363 MeV
+/run/beamOn 1000
+/gps/ene/mono 38.4185881 MeV
+/run/beamOn 1000
+/gps/ene/mono 38.6702781 MeV
+/run/beamOn 1000
+/gps/ene/mono 38.923617 MeV
+/run/beamOn 1000
+/gps/ene/mono 39.1786155 MeV
+/run/beamOn 1000
+/gps/ene/mono 39.4352846 MeV
+/run/beamOn 1000
+/gps/ene/mono 39.6936353 MeV
+/run/beamOn 1000
+/gps/ene/mono 39.9536784 MeV
+/run/beamOn 1000
+/gps/ene/mono 40.2154252 MeV
+/run/beamOn 1000
+/gps/ene/mono 40.4788867 MeV
+/run/beamOn 1000
+/gps/ene/mono 40.7440742 MeV
+/run/beamOn 1000
+/gps/ene/mono 41.0109991 MeV
+/run/beamOn 1000
+/gps/ene/mono 41.2796726 MeV
+/run/beamOn 1000
+/gps/ene/mono 41.5501063 MeV
+/run/beamOn 1000
+/gps/ene/mono 41.8223116 MeV
+/run/beamOn 1000
+/gps/ene/mono 42.0963003 MeV
+/run/beamOn 1000
+/gps/ene/mono 42.3720839 MeV
+/run/beamOn 1000
+/gps/ene/mono 42.6496742 MeV
+/run/beamOn 1000
+/gps/ene/mono 42.9290832 MeV
+/run/beamOn 1000
+/gps/ene/mono 43.2103225 MeV
+/run/beamOn 1000
+/gps/ene/mono 43.4934044 MeV
+/run/beamOn 1000
+/gps/ene/mono 43.7783408 MeV
+/run/beamOn 1000
+/gps/ene/mono 44.0651439 MeV
+/run/beamOn 1000
+/gps/ene/mono 44.3538259 MeV
+/run/beamOn 1000
+/gps/ene/mono 44.6443992 MeV
+/run/beamOn 1000
+/gps/ene/mono 44.936876 MeV
+/run/beamOn 1000
+/gps/ene/mono 45.231269 MeV
+/run/beamOn 1000
+/gps/ene/mono 45.5275906 MeV
+/run/beamOn 1000
+/gps/ene/mono 45.8258535 MeV
+/run/beamOn 1000
+/gps/ene/mono 46.1260703 MeV
+/run/beamOn 1000
+/gps/ene/mono 46.428254 MeV
+/run/beamOn 1000
+/gps/ene/mono 46.7324174 MeV
+/run/beamOn 1000
+/gps/ene/mono 47.0385734 MeV
+/run/beamOn 1000
+/gps/ene/mono 47.3467351 MeV
+/run/beamOn 1000
+/gps/ene/mono 47.6569156 MeV
+/run/beamOn 1000
+/gps/ene/mono 47.9691283 MeV
+/run/beamOn 1000
+/gps/ene/mono 48.2833863 MeV
+/run/beamOn 1000
+/gps/ene/mono 48.5997031 MeV
+/run/beamOn 1000
+/gps/ene/mono 48.9180921 MeV
+/run/beamOn 1000
+/gps/ene/mono 49.2385671 MeV
+/run/beamOn 1000
+/gps/ene/mono 49.5611415 MeV
+/run/beamOn 1000
+/gps/ene/mono 49.8858292 MeV
+/run/beamOn 1000
+/gps/ene/mono 50.212644 MeV
+/run/beamOn 1000
+/gps/ene/mono 50.5415999 MeV
+/run/beamOn 1000
+/gps/ene/mono 50.8727108 MeV
+/run/beamOn 1000
+/gps/ene/mono 51.2059909 MeV
+/run/beamOn 1000
+/gps/ene/mono 51.5414545 MeV
+/run/beamOn 1000
+/gps/ene/mono 51.8791157 MeV
+/run/beamOn 1000
+/gps/ene/mono 52.218989 MeV
+/run/beamOn 1000
+/gps/ene/mono 52.561089 MeV
+/run/beamOn 1000
+/gps/ene/mono 52.9054301 MeV
+/run/beamOn 1000
+/gps/ene/mono 53.2520271 MeV
+/run/beamOn 1000
+/gps/ene/mono 53.6008947 MeV
+/run/beamOn 1000
+/gps/ene/mono 53.9520479 MeV
+/run/beamOn 1000
+/gps/ene/mono 54.3055015 MeV
+/run/beamOn 1000
+/gps/ene/mono 54.6612707 MeV
+/run/beamOn 1000
+/gps/ene/mono 55.0193707 MeV
+/run/beamOn 1000
+/gps/ene/mono 55.3798166 MeV
+/run/beamOn 1000
+/gps/ene/mono 55.742624 MeV
+/run/beamOn 1000
+/gps/ene/mono 56.1078081 MeV
+/run/beamOn 1000
+/gps/ene/mono 56.4753847 MeV
+/run/beamOn 1000
+/gps/ene/mono 56.8453694 MeV
+/run/beamOn 1000
+/gps/ene/mono 57.2177779 MeV
+/run/beamOn 1000
+/gps/ene/mono 57.5926262 MeV
+/run/beamOn 1000
+/gps/ene/mono 57.9699302 MeV
+/run/beamOn 1000
+/gps/ene/mono 58.349706 MeV
+/run/beamOn 1000
+/gps/ene/mono 58.7319699 MeV
+/run/beamOn 1000
+/gps/ene/mono 59.116738 MeV
+/run/beamOn 1000
+/gps/ene/mono 59.5040269 MeV
+/run/beamOn 1000
+/gps/ene/mono 59.893853 MeV
+/run/beamOn 1000
+/gps/ene/mono 60.2862329 MeV
+/run/beamOn 1000
+/gps/ene/mono 60.6811834 MeV
+/run/beamOn 1000
+/gps/ene/mono 61.0787213 MeV
+/run/beamOn 1000
+/gps/ene/mono 61.4788636 MeV
+/run/beamOn 1000
+/gps/ene/mono 61.8816274 MeV
+/run/beamOn 1000
+/gps/ene/mono 62.2870297 MeV
+/run/beamOn 1000
+/gps/ene/mono 62.695088 MeV
+/run/beamOn 1000
+/gps/ene/mono 63.1058195 MeV
+/run/beamOn 1000
+/gps/ene/mono 63.5192419 MeV
+/run/beamOn 1000
+/gps/ene/mono 63.9353727 MeV
+/run/beamOn 1000
+/gps/ene/mono 64.3542296 MeV
+/run/beamOn 1000
+/gps/ene/mono 64.7758306 MeV
+/run/beamOn 1000
+/gps/ene/mono 65.2001936 MeV
+/run/beamOn 1000
+/gps/ene/mono 65.6273368 MeV
+/run/beamOn 1000
+/gps/ene/mono 66.0572782 MeV
+/run/beamOn 1000
+/gps/ene/mono 66.4900363 MeV
+/run/beamOn 1000
+/gps/ene/mono 66.9256295 MeV
+/run/beamOn 1000
+/gps/ene/mono 67.3640764 MeV
+/run/beamOn 1000
+/gps/ene/mono 67.8053957 MeV
+/run/beamOn 1000
+/gps/ene/mono 68.2496062 MeV
+/run/beamOn 1000
+/gps/ene/mono 68.6967268 MeV
+/run/beamOn 1000
+/gps/ene/mono 69.1467766 MeV
+/run/beamOn 1000
+/gps/ene/mono 69.5997748 MeV
+/run/beamOn 1000
+/gps/ene/mono 70.0557407 MeV
+/run/beamOn 1000
+/gps/ene/mono 70.5146937 MeV
+/run/beamOn 1000
+/gps/ene/mono 70.9766535 MeV
+/run/beamOn 1000
+/gps/ene/mono 71.4416397 MeV
+/run/beamOn 1000
+/gps/ene/mono 71.9096721 MeV
+/run/beamOn 1000
+/gps/ene/mono 72.3807708 MeV
+/run/beamOn 1000
+/gps/ene/mono 72.8549557 MeV
+/run/beamOn 1000
+/gps/ene/mono 73.3322471 MeV
+/run/beamOn 1000
+/gps/ene/mono 73.8126654 MeV
+/run/beamOn 1000
+/gps/ene/mono 74.296231 MeV
+/run/beamOn 1000
+/gps/ene/mono 74.7829646 MeV
+/run/beamOn 1000
+/gps/ene/mono 75.2728869 MeV
+/run/beamOn 1000
+/gps/ene/mono 75.7660188 MeV
+/run/beamOn 1000
+/gps/ene/mono 76.2623814 MeV
+/run/beamOn 1000
+/gps/ene/mono 76.7619957 MeV
+/run/beamOn 1000
+/gps/ene/mono 77.2648832 MeV
+/run/beamOn 1000
+/gps/ene/mono 77.7710652 MeV
+/run/beamOn 1000
+/gps/ene/mono 78.2805633 MeV
+/run/beamOn 1000
+/gps/ene/mono 78.7933993 MeV
+/run/beamOn 1000
+/gps/ene/mono 79.3095949 MeV
+/run/beamOn 1000
+/gps/ene/mono 79.8291724 MeV
+/run/beamOn 1000
+/gps/ene/mono 80.3521537 MeV
+/run/beamOn 1000
+/gps/ene/mono 80.8785612 MeV
+/run/beamOn 1000
+/gps/ene/mono 81.4084173 MeV
+/run/beamOn 1000
+/gps/ene/mono 81.9417446 MeV
+/run/beamOn 1000
+/gps/ene/mono 82.4785659 MeV
+/run/beamOn 1000
+/gps/ene/mono 83.0189041 MeV
+/run/beamOn 1000
+/gps/ene/mono 83.5627821 MeV
+/run/beamOn 1000
+/gps/ene/mono 84.1102233 MeV
+/run/beamOn 1000
+/gps/ene/mono 84.6612508 MeV
+/run/beamOn 1000
+/gps/ene/mono 85.2158883 MeV
+/run/beamOn 1000
+/gps/ene/mono 85.7741594 MeV
+/run/beamOn 1000
+/gps/ene/mono 86.3360878 MeV
+/run/beamOn 1000
+/gps/ene/mono 86.9016976 MeV
+/run/beamOn 1000
+/gps/ene/mono 87.4710128 MeV
+/run/beamOn 1000
+/gps/ene/mono 88.0440577 MeV
+/run/beamOn 1000
+/gps/ene/mono 88.6208568 MeV
+/run/beamOn 1000
+/gps/ene/mono 89.2014347 MeV
+/run/beamOn 1000
+/gps/ene/mono 89.7858161 MeV
+/run/beamOn 1000
+/gps/ene/mono 90.3740259 MeV
+/run/beamOn 1000
+/gps/ene/mono 90.9660893 MeV
+/run/beamOn 1000
+/gps/ene/mono 91.5620313 MeV
+/run/beamOn 1000
+/gps/ene/mono 92.1618776 MeV
+/run/beamOn 1000
+/gps/ene/mono 92.7656536 MeV
+/run/beamOn 1000
+/gps/ene/mono 93.3733851 MeV
+/run/beamOn 1000
+/gps/ene/mono 93.985098 MeV
+/run/beamOn 1000
+/gps/ene/mono 94.6008184 MeV
+/run/beamOn 1000
+/gps/ene/mono 95.2205725 MeV
+/run/beamOn 1000
+/gps/ene/mono 95.8443868 MeV
+/run/beamOn 1000
+/gps/ene/mono 96.4722879 MeV
+/run/beamOn 1000
+/gps/ene/mono 97.1043025 MeV
+/run/beamOn 1000
+/gps/ene/mono 97.7404576 MeV
+/run/beamOn 1000
+/gps/ene/mono 98.3807803 MeV
+/run/beamOn 1000
+/gps/ene/mono 99.0252979 MeV
+/run/beamOn 1000
+/gps/ene/mono 99.6740379 MeV
+/run/beamOn 1000

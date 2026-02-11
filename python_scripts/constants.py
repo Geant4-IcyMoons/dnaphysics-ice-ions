@@ -113,6 +113,17 @@ a0 = 5.291e-11
 N = 3.34e28
 mass = 1.0
 
+# Molecular-density / mass-density mapping for H2O
+AVOGADRO = 6.02214076e23  # mol^-1
+H2O_MOLAR_MASS_G_MOL = 18.01528
+
+# Ice phase nominal mass densities (g/cm^3)
+ICE_HEXAGONAL_DENSITY_G_CM3 = 0.917
+ICE_AMORPHOUS_DENSITY_G_CM3 = 0.94
+
+# Reference mass density implied by N above (used in XS normalization code)
+N_REFERENCE_DENSITY_G_CM3 = (N / 1.0e6) * H2O_MOLAR_MASS_G_MOL / AVOGADRO
+
 C_AU = 137.035999084
 MC2_eV = 510998.95
 MC2_HA = MC2_eV * EV_TO_HA
@@ -136,6 +147,7 @@ SR_BETA_1 = -0.0825
 SR_CONST_K = 1.7e-5
 
 MICHAUD_SIGMA_SCALE_CM2 = 1e-16
+MELTON_SIGMA_SCALE_CM2 = 1e-18
 EMFIETZOGLOU_SCALE_1E16 = (1e-22 / 3.343) * 1e4 / 1e-16
 
 # --- Emfietzoglou channel markers ---

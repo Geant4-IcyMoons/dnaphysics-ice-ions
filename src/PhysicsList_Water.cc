@@ -24,34 +24,23 @@
 // ********************************************************************
 //
 /// \file PhysicsList_Water.cc
-/// \brief Electron-only G4-DNA water physics list
+/// \brief G4-DNA water physics list aligned with Geant4 wvalue example (dna_opt4)
 
 #include "PhysicsList_Water.hh"
 
-#include "G4EmDNAPhysics_option2.hh"
+#include "G4EmDNAPhysics_option4.hh"
 #include "G4EmParameters.hh"
-#include "G4EmStandardPhysics_option4.hh"
-#include "G4VEmProcess.hh"
-#include "G4VEmModel.hh"
-#include "G4ProcessManager.hh"
 #include "G4ProductionCutsTable.hh"
 #include "G4SystemOfUnits.hh"
-#include "G4PhysicsListHelper.hh"
-
-#include "G4DNAElastic.hh"
-#include "G4DNAExcitation.hh"
-#include "G4DNAIonisation.hh"
-#include "G4DNAVibExcitation.hh"
-#include "G4DNASancheExcitationModel.hh"
-#include "G4DNAAttachment.hh"
-#include "G4Electron.hh"
 
 PhysicsList_Water::PhysicsList_Water() : G4VModularPhysicsList()
 {
   SetDefaultCutValue(1.0 * micrometer);
   SetVerboseLevel(1);
 
-  fEmPhysicsList = new G4EmDNAPhysics_option2();
+  // Match Geant4 extended/medical/dna/wvalue default macro selection:
+  // /w/phys/addPhysics dna_opt4
+  fEmPhysicsList = new G4EmDNAPhysics_option4();
 
   G4ProductionCutsTable::GetProductionCutsTable()->SetEnergyRange(1 * eV, 1 * GeV);
   G4EmParameters* param = G4EmParameters::Instance();
@@ -72,49 +61,5 @@ void PhysicsList_Water::ConstructParticle()
 void PhysicsList_Water::ConstructProcess()
 {
   AddTransportation();
-
-  G4PhysicsListHelper* ph = G4PhysicsListHelper::GetPhysicsListHelper();
-  auto* electron = G4Electron::ElectronDefinition();
-
-  auto* elastic = new G4DNAElastic("e-_G4DNAElastic_WATER");
-  ph->RegisterProcess(elastic, electron);
-
-  auto* vib = new G4DNAVibExcitation("e-_G4DNAVib_WATER");
-  vib->SetEmModel(new G4DNASancheExcitationModel());
-  ph->RegisterProcess(vib, electron);
-
-  auto* attachment = new G4DNAAttachment("e-_G4DNAAttachment_WATER");
-  ph->RegisterProcess(attachment, electron);
-
-  auto* excitation = new G4DNAExcitation("e-_G4DNAExcitation_WATER");
-  ph->RegisterProcess(excitation, electron);
-
-  auto* ionisation = new G4DNAIonisation("e-_G4DNAIonisation_WATER");
-  ph->RegisterProcess(ionisation, electron);
-
-  // -------- High-energy fallback (>= 10 MeV): standard EM option4 --------
-  {
-    const G4double kHighMin = 10. * MeV;
-    auto* emHigh = new G4EmStandardPhysics_option4();
-    emHigh->ConstructProcess();
-
-    auto* pm = G4Electron::ElectronDefinition()->GetProcessManager();
-    if (pm) {
-      auto* plist = pm->GetProcessList();
-      for (size_t i = 0; i < plist->size(); ++i) {
-        auto* proc = (*plist)[i];
-        auto* emProc = dynamic_cast<G4VEmProcess*>(proc);
-        if (!emProc) continue;
-        const auto& pname = emProc->GetProcessName();
-        if (pname.find("G4DNA") != std::string::npos) continue;
-
-        emProc->SetMinKinEnergy(kHighMin);
-        const G4int nModels = emProc->NumberOfModels();
-        for (G4int m = 0; m < nModels; ++m) {
-          auto* model = emProc->GetModelByIndex(m);
-          if (model) model->SetLowEnergyLimit(kHighMin);
-        }
-      }
-    }
-  }
+  fEmPhysicsList->ConstructProcess();
 }

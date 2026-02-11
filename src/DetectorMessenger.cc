@@ -39,6 +39,7 @@
 #include "DetectorMessenger.hh"
 #include "DetectorConstruction.hh"
 #include "PhysicsList.hh"
+#include "RunAction.hh"
 
 #include "G4UIcmdWithABool.hh"
 #include "G4UIcmdWithAString.hh"
@@ -104,6 +105,13 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* Det, G4VModularPhysic
   fIceSizeCmd->SetRange("SizeX>0. && SizeY>0. && SizeZ>0.");
   fIceSizeCmd->SetUnitCategory("Length");
   fIceSizeCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
+
+  fLogModeCmd = new G4UIcmdWithAString("/dna/test/setLogMode", this);
+  fLogModeCmd->SetGuidance("Set simulation logging mode: full or minimal.");
+  fLogModeCmd->SetParameterName("mode", false);
+  fLogModeCmd->SetCandidates("full minimal");
+  fLogModeCmd->AvailableForStates(G4State_PreInit);
+  fLogModeCmd->SetToBeBroadcasted(false);
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -118,6 +126,7 @@ DetectorMessenger::~DetectorMessenger()
   delete fDensityCmd;
   delete fSizeCmd;
   delete fIceSizeCmd;
+  delete fLogModeCmd;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -163,5 +172,9 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue)
   if (command == fIceSizeCmd) {
     const auto vec = fIceSizeCmd->GetNew3VectorValue(newValue);
     fpDetector->SetIceSize(vec.x(), vec.y(), vec.z());
+  }
+
+  if (command == fLogModeCmd) {
+    RunAction::SetLogMode(newValue);
   }
 }

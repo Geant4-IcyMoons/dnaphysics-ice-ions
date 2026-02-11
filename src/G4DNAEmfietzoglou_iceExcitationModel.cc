@@ -63,15 +63,14 @@ std::string NormalizeIcePhase(const char* raw)
 {
   if (!raw) return {};
   std::string phase = ToLower(raw);
-  if (phase == "ice_hex" || phase == "hex" || phase == "hexagonal" ||
-      phase == "crystalline") {
+  if (phase == "water") return {};
+  if (phase == "ice_hex") {
     return "hexagonal";
   }
-  if (phase == "ice_am" || phase == "am" || phase == "amo" ||
-      phase == "amorphous") {
+  if (phase == "ice_am") {
     return "amorphous";
   }
-  return phase;
+  return {};
 }
 
 std::string BuildDataPath(const char* data_dir, const std::string& filename)
@@ -165,7 +164,8 @@ void G4DNAEmfietzoglou_iceExcitationModel::Initialise(const G4ParticleDefinition
     // Require ice-specific total/differential excitation tables when phase is set.
     std::string diffFileToUse;
     const char* path = std::getenv("G4LEDATA");
-    const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_ICE_PHASE"));
+    // Phase is encoded in DNA_PHYSICS (water | ice_hex | ice_am).
+    const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_PHYSICS"));
     if (!icePhase.empty()) {
       const std::string phaseTotalFile =
           "sigma_excitation_e_" + icePhase + "_ice_emfietzoglou_kyriakou";

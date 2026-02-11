@@ -2,12 +2,13 @@
 """
 Plot elastic scattering cross-sections for electrons in ice:
 - G4DNAMichaudElasticModel: 2-100 eV
-- G4DNAScreenedRutherfordElasticModel: 100 eV - 1 MeV
+- G4DNAScreenedRutherfordElasticModel / blended high branch: 100 eV - 10 MeV
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.ticker import LogFormatterMathtext, NullLocator
 
 from constants import (
     ELASTIC_BLEND_E0,
@@ -44,6 +45,7 @@ FONTSIZE = FONTSIZE_24
 plt.rcParams.update(rcparams_with_fontsize(RC_BASE_ELASTIC, FONTSIZE))
 
 ATTACHMENT_SIGMA_PATH = CROSS_SECTIONS_DIR / "sigma_attachment_e_michaud.dat"
+ELASTIC_PLOT_E_MAX = max(float(ELASTIC_BLEND_E_MAX), 1.0e7)
 
 
 def screened_rutherford_cross_section(energy_eV):
@@ -120,6 +122,10 @@ def plot_elastic_cross_sections():
         data_elsepa = np.loadtxt(ELSEPA_MUFFIN_TOTAL)
         E_elsepa = data_elsepa[:, 0]
         sigma_elsepa = data_elsepa[:, 1]
+        # Ensure the high-energy branch reaches the requested plotting max.
+        if E_elsepa.size > 0 and E_elsepa[-1] < ELASTIC_PLOT_E_MAX:
+            E_elsepa = np.append(E_elsepa, ELASTIC_PLOT_E_MAX)
+            sigma_elsepa = np.append(sigma_elsepa, sigma_elsepa[-1])
         ax.loglog(E_elsepa, sigma_elsepa, color='slategray', linewidth=5,
                   label='ELSEPA (muffin)', zorder=3)
         print(f"Loaded ELSEPA elastic data: {len(E_elsepa)} points, {E_elsepa[0]:.1f}-{E_elsepa[-1]:.1f} eV")
@@ -134,7 +140,12 @@ def plot_elastic_cross_sections():
         t = ELASTIC_BLEND_T   # End of transition
         
         # Create blended cross-section array spanning full range
-        E_blend = np.logspace(np.log10(ELASTIC_BLEND_E_MIN), np.log10(ELASTIC_BLEND_E_MAX), ELASTIC_BLEND_N_POINTS)
+        E_blend = np.logspace(
+            np.log10(ELASTIC_BLEND_E_MIN),
+            np.log10(ELASTIC_PLOT_E_MAX),
+            ELASTIC_BLEND_N_POINTS,
+        )
+        E_blend[-1] = ELASTIC_PLOT_E_MAX
         sigma_blend = np.zeros_like(E_blend)
 
         # Target at 100 eV: regular Michaud
@@ -182,7 +193,11 @@ def plot_elastic_cross_sections():
     # ax.set_title('Electron Elastic Scattering Cross-Sections in Ice')
     ax.legend(loc='best')
     # ax.grid(True, which='both', alpha=0.3, linestyle=':')
-    ax.set_xlim(1, 1e7)
+    ax.set_xlim(1, ELASTIC_PLOT_E_MAX)
+    x_ticks = [10.0**k for k in range(0, 8)]  # 1e0 ... 1e7
+    ax.set_xticks(x_ticks)
+    ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
+    ax.xaxis.set_minor_locator(NullLocator())
     
     plt.tight_layout()
     

@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import LogFormatterMathtext, NullLocator
 
 from constants import (
     BLEND_E_MAX,
@@ -126,7 +127,7 @@ def _diag_set(tag: str, E_grid: np.ndarray, s_bl: np.ndarray, s_ref: np.ndarray,
 
     # Total σ plot
     fig0, ax0 = plt.subplots(figsize=(8, 5))
-    ax0.loglog(E_grid, s_bl, label="Blended (2 eV–1 MeV)", color="k", lw=2)
+    ax0.loglog(E_grid, s_bl, label="Blended (2 eV–10 MeV)", color="k", lw=2)
     ax0.loglog(E_grid[mask_low], s_bl[mask_low], label="Model low (2–200 eV)", color="tab:blue", lw=2, ls="--")
     ax0.loglog(E_grid[mask_high], s_bl[mask_high], label=f"Model high ({ref_label})", color="tab:red", lw=2, ls="-.")
     ax0.loglog(E_ref_tab, s_ref_tab, label=ref_label, color="tab:orange", lw=1.8, ls=":")
@@ -134,6 +135,10 @@ def _diag_set(tag: str, E_grid: np.ndarray, s_bl: np.ndarray, s_ref: np.ndarray,
     ax0.set_xlabel("Energy (eV)")
     ax0.set_ylabel(r"$\sigma_{\mathrm{elastic}}$ (cm$^2$)")
     ax0.set_xlim(1.0, E_MAX)
+    x_ticks = [10.0**k for k in range(0, 8)]  # 1e0 ... 1e7
+    ax0.set_xticks(x_ticks)
+    ax0.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
+    ax0.xaxis.set_minor_locator(NullLocator())
     ax0.set_title(rf"Total $\sigma_{{\mathrm{{elastic}}}}$ (Michaud/{ref_label})")
     ax0.legend()
     fig0.tight_layout()

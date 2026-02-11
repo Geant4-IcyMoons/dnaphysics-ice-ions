@@ -72,36 +72,41 @@ int main(int argc, char** argv)
 
   // Set mandatory user initialization classes
   const char* phys_env = std::getenv("DNA_PHYSICS");
-  std::string phys_choice = phys_env ? phys_env : "ice";
+  std::string phys_choice = phys_env ? phys_env : "ice_hex";
   for (auto& c : phys_choice) c = static_cast<char>(std::tolower(c));
-
+  std::string resolved_choice;
   std::string ice_phase;
-  if (phys_choice == "ice_hex" || phys_choice == "ice_hexagonal" ||
-      phys_choice == "ice_hexagon" || phys_choice == "ice_h") {
+  if (phys_choice == "water") {
+    resolved_choice = "water";
+  } else if (phys_choice == "ice_hex") {
+    resolved_choice = "ice_hex";
     ice_phase = "hexagonal";
-    phys_choice = "ice";
-  } else if (phys_choice == "ice_am" || phys_choice == "ice_amorphous" ||
-             phys_choice == "ice_amo") {
+  } else if (phys_choice == "ice_am") {
+    resolved_choice = "ice_am";
     ice_phase = "amorphous";
-    phys_choice = "ice";
+  } else {
+    G4cout << "### dnaphysics Warning: unknown DNA_PHYSICS='"
+           << phys_choice
+           << "'. Supported values: water | ice_hex | ice_am. "
+           << "Defaulting to ice_hex." << G4endl;
+    resolved_choice = "ice_hex";
+    ice_phase = "hexagonal";
   }
 
+  // Canonicalize for all downstream components; phase is now encoded in DNA_PHYSICS.
+  setenv("DNA_PHYSICS", resolved_choice.c_str(), 1);
+
   G4VModularPhysicsList* physlist = nullptr;
-  if (phys_choice == "water") {
+  if (resolved_choice == "water") {
     physlist = new PhysicsList_Water();
   } else {
-    if (phys_choice != "ice") {
-      G4cout << "### dnaphysics Warning: unknown DNA_PHYSICS='"
-             << phys_choice << "', defaulting to ice." << G4endl;
-    }
     physlist = new PhysicsList();
   }
   if (!ice_phase.empty()) {
-    setenv("DNA_ICE_PHASE", ice_phase.c_str(), 1);
-    G4cout << "Using physics list: " << phys_choice
+    G4cout << "Using physics list: ice"
            << " (phase: " << ice_phase << ")" << G4endl;
   } else {
-    G4cout << "Using physics list: " << phys_choice << G4endl;
+    G4cout << "Using physics list: " << resolved_choice << G4endl;
   }
   runManager->SetUserInitialization(new DetectorConstruction(physlist));
   runManager->SetUserInitialization(physlist);

@@ -64,6 +64,11 @@ cmake --build build -j
 Environment variables (recommended):
 
 - `G4LEDATA`: Path to Geant4 low‑energy data (e.g. `/path/to/g4_custom_ice/install/share/Geant4/data/G4EMLOW8.6.1`). The diagnostics use `$G4LEDATA/dna/*.dat` to find the reference curves automatically.
+- `DNA_ROOT_BASENAME`: Output ROOT basename (default: `dna`).
+- `DNA_NTUPLE_FILES`: Number of reduced ntuple files in MT merging mode (default: `0`, single file).  
+  Example: `DNA_NTUPLE_FILES=8` writes `dna_m0.root` ... `dna_m7.root` to keep each file smaller.
+- `DNA_ROOT_SPLIT_EVENTS`, `DNA_ROOT_MAX_MB`: in-run rotation controls for single-thread runs.  
+  In multi-thread runs, event-level rotation is disabled for thread safety.
 
 Run (examples):
 

@@ -41,13 +41,15 @@
 
 #include "G4UserSteppingAction.hh"
 #include <set>
-#include <vector>
 #include <string>
+#include <vector>
+
+class EventAction;
 
 class SteppingAction : public G4UserSteppingAction
 {
   public:
-    SteppingAction();
+    explicit SteppingAction(EventAction* eventAction);
     virtual ~SteppingAction();
 
     virtual void UserSteppingAction(const G4Step*);
@@ -69,5 +71,8 @@ class SteppingAction : public G4UserSteppingAction
 
     static void ClearObservedModels();
     static std::vector<std::string> ObservedModels();
+
+  private:
+    EventAction* fEventAction;
 };
 #endif

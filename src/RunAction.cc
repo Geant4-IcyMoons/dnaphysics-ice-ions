@@ -38,11 +38,17 @@
 
 #include "RunAction.hh"
 
+#include "G4AccumulableManager.hh"
 #include "G4AnalysisManager.hh"
+#include "G4Exception.hh"
 #include "G4Run.hh"
+#include "G4SystemOfUnits.hh"
 #include "G4Threading.hh"
+#include "G4UnitsTable.hh"
+#include "G4ios.hh"
 #include "SteppingAction.hh"
 #include "ModelDataRegistry.hh"
+#include <cmath>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -65,6 +71,20 @@ bool ReadEnvFlag(const char* name, bool defaultValue)
   return std::strcmp(env, "0") != 0;
 }
 
+long ReadEnvLong(const char* name, long defaultValue)
+{
+  const char* env = std::getenv(name);
+  if (!env || !*env) {
+    return defaultValue;
+  }
+  char* end = nullptr;
+  const long val = std::strtol(env, &end, 10);
+  if (end == env) {
+    return defaultValue;
+  }
+  return val;
+}
+
 std::string ToLower(std::string value)
 {
   for (auto& ch : value) ch = static_cast<char>(std::tolower(ch));
@@ -81,15 +101,14 @@ std::string NormalizeIcePhase(const std::string& raw)
 {
   if (raw.empty()) return {};
   const std::string phase = ToLower(raw);
-  if (phase == "ice_hex" || phase == "hex" || phase == "hexagonal" ||
-      phase == "crystalline") {
+  if (phase == "water") return {};
+  if (phase == "ice_hex") {
     return "hexagonal";
   }
-  if (phase == "ice_am" || phase == "am" || phase == "amo" ||
-      phase == "amorphous") {
+  if (phase == "ice_am") {
     return "amorphous";
   }
-  return phase;
+  return {};
 }
 
 std::string BuildDnaPath(const char* dataDir, const std::string& filename)
@@ -143,74 +162,83 @@ void DeleteOldRootFiles(const std::string& baseName)
 }
 }
 
+RunAction::LogMode RunAction::ParseLogMode(const std::string& mode)
+{
+  const std::string key = ToLower(mode);
+  if (key.empty() || key == "full" || key == "debug") {
+    return LogMode::kFull;
+  }
+  if (key == "minimal" || key == "analysis" || key == "min") {
+    return LogMode::kMinimal;
+  }
+  return LogMode::kFull;
+}
+
+RunAction::LogMode RunAction::fLogMode =
+  RunAction::ParseLogMode(ReadEnvString("DNA_LOG_MODE"));
+
+void RunAction::SetLogMode(const G4String& mode)
+{
+  const std::string key = ToLower(std::string(mode));
+  const bool knownMode =
+    key.empty() || key == "full" || key == "debug" ||
+    key == "minimal" || key == "analysis" || key == "min";
+  if (!knownMode) {
+    G4cout << "RunAction: unknown log mode '" << mode
+           << "'. Falling back to full." << G4endl;
+  }
+  fLogMode = ParseLogMode(mode);
+  G4cout << "RunAction: log mode set to " << GetLogModeName() << G4endl;
+}
+
+G4String RunAction::GetLogModeName()
+{
+  return (fLogMode == LogMode::kMinimal) ? "minimal" : "full";
+}
+
+G4bool RunAction::IsFullLogMode()
+{
+  return fLogMode == LogMode::kFull;
+}
+
+G4bool RunAction::IsMinimalLogMode()
+{
+  return fLogMode == LogMode::kMinimal;
+}
+
+G4bool RunAction::IsStepModelDetailEnabled()
+{
+  return IsFullLogMode();
+}
+
+G4bool RunAction::IsTrackNtupleEnabled()
+{
+  return IsFullLogMode();
+}
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-RunAction::RunAction() : G4UserRunAction(), fConfigNtupleId(-1)
+RunAction::RunAction() : G4UserRunAction(), fConfigNtupleId(-1), fEventNtupleId(-1)
 {
   // Create analysis manager
   G4cout << "##### Create analysis manager "
          << "  " << this << G4endl;
+  auto* accumulableManager = G4AccumulableManager::Instance();
+  accumulableManager->Register(fInelasticSum);
+  accumulableManager->Register(fInelasticSqSum);
+  accumulableManager->Register(fPrimaryEnergySum);
+  accumulableManager->Register(fPrimaryEnergyCount);
+
   auto analysisManager = G4AnalysisManager::Instance();
 
   analysisManager->SetDefaultFileType("root");
-  analysisManager->SetNtupleMerging(ReadEnvFlag("DNA_NTUPLE_MERGE", true));
+  const G4bool mergeNtuples = ReadEnvFlag("DNA_NTUPLE_MERGE", true);
+  G4int nofReducedNtupleFiles = static_cast<G4int>(ReadEnvLong("DNA_NTUPLE_FILES", 0));
+  if (nofReducedNtupleFiles < 0) nofReducedNtupleFiles = 0;
+  analysisManager->SetNtupleMerging(mergeNtuples, nofReducedNtupleFiles);
 
   G4cout << "Using " << analysisManager->GetType() << " analysis manager" << G4endl;
-
   analysisManager->SetVerboseLevel(1);
-
-  // Creating ntuple
-
-  // Step information ntuple
-  analysisManager->CreateNtuple("step", "dnaphysics");
-  analysisManager->CreateNtupleDColumn("flagParticle");
-  analysisManager->CreateNtupleDColumn("flagProcess");
-  analysisManager->CreateNtupleDColumn("x");
-  analysisManager->CreateNtupleDColumn("y");
-  analysisManager->CreateNtupleDColumn("z");
-  analysisManager->CreateNtupleDColumn("totalEnergyDeposit");
-  analysisManager->CreateNtupleDColumn("stepLength");
-  analysisManager->CreateNtupleDColumn("kineticEnergyDifference");
-  analysisManager->CreateNtupleDColumn("kineticEnergy");
-  analysisManager->CreateNtupleDColumn("cosTheta");
-  analysisManager->CreateNtupleIColumn("eventID");
-  analysisManager->CreateNtupleIColumn("trackID");
-  analysisManager->CreateNtupleIColumn("parentID");
-  analysisManager->CreateNtupleIColumn("stepID");
-  // Macroscopic cross-section (1/mm) of the process that defined the step
-  analysisManager->CreateNtupleDColumn("vibCrossSection");
-  // Optional: channel index for multi-channel processes (e.g., vibrational modes)
-  analysisManager->CreateNtupleIColumn("channelIndex");
-  // Optional: per-channel microscopic cross-section (cm^2) if available
-  analysisManager->CreateNtupleDColumn("channelMicroXS");
-  // Optional: process/model name strings
-  if (ReadEnvFlag("DNA_NTUPLE_STRINGS", true)) {
-    analysisManager->CreateNtupleSColumn("processName");
-    analysisManager->CreateNtupleSColumn("modelName");
-  }
-  analysisManager->FinishNtuple();
-
-  // Track information ntuple
-  analysisManager->CreateNtuple("track", "dnaphysics");
-  analysisManager->CreateNtupleDColumn("flagParticle");
-  analysisManager->CreateNtupleDColumn("x");
-  analysisManager->CreateNtupleDColumn("y");
-  analysisManager->CreateNtupleDColumn("z");
-  analysisManager->CreateNtupleDColumn("dirx");
-  analysisManager->CreateNtupleDColumn("diry");
-  analysisManager->CreateNtupleDColumn("dirz");
-  analysisManager->CreateNtupleDColumn("kineticEnergy");
-  analysisManager->CreateNtupleIColumn("trackID");
-  analysisManager->CreateNtupleIColumn("parentID");
-  analysisManager->FinishNtuple();
-
-  // Configuration metadata ntuple (key/value pairs)
-  if (ReadEnvFlag("DNA_NTUPLE_STRINGS", true)) {
-    fConfigNtupleId = analysisManager->CreateNtuple("config", "dnaphysics");
-    analysisManager->CreateNtupleSColumn("key");
-    analysisManager->CreateNtupleSColumn("value");
-    analysisManager->FinishNtuple();
-  }
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -219,37 +247,133 @@ RunAction::~RunAction() {}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
+void RunAction::ConfigureNtuples()
+{
+  const G4bool enableStepModelDetail = IsStepModelDetailEnabled();
+  const G4bool enableStringColumns =
+    enableStepModelDetail && ReadEnvFlag("DNA_NTUPLE_STRINGS", true);
+
+  if (fNtuplesBooked) {
+    if (fBookedMode != fLogMode || fEnableStringColumns != enableStringColumns) {
+      G4ExceptionDescription msg;
+      msg << "Log mode was changed after ntuple schema was created. "
+          << "Set /dna/test/setLogMode before /run/initialize.";
+      G4Exception("RunAction::ConfigureNtuples", "dna-logmode-001",
+                  FatalException, msg);
+    }
+    return;
+  }
+
+  auto* analysisManager = G4AnalysisManager::Instance();
+
+  analysisManager->CreateNtuple("step", "dnaphysics");
+  if (enableStepModelDetail) {
+    analysisManager->CreateNtupleDColumn("flagParticle");
+    analysisManager->CreateNtupleDColumn("flagProcess");
+    analysisManager->CreateNtupleDColumn("x");
+    analysisManager->CreateNtupleDColumn("y");
+    analysisManager->CreateNtupleDColumn("z");
+    analysisManager->CreateNtupleDColumn("totalEnergyDeposit");
+    analysisManager->CreateNtupleDColumn("stepLength");
+    analysisManager->CreateNtupleDColumn("kineticEnergyDifference");
+    analysisManager->CreateNtupleDColumn("kineticEnergy");
+    analysisManager->CreateNtupleDColumn("cosTheta");
+    analysisManager->CreateNtupleIColumn("eventID");
+    analysisManager->CreateNtupleIColumn("trackID");
+    analysisManager->CreateNtupleIColumn("parentID");
+    analysisManager->CreateNtupleIColumn("stepID");
+    analysisManager->CreateNtupleDColumn("vibCrossSection");
+    analysisManager->CreateNtupleIColumn("channelIndex");
+    analysisManager->CreateNtupleDColumn("channelMicroXS");
+    if (enableStringColumns) {
+      analysisManager->CreateNtupleSColumn("processName");
+      analysisManager->CreateNtupleSColumn("modelName");
+    }
+  } else {
+    analysisManager->CreateNtupleDColumn("flagParticle");
+    analysisManager->CreateNtupleDColumn("x");
+    analysisManager->CreateNtupleDColumn("y");
+    analysisManager->CreateNtupleDColumn("z");
+    analysisManager->CreateNtupleDColumn("totalEnergyDeposit");
+    analysisManager->CreateNtupleDColumn("kineticEnergy");
+    analysisManager->CreateNtupleIColumn("eventID");
+    analysisManager->CreateNtupleIColumn("parentID");
+  }
+  analysisManager->FinishNtuple();
+
+  if (IsTrackNtupleEnabled()) {
+    analysisManager->CreateNtuple("track", "dnaphysics");
+    analysisManager->CreateNtupleDColumn("flagParticle");
+    analysisManager->CreateNtupleDColumn("x");
+    analysisManager->CreateNtupleDColumn("y");
+    analysisManager->CreateNtupleDColumn("z");
+    analysisManager->CreateNtupleDColumn("dirx");
+    analysisManager->CreateNtupleDColumn("diry");
+    analysisManager->CreateNtupleDColumn("dirz");
+    analysisManager->CreateNtupleDColumn("kineticEnergy");
+    analysisManager->CreateNtupleIColumn("trackID");
+    analysisManager->CreateNtupleIColumn("parentID");
+    analysisManager->FinishNtuple();
+  }
+
+  fEventNtupleId = analysisManager->CreateNtuple("event", "event_energy_budget");
+  analysisManager->CreateNtupleIColumn("eventID");
+  analysisManager->CreateNtupleDColumn("primaryEnergy");
+  analysisManager->CreateNtupleDColumn("depositedEnergy");
+  analysisManager->CreateNtupleDColumn("escapedEnergy");
+  analysisManager->CreateNtupleDColumn("escapedBackEnergy");
+  analysisManager->CreateNtupleDColumn("escapedForwardEnergy");
+  analysisManager->CreateNtupleDColumn("escapedLateralEnergy");
+  analysisManager->CreateNtupleDColumn("closureEnergy");
+  analysisManager->CreateNtupleDColumn("closureFraction");
+  analysisManager->CreateNtupleIColumn("nEscapedTracks");
+  analysisManager->CreateNtupleIColumn("nEscapedElectrons");
+  analysisManager->FinishNtuple();
+
+  fConfigNtupleId = -1;
+  if (enableStepModelDetail && enableStringColumns &&
+      !G4Threading::IsMultithreadedApplication()) {
+    fConfigNtupleId = analysisManager->CreateNtuple("config", "dnaphysics");
+    analysisManager->CreateNtupleSColumn("key");
+    analysisManager->CreateNtupleSColumn("value");
+    analysisManager->FinishNtuple();
+  }
+
+  fNtuplesBooked = true;
+  fEnableStringColumns = enableStringColumns;
+  fBookedMode = fLogMode;
+
+  G4cout << "DNA logging mode: " << GetLogModeName() << G4endl;
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
 void RunAction::BeginOfRunAction(const G4Run*)
 {
+  auto* accumulableManager = G4AccumulableManager::Instance();
+  accumulableManager->Reset();
+
   auto analysisManager = G4AnalysisManager::Instance();
+  ConfigureNtuples();
 
   // Open an output file
-  G4String fileName = "dna";
+  const std::string baseNameEnv = ReadEnvString("DNA_ROOT_BASENAME");
+  G4String fileName = baseNameEnv.empty() ? G4String("dna") : G4String(baseNameEnv);
   static G4bool cleaned = false;
   if (!cleaned && G4Threading::IsMasterThread()) {
     if (!ReadEnvFlag("DNA_KEEP_OLD_ROOT", false)) {
-      DeleteOldRootFiles(fileName);
+      DeleteOldRootFiles(baseNameEnv.empty() ? std::string("dna") : baseNameEnv);
     }
     cleaned = true;
   }
   analysisManager->OpenFile(fileName);
 
-  if (fConfigNtupleId >= 0) {
-    const std::string physRaw = ReadEnvString("DNA_PHYSICS");
-    std::string physChoice = physRaw.empty() ? "ice" : ToLower(physRaw);
-    std::string icePhase = NormalizeIcePhase(ReadEnvString("DNA_ICE_PHASE"));
-
-    if (icePhase.empty()) {
-      if (physChoice == "ice_hex" || physChoice == "ice_hexagonal" ||
-          physChoice == "ice_hexagon" || physChoice == "ice_h") {
-        icePhase = "hexagonal";
-        physChoice = "ice";
-      } else if (physChoice == "ice_am" || physChoice == "ice_amorphous" ||
-                 physChoice == "ice_amo") {
-        icePhase = "amorphous";
-        physChoice = "ice";
-      }
-    }
+  if (IsMaster() && fConfigNtupleId >= 0) {
+    const std::string physRawEnv = ReadEnvString("DNA_PHYSICS");
+    const std::string physRaw = physRawEnv.empty() ? "ice_hex" : physRawEnv;
+    const std::string physLower = ToLower(physRaw);
+    const std::string icePhase = NormalizeIcePhase(physLower);
+    const std::string physChoice = (physLower == "water") ? "water" : "ice";
 
     auto appendConfig = [&](const std::string& key, const std::string& value) {
       analysisManager->FillNtupleSColumn(fConfigNtupleId, 0, key);
@@ -257,9 +381,10 @@ void RunAction::BeginOfRunAction(const G4Run*)
       analysisManager->AddNtupleRow(fConfigNtupleId);
     };
 
-    appendConfig("DNA_PHYSICS", physRaw.empty() ? "ice" : physRaw);
+    appendConfig("DNA_PHYSICS", physRaw);
     appendConfig("physics_list", physChoice);
-    appendConfig("ice_phase", icePhase.empty() ? "default" : icePhase);
+    appendConfig("ice_phase", icePhase.empty() ? "n/a" : icePhase);
+    appendConfig("log_mode", GetLogModeName());
   }
 
   // Clear any previous step logs so this run starts fresh
@@ -275,10 +400,14 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
   G4int nofEvents = aRun->GetNumberOfEvent();
   if (nofEvents == 0) return;
 
+  // Merge accumulables from worker threads before reporting.
+  auto* accumulableManager = G4AccumulableManager::Instance();
+  accumulableManager->Merge();
+
   // Print histogram statistics
   auto analysisManager = G4AnalysisManager::Instance();
 
-  if (fConfigNtupleId >= 0) {
+  if (IsMaster() && fConfigNtupleId >= 0) {
     auto observed = SteppingAction::ObservedModels();
     int idx = 0;
     for (const auto& entry : observed) {
@@ -305,6 +434,8 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
   // Save histograms
   analysisManager->Write();
   analysisManager->CloseFile();
+
+  PrintWValueSummary(aRun);
 
   // After the simulation finishes, print custom per-step verbose lines
   if (kPrintPostRunStepSummary) {
@@ -341,4 +472,69 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
       G4cout.precision(oldPrec);
     }
   }
+}
+
+void RunAction::AccumulateEventIonisations(G4double nInelastic)
+{
+  if (nInelastic < 0.) return;
+  fInelasticSum += nInelastic;
+  fInelasticSqSum += nInelastic * nInelastic;
+}
+
+void RunAction::AccumulatePrimaryEnergy(G4double energy)
+{
+  if (energy <= 0.) return;
+  fPrimaryEnergySum += energy;
+  fPrimaryEnergyCount += 1.;
+}
+
+void RunAction::PrintWValueSummary(const G4Run* aRun)
+{
+  if (!IsMaster()) return;
+
+  const G4int nofEvents = aRun ? aRun->GetNumberOfEvent() : 0;
+  if (nofEvents <= 0) return;
+
+  const G4double meanInelastic = fInelasticSum.GetValue() / nofEvents;
+  const G4double meanInelastic2 = fInelasticSqSum.GetValue() / nofEvents;
+  G4double rms = meanInelastic2 - meanInelastic * meanInelastic;
+  rms = (rms > 0.) ? std::sqrt(rms) : 0.;
+
+  G4double primaryEnergy = 0.;
+  if (fPrimaryEnergyCount.GetValue() > 0.) {
+    primaryEnergy = fPrimaryEnergySum.GetValue() / fPrimaryEnergyCount.GetValue();
+  }
+
+  std::ios::fmtflags oldFlags = G4cout.flags();
+  std::streamsize oldPrecision = G4cout.precision();
+  G4cout.setf(std::ios::fixed, std::ios::floatfield);
+  G4cout.precision(3);
+
+  G4cout << "\n Nb of ionisations = " << meanInelastic << " +- " << rms << G4endl;
+  if (meanInelastic > 0. && primaryEnergy > 0.) {
+    const G4double w = primaryEnergy / meanInelastic;
+    const G4double wErr = primaryEnergy * rms / (meanInelastic * meanInelastic);
+    G4cout << "\n w = " << G4BestUnit(w, "Energy") << " +- "
+           << G4BestUnit(wErr, "Energy") << G4endl;
+
+    std::string outPath = ReadEnvString("DNA_WVALUE_FILE");
+    if (outPath.empty()) outPath = "wvalue_ice.txt";
+    std::ofstream out(outPath, std::ios::app);
+    if (out.good()) {
+      out << std::scientific << std::setprecision(6)
+          << primaryEnergy / eV << ' '
+          << meanInelastic << ' '
+          << rms << ' '
+          << w / eV << ' '
+          << wErr / eV
+          << '\n';
+    } else {
+      G4cout << "RunAction: failed to append W-value output file '" << outPath << "'." << G4endl;
+    }
+  } else {
+    G4cout << "\n w = undefined (need positive primary energy and ionisation mean)." << G4endl;
+  }
+
+  G4cout.flags(oldFlags);
+  G4cout.precision(oldPrecision);
 }

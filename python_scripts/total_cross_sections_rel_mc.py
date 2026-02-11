@@ -27,6 +27,9 @@ from constants import (
     MC2_HA,
     MC2_eV,
     N,
+    N_REFERENCE_DENSITY_G_CM3,
+    ICE_AMORPHOUS_DENSITY_G_CM3,
+    ICE_HEXAGONAL_DENSITY_G_CM3,
     OUTPUT_DIR,
     RC_BASE_ELASTIC,
     REGIME_I_MAX_eV,
@@ -42,6 +45,12 @@ import emfietzoglou_model_finite_q as model
 # Select ice structure: "amorphous" or "hexagonal"
 ICE_TYPE = "hexagonal"
 ICE_LABEL = f"{ICE_TYPE}_ice"
+
+# Density used for rel_mc cross-section scaling in this script.
+# Set to 1.0 to plot/reference cross sections at rho = 1 g/cm^3.
+# Set to None to use phase-specific nominal densities.
+REL_MC_TARGET_DENSITY_G_CM3 = 1.0
+
 # Extend DCS grid beyond Born table using a linear T grid.
 DCS_T_MAX_EEV = 1.0e7
 DCS_T_STEP_EEV = 2.0e5
@@ -52,6 +61,77 @@ EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
 # ----------------------------------------------------------------------
 # Constants for integration (from constants.py)
 # ----------------------------------------------------------------------
+def _normalize_ice_type(name):
+    if not name:
+        return None
+    key = str(name).strip().lower()
+    if "amorph" in key:
+        return "amorphous"
+    if "hex" in key:
+        return "hexagonal"
+    return None
+
+def _assumed_density_g_cm3(ice_type):
+    norm = _normalize_ice_type(ice_type)
+    if norm == "amorphous":
+        return float(ICE_AMORPHOUS_DENSITY_G_CM3)
+    if norm == "hexagonal":
+        return float(ICE_HEXAGONAL_DENSITY_G_CM3)
+    raise ValueError(f"Unsupported ice type for density scaling: {ice_type}")
+
+def _target_density_g_cm3(ice_type):
+    norm = _normalize_ice_type(ice_type)
+    if norm is None:
+        raise ValueError(f"Unsupported ice type for density scaling: {ice_type}")
+    if REL_MC_TARGET_DENSITY_G_CM3 is None:
+        return _assumed_density_g_cm3(norm)
+    return float(REL_MC_TARGET_DENSITY_G_CM3)
+
+def _density_scale_factor_for_ice(ice_type):
+    rho_ref = float(N_REFERENCE_DENSITY_G_CM3)
+    if rho_ref <= 0.0:
+        return 1.0
+    return _target_density_g_cm3(ice_type) / rho_ref
+
+def _infer_ice_type_from_path(path_like):
+    text = str(path_like).lower()
+    if "amorph" in text:
+        return "amorphous"
+    if "hex" in text:
+        return "hexagonal"
+    return None
+
+def _density_scale_factor_from_npz(npz_data):
+    if "density_scale_factor" not in npz_data:
+        return 1.0
+    try:
+        val = float(np.asarray(npz_data["density_scale_factor"]).reshape(-1)[0])
+    except Exception:
+        return 1.0
+    if not np.isfinite(val) or val <= 0.0:
+        return 1.0
+    return val
+
+def _scale_sigma_entry(sigma, factor):
+    if (not np.isfinite(factor)) or factor <= 0.0 or np.isclose(factor, 1.0):
+        return dict(sigma)
+    out = {}
+    for key, val in sigma.items():
+        if "sigma" not in key or val is None:
+            out[key] = val
+            continue
+        if np.isscalar(val):
+            out[key] = float(val) * factor
+        elif isinstance(val, np.ndarray):
+            out[key] = np.asarray(val, float) * factor
+        else:
+            out[key] = [float(x) * factor for x in val]
+    return out
+
+def _scale_sigma_list(sigma_list, factor):
+    if (not np.isfinite(factor)) or factor <= 0.0 or np.isclose(factor, 1.0):
+        return [dict(s) for s in sigma_list]
+    return [_scale_sigma_entry(sigma, factor) for sigma in sigma_list]
 
 # ----------------------------------------------------------------------
 # Helpers: Relativistic corrections
@@ -1152,12 +1232,20 @@ def plot_total_cross_section(
     return ax
 
 def _load_total_sigma_npz(npz_path):
-    data = np.load(npz_path)
-    T = np.asarray(data["T_eV"], float)
-    pwba = np.asarray(data.get("total_sigma_pwba", []), float)
-    corrected = np.asarray(
-        data.get("total_sigma_corrected", data.get("total_sigma", [])), float
-    )
+    with np.load(npz_path) as data:
+        T = np.asarray(data["T_eV"], float)
+        pwba = np.asarray(data.get("total_sigma_pwba", []), float)
+        corrected = np.asarray(
+            data.get("total_sigma_corrected", data.get("total_sigma", [])), float
+        )
+        stored = _density_scale_factor_from_npz(data)
+        inferred = _infer_ice_type_from_path(npz_path)
+        if inferred is not None:
+            target = _density_scale_factor_for_ice(inferred)
+            adjust = target / stored if stored > 0.0 else target
+            if np.isfinite(adjust) and adjust > 0.0 and (not np.isclose(adjust, 1.0)):
+                pwba = pwba * adjust
+                corrected = corrected * adjust
     return T, pwba, corrected
 
 def plot_total_cross_section_two_panel(
@@ -1169,6 +1257,7 @@ def plot_total_cross_section_two_panel(
     Two-panel comparison (amorphous vs hexagonal) with a shared legend row below.
     """
     from matplotlib.gridspec import GridSpec
+    from matplotlib.ticker import LogFormatterMathtext, LogLocator, NullLocator
 
     T_a, pwba_a, corr_a = _load_total_sigma_npz(amorphous_npz)
     T_h, pwba_h, corr_h = _load_total_sigma_npz(hexagonal_npz)
@@ -1191,6 +1280,20 @@ def plot_total_cross_section_two_panel(
     ax_h.set_xlabel("Electron energy (T; eV)")
     ax_h.set_ylabel("")
     ax_h.set_title("Hexagonal Ice")
+
+    # Enforce common y-range and y-ticks across both panels.
+    y_lo = min(ax_a.get_ylim()[0], ax_h.get_ylim()[0])
+    y_hi = max(ax_a.get_ylim()[1], ax_h.get_ylim()[1])
+    if not np.isfinite(y_lo) or y_lo <= 0.0:
+        y_lo = 1e-30
+    if not np.isfinite(y_hi) or y_hi <= y_lo:
+        y_hi = y_lo * 10.0
+    ax_a.set_ylim(y_lo, y_hi)
+    ax_h.set_ylim(y_lo, y_hi)
+    for ax in (ax_a, ax_h):
+        ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0,), numticks=50))
+        ax.yaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
+        ax.yaxis.set_minor_locator(NullLocator())
 
     legend_ax.legend(
         [ln1, ln2],
@@ -1220,12 +1323,17 @@ def plot_channel_cross_sections_two_panel(
     """
     from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
-    data_a = np.load(amorphous_npz)
-    data_h = np.load(hexagonal_npz)
-    T_a, sigma_a = _sigma_list_from_npz(data_a)
-    T_h, sigma_h = _sigma_list_from_npz(data_h)
-    data_a.close()
-    data_h.close()
+    with np.load(amorphous_npz) as data_a:
+        stored_a = _density_scale_factor_from_npz(data_a)
+        target_a = _density_scale_factor_for_ice("amorphous")
+        adjust_a = target_a / stored_a if stored_a > 0.0 else target_a
+        T_a, sigma_a = _sigma_list_from_npz(data_a, scale_factor=adjust_a)
+
+    with np.load(hexagonal_npz) as data_h:
+        stored_h = _density_scale_factor_from_npz(data_h)
+        target_h = _density_scale_factor_for_ice("hexagonal")
+        adjust_h = target_h / stored_h if stored_h > 0.0 else target_h
+        T_h, sigma_h = _sigma_list_from_npz(data_h, scale_factor=adjust_h)
 
     fig = plt.figure(figsize=(14, 7))
     gs = GridSpec(2, 2, height_ratios=[3.0, 0.8], width_ratios=[1.0, 1.0], hspace=0.30, wspace=0.25)
@@ -1243,8 +1351,8 @@ def plot_channel_cross_sections_two_panel(
     max_x = max(float(np.max(T_a)), float(np.max(T_h)))
     ax_a.set_xlim(1.0, max_x)
     ax_h.set_xlim(1.0, max_x)
-    ax_a.set_ylim(bottom = 1e-25)
-    ax_h.set_ylim(bottom = 1e-25)
+    ax_a.set_ylim(bottom=1e-25)
+    ax_h.set_ylim(bottom=1e-25)
 
     from matplotlib.lines import Line2D
     from matplotlib.ticker import LogFormatterMathtext, LogLocator, NullLocator
@@ -1307,6 +1415,17 @@ def plot_channel_cross_sections_two_panel(
         ax.xaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0,), numticks=50))
         ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
         ax.xaxis.set_minor_locator(NullLocator())
+
+    # Enforce common y-range and y-ticks across both panels.
+    y_lo = min(ax_a.get_ylim()[0], ax_h.get_ylim()[0])
+    y_hi = max(ax_a.get_ylim()[1], ax_h.get_ylim()[1])
+    if not np.isfinite(y_lo) or y_lo <= 0.0:
+        y_lo = 1e-25
+    if not np.isfinite(y_hi) or y_hi <= y_lo:
+        y_hi = y_lo * 10.0
+    ax_a.set_ylim(y_lo, y_hi)
+    ax_h.set_ylim(y_lo, y_hi)
+    for ax in (ax_a, ax_h):
         ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0,), numticks=50))
         ax.yaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
         ax.yaxis.set_minor_locator(NullLocator())
@@ -1457,6 +1576,9 @@ def save_cross_section_corrections_npz(
     Nq=None,
     dcs_data=None,
     ice_label=None,
+    density_scale_factor=1.0,
+    density_ref_g_cm3=None,
+    density_assumed_g_cm3=None,
 ):
     """
     Save PWBA, per-stage correction terms, corrected totals, and per-channel
@@ -1569,6 +1691,7 @@ def save_cross_section_corrections_npz(
 
     np_save_args = dict(
         T_eV=T_arr,
+        density_scale_factor=float(density_scale_factor),
         total_sigma_pwba=pwba_total,
         total_sigma_corrected=corrected_total,
         total_sigma=total_sigma,
@@ -1600,6 +1723,11 @@ def save_cross_section_corrections_npz(
         excitation_sigma_selected=exc_selected,
         ionization_sigma_selected=ion_selected,
     )
+
+    if density_ref_g_cm3 is not None:
+        np_save_args["density_ref_g_cm3"] = float(density_ref_g_cm3)
+    if density_assumed_g_cm3 is not None:
+        np_save_args["density_assumed_g_cm3"] = float(density_assumed_g_cm3)
 
     if NE is not None:
         np_save_args["NE"] = int(NE)
@@ -1661,7 +1789,7 @@ def _dcs_data_from_npz(npz_data):
         "ion_vals": np.asarray(npz_data["dcs_ion_vals"], float),
     }
 
-def _sigma_list_from_npz(npz_data):
+def _sigma_list_from_npz(npz_data, scale_factor=1.0):
     if "T_eV" not in npz_data:
         raise KeyError("Missing T_eV in NPZ cache.")
     T_arr = np.asarray(npz_data["T_eV"], float)
@@ -1732,10 +1860,17 @@ def _sigma_list_from_npz(npz_data):
             "kshell_sigma": _scalar(kshell_sigma, i),
             "kshell_sigma_rel": _scalar(kshell_sigma_rel, i),
         }
-        sigma_list.append(sigma)
+        sigma_list.append(_scale_sigma_entry(sigma, scale_factor))
     return T_arr.tolist(), sigma_list
 
-def load_cross_section_corrections_npz(npz_path, NE, Nq, T_list=None, require_dcs=False):
+def load_cross_section_corrections_npz(
+    npz_path,
+    NE,
+    Nq,
+    T_list=None,
+    require_dcs=False,
+    target_density_scale_factor=None,
+):
     if npz_path is None or not os.path.exists(npz_path):
         return None
     try:
@@ -1745,7 +1880,14 @@ def load_cross_section_corrections_npz(npz_path, NE, Nq, T_list=None, require_dc
             dcs_data = _dcs_data_from_npz(npz_data)
             if require_dcs and dcs_data is None:
                 return None
-            T_loaded, sigma_list = _sigma_list_from_npz(npz_data)
+            stored_scale = _density_scale_factor_from_npz(npz_data)
+            if target_density_scale_factor is None:
+                scale_factor = stored_scale
+            else:
+                if (not np.isfinite(stored_scale)) or stored_scale <= 0.0:
+                    stored_scale = 1.0
+                scale_factor = float(target_density_scale_factor) / stored_scale
+            T_loaded, sigma_list = _sigma_list_from_npz(npz_data, scale_factor=scale_factor)
     except Exception as exc:
         print(f"Failed to load cached NPZ {npz_path}: {exc}")
         return None
@@ -2395,9 +2537,26 @@ def main():
     )
     _set_mc_correction(apply_mc=apply_mc)
 
+    rho_ref = float(N_REFERENCE_DENSITY_G_CM3)
+    rho_phase_nominal = _assumed_density_g_cm3(ICE_TYPE)
+    rho_target = _target_density_g_cm3(ICE_TYPE)
+    density_scale_factor = _density_scale_factor_for_ice(ICE_TYPE)
+    print(
+        f"Density scaling for {ICE_TYPE}: "
+        f"rho_ref={rho_ref:.6g} g/cm^3, rho_target={rho_target:.6g} g/cm^3, "
+        f"rho_phase_nominal={rho_phase_nominal:.6g} g/cm^3, "
+        f"scale={density_scale_factor:.6g}"
+    )
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cache_path = OUTPUT_DIR / f"cross_section_corrections_{ICE_LABEL}.npz"
-    cached = load_cross_section_corrections_npz(cache_path, NE=NE, Nq=Nq, T_list=T_list)
+    cached = load_cross_section_corrections_npz(
+        cache_path,
+        NE=NE,
+        Nq=Nq,
+        T_list=T_list,
+        target_density_scale_factor=density_scale_factor,
+    )
 
     sigma_list = None
     dcs_data = None
@@ -2440,6 +2599,7 @@ def main():
 
         # Restore original T order
         sigma_list = [results_by_T[float(T)] for T in T_list]
+        sigma_list = _scale_sigma_list(sigma_list, density_scale_factor)
 
         dcs_data = write_emfietzoglou_dcs_tables(
             s,
@@ -2465,6 +2625,9 @@ def main():
             Nq=Nq,
             dcs_data=dcs_data,
             ice_label=ICE_LABEL,
+            density_scale_factor=density_scale_factor,
+            density_ref_g_cm3=rho_ref,
+            density_assumed_g_cm3=rho_target,
         )
 
     if not dcs_written:
@@ -2493,6 +2656,9 @@ def main():
                 Nq=Nq,
                 dcs_data=dcs_data,
                 ice_label=ICE_LABEL,
+                density_scale_factor=density_scale_factor,
+                density_ref_g_cm3=rho_ref,
+                density_assumed_g_cm3=rho_target,
             )
         else:
             write_emfietzoglou_dcs_tables(

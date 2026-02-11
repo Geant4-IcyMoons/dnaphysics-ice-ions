@@ -70,6 +70,7 @@ class DetectorMessenger : public G4UImessenger
     G4UIcommand* fDensityCmd;
     G4UIcmdWithADoubleAndUnit* fSizeCmd;
     G4UIcmdWith3VectorAndUnit* fIceSizeCmd;
+    G4UIcmdWithAString* fLogModeCmd;
 };
 
 #endif
