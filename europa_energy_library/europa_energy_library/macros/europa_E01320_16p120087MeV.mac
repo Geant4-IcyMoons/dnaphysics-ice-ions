@@ -1,0 +1,37 @@
+# Europa per-energy macro (auto-generated)
+# energy_index=1320
+# energy_center=16.120087 MeV
+# sim_particles=1000
+# dna_physics=ice_am
+# density_gcm3=0.5
+# angular_dist=cos
+
+/control/verbose 0
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+
+/run/numberOfThreads 12
+/dna/test/setLogMode minimal
+
+/dna/test/setIceSize 1000 1000 10000 mm
+/dna/test/setMatDens G4_WATER_ICE_USER 0.5 g/cm3
+/dna/test/setMat G4_WATER_ICE_USER
+
+/run/initialize
+
+/gps/particle e-
+/gps/number 1
+/gps/pos/type Point
+/gps/pos/centre 0 0 -0.01 mm
+/gps/ang/type cos
+/gps/ang/mintheta 0 deg
+/gps/ang/maxtheta 90 deg
+/gps/ang/minphi 0 deg
+/gps/ang/maxphi 360 deg
+/gps/ang/rot1 1 0 -0
+/gps/ang/rot2 0 -1 0
+/gps/ene/type Mono
+
+/gps/ene/mono 16.120087 MeV
+/run/beamOn 1000

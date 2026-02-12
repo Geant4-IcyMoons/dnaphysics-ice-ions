@@ -331,8 +331,7 @@ void RunAction::ConfigureNtuples()
   analysisManager->FinishNtuple();
 
   fConfigNtupleId = -1;
-  if (enableStepModelDetail && enableStringColumns &&
-      !G4Threading::IsMultithreadedApplication()) {
+  if (enableStepModelDetail && enableStringColumns) {
     fConfigNtupleId = analysisManager->CreateNtuple("config", "dnaphysics");
     analysisManager->CreateNtupleSColumn("key");
     analysisManager->CreateNtupleSColumn("value");
@@ -368,7 +367,10 @@ void RunAction::BeginOfRunAction(const G4Run*)
   }
   analysisManager->OpenFile(fileName);
 
-  if (IsMaster() && fConfigNtupleId >= 0) {
+  const G4bool writeConfigHere =
+    (fConfigNtupleId >= 0) &&
+    (!G4Threading::IsMultithreadedApplication() || !IsMaster());
+  if (writeConfigHere) {
     const std::string physRawEnv = ReadEnvString("DNA_PHYSICS");
     const std::string physRaw = physRawEnv.empty() ? "ice_hex" : physRawEnv;
     const std::string physLower = ToLower(physRaw);
@@ -407,7 +409,10 @@ void RunAction::EndOfRunAction(const G4Run* aRun)
   // Print histogram statistics
   auto analysisManager = G4AnalysisManager::Instance();
 
-  if (IsMaster() && fConfigNtupleId >= 0) {
+  const G4bool writeConfigHere =
+    (fConfigNtupleId >= 0) &&
+    (!G4Threading::IsMultithreadedApplication() || !IsMaster());
+  if (writeConfigHere) {
     auto observed = SteppingAction::ObservedModels();
     int idx = 0;
     for (const auto& entry : observed) {

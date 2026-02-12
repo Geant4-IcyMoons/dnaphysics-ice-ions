@@ -93,7 +93,7 @@ def binned_mean(z: np.ndarray, values: np.ndarray, bins: np.ndarray) -> np.ndarr
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Depth diagnostics from dna.root")
-    ap.add_argument("--root", default="build/dna.root", help="Path to ROOT file")
+    ap.add_argument("--root", default="build/europa_test.root", help="Path to ROOT file")
     ap.add_argument("--bins", type=int, default=100, help="Number of z bins")
     ap.add_argument("--binning", choices=["log", "linear"], default="log", help="Bin spacing (default: log)")
     ap.add_argument("--step-size", type=int, default=200_000, help="Rows per batch when streaming ROOT")

@@ -61,7 +61,7 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* Det, G4VModularPhysic
   fpMaterCmd = new G4UIcmdWithAString("/dna/test/setMat", this);
   fpMaterCmd->SetGuidance("Select material of the world.");
   fpMaterCmd->SetParameterName("Material", false);
-  fpMaterCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
+  fpMaterCmd->AvailableForStates(G4State_PreInit, G4State_Idle, G4State_GeomClosed);
   fpMaterCmd->SetToBeBroadcasted(false);
 
   fpPhysCmd = new G4UIcmdWithAString("/dna/test/addPhysics", this);
@@ -90,27 +90,30 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* Det, G4VModularPhysic
   G4String unitList = G4UIcommand::UnitsList(G4UIcommand::CategoryOf("g/cm3"));
   unitPrm->SetParameterCandidates(unitList);
   fDensityCmd->SetParameter(unitPrm);
-  fDensityCmd->AvailableForStates(G4State_PreInit,G4State_Idle);
+  fDensityCmd->AvailableForStates(G4State_PreInit, G4State_Idle, G4State_GeomClosed);
+  fDensityCmd->SetToBeBroadcasted(false);
 
   fSizeCmd = new G4UIcmdWithADoubleAndUnit("/dna/test/setSize",this);
   fSizeCmd->SetGuidance("Set ice cube size (legacy, isotropic).");
   fSizeCmd->SetParameterName("Size",false);
   fSizeCmd->SetRange("Size>0.");
   fSizeCmd->SetUnitCategory("Length");
-  fSizeCmd->AvailableForStates(G4State_PreInit,G4State_Idle);
+  fSizeCmd->AvailableForStates(G4State_PreInit, G4State_Idle, G4State_GeomClosed);
+  fSizeCmd->SetToBeBroadcasted(false);
 
   fIceSizeCmd = new G4UIcmdWith3VectorAndUnit("/dna/test/setIceSize", this);
   fIceSizeCmd->SetGuidance("Set ice slab size: X Y Z (full lengths).");
   fIceSizeCmd->SetParameterName("SizeX", "SizeY", "SizeZ", false);
   fIceSizeCmd->SetRange("SizeX>0. && SizeY>0. && SizeZ>0.");
   fIceSizeCmd->SetUnitCategory("Length");
-  fIceSizeCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
+  fIceSizeCmd->AvailableForStates(G4State_PreInit, G4State_Idle, G4State_GeomClosed);
+  fIceSizeCmd->SetToBeBroadcasted(false);
 
   fLogModeCmd = new G4UIcmdWithAString("/dna/test/setLogMode", this);
   fLogModeCmd->SetGuidance("Set simulation logging mode: full or minimal.");
   fLogModeCmd->SetParameterName("mode", false);
   fLogModeCmd->SetCandidates("full minimal");
-  fLogModeCmd->AvailableForStates(G4State_PreInit);
+  fLogModeCmd->AvailableForStates(G4State_PreInit, G4State_Idle, G4State_GeomClosed);
   fLogModeCmd->SetToBeBroadcasted(false);
 }
 

@@ -82,6 +82,7 @@
 #include "G4DNAMichaud_ELSEPA_HIGH_ElasticModel.hh"
 #include "G4DNAEmfietzoglou_iceExcitationModel.hh"
 #include "G4DNAEmfietzoglou_iceIonisationModel.hh"
+#include "G4DNAElectronTrappingKill.hh"
 //****** END ICE *****
 
 //****** High-energy standard EM models (>10 MeV) *****
@@ -195,6 +196,13 @@ ph->RegisterProcess(theDNAExcitationProcess, G4Electron::ElectronDefinition());
 auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
 theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglou_iceIonisationModel());
 ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
+
+// ----- Electron trapping kill (<= 2 eV in Ice) -----
+auto* theDNAElectronTrappingKill = new G4DNAElectronTrappingKill("e-_G4DNAElectronTrappingKill_ICE");
+theDNAElectronTrappingKill->SetKillEnergyThreshold(2.0 * eV);
+if (auto* ePM = G4Electron::ElectronDefinition()->GetProcessManager()) {
+  ePM->AddDiscreteProcess(theDNAElectronTrappingKill);
+}
   //****** END ICE *****
 
   // -------- High-energy fallback (>= 10 MeV): standard EM option4 models --------

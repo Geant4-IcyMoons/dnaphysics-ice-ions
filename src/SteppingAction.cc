@@ -128,19 +128,6 @@ bool ReadEnvFlag(const char* name, bool defaultValue)
   return std::strcmp(env, "0") != 0;
 }
 
-G4double ReadEnvDouble(const char* name, G4double defaultValue)
-{
-  const char* env = std::getenv(name);
-  if (!env || !*env) {
-    return defaultValue;
-  }
-  char* end = nullptr;
-  const double value = std::strtod(env, &end);
-  if (end == env) {
-    return defaultValue;
-  }
-  return static_cast<G4double>(value);
-}
 }
 
 namespace {
@@ -231,8 +218,6 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   G4double flagParticle = -1.;
   G4double flagProcess = -1.;
   G4double x, y, z, xp, yp, zp;
-  G4double extraDepositedEnergy = 0.0;
-  G4bool killedBelowThreshold = false;
 
 // Particle identification
   G4ParticleDefinition* partDef = step->GetTrack()->GetDynamicParticle()->GetDefinition();
@@ -263,35 +248,24 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     }
   }
 
-  // In this ice setup, below ~2 eV there are no active electron interaction
-  // models. Deposit-and-kill sub-threshold electrons before escape accounting
-  // so low-energy transport tails are not misclassified as boundary escapes.
-  static const G4double kStopBelowElectronEnergy =
-    ReadEnvDouble("DNA_ELECTRON_STOP_BELOW_EV", 2.0) * eV;
+  static const G4bool kKillTrackOnIceEscape =
+    ReadEnvFlag("DNA_KILL_TRACK_ON_ICE_ESCAPE", true);
   if (fEventAction && preStep && preStep->GetPhysicalVolume() &&
       preStep->GetPhysicalVolume()->GetName() == "Ice") {
     fEventAction->AddDepositedEnergy(step->GetTotalEnergyDeposit());
-
-    if (kStopBelowElectronEnergy > 0.0 &&
-        partDef == G4Electron::ElectronDefinition()) {
-      const G4double kinetic = postStep->GetKineticEnergy();
-      if (kinetic > 0.0 && kinetic < kStopBelowElectronEnergy) {
-        fEventAction->AddDepositedEnergy(kinetic);
-        extraDepositedEnergy = kinetic;
-        killedBelowThreshold = true;
-        auto* track = step->GetTrack();
-        track->SetKineticEnergy(0.0);
-        track->SetTrackStatus(fStopAndKill);
-      }
-    }
-
-    if (!killedBelowThreshold && IsIceToWorldEscape(preStep, postStep)) {
+    if (IsIceToWorldEscape(preStep, postStep)) {
       const G4int escapeFace = ClassifyEscapeFace(preStep, postStep);
       fEventAction->AddEscapedKineticEnergy(
         postStep->GetKineticEnergy(),
         static_cast<G4int>(flagParticle),
         escapeFace
       );
+      // Stop escaped tracks at the Ice boundary to avoid long straight
+      // trajectory segments through vacuum up to the world boundary.
+      if (kKillTrackOnIceEscape) {
+        auto* track = step->GetTrack();
+        track->SetTrackStatus(fStopAndKill);
+      }
     }
   }
 
@@ -425,6 +399,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     flagProcess = 710;
   else if (processName == "CoulombScat")
     flagProcess = 720;
+  else if (processName.find("ElectronTrappingKill") != std::string::npos)
+    flagProcess = 10;
   else if (processName == "ionIoni")
     flagProcess = 730;
   else if (processName == "nuclearStopping")
@@ -470,9 +446,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   else if (processName=="GenericIon_G4DNAIonisation")   flagProcess =73;
 
   */
-  const G4bool forceRecordKilledTransport =
-    (killedBelowThreshold && RunAction::IsMinimalLogMode());
-  if (processName != "Transportation" || forceRecordKilledTransport) {
+  if (processName != "Transportation") {
     x = preStep->GetPosition().x() / nanometer;
     y = preStep->GetPosition().y() / nanometer;
     z = preStep->GetPosition().z() / nanometer;
@@ -486,8 +460,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     G4AnalysisManager* analysisManager = G4AnalysisManager::Instance();
     const G4int eventId =
       G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID();
-    const G4double totalEnergyDepositForLog =
-      (step->GetTotalEnergyDeposit() + extraDepositedEnergy) / eV;
+    const G4double totalEnergyDepositForLog = step->GetTotalEnergyDeposit() / eV;
     if (RunAction::IsMinimalLogMode()) {
       analysisManager->FillNtupleDColumn(0, 0, flagParticle);
       analysisManager->FillNtupleDColumn(0, 1, xp);

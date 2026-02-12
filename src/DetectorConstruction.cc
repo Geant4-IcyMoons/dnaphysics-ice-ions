@@ -65,37 +65,6 @@ bool IsIcePhysicsEnabled()
   return val != "water";
 }
 
-bool ResolveIcePhaseDensity(G4double& density, G4String& materialName)
-{
-  if (!IsIcePhysicsEnabled()) return false;
-
-  const char* env = std::getenv("DNA_PHYSICS");
-  if (!env || !*env) return false;
-  const std::string phase = ToLower(std::string(env));
-
-  if (phase == "ice_am") {
-    density = 0.94 * g / cm3;
-    materialName = "G4_WATER_ICE_AMORPHOUS";
-    return true;
-  }
-  if (phase == "ice_hex") {
-    density = 0.917 * g / cm3;
-    materialName = "G4_WATER_ICE_HEXAGONAL";
-    return true;
-  }
-  return false;
-}
-
-G4Material* BuildNominalIceMaterial()
-{
-  G4double density = 0.;
-  G4String name;
-  if (!ResolveIcePhaseDensity(density, name)) return nullptr;
-  if (auto* existing = G4Material::GetMaterial(name, false)) {
-    return existing;
-  }
-  return G4NistManager::Instance()->BuildMaterialWithNewDensity(name, "G4_WATER", density);
-}
 }  // namespace
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
@@ -121,7 +90,12 @@ DetectorConstruction::DetectorConstruction(G4VModularPhysicsList* ptr)
   fWorldSize = 0.;
   // and material
   G4NistManager* man = G4NistManager::Instance();
-  fpWaterMaterial = man->FindOrBuildMaterial("G4_ICE");
+  if (IsIcePhysicsEnabled()) {
+    fpWaterMaterial = man->FindOrBuildMaterial("G4_ICE");
+    if (!fpWaterMaterial) fpWaterMaterial = man->FindOrBuildMaterial("G4_WATER");
+  } else {
+    fpWaterMaterial = man->FindOrBuildMaterial("G4_WATER");
+  }
   fpWorldMaterial = man->FindOrBuildMaterial("G4_Galactic");
 }
 
@@ -142,30 +116,28 @@ void DetectorConstruction::DefineMaterials()
   // Some DNA models query G4_WATER internally even when the target is ice.
   // Ensure it is present in the material table to avoid null lookups.
   man->FindOrBuildMaterial("G4_WATER");
-  G4Material* H2O = man->FindOrBuildMaterial("G4_ICE");
+  G4Material* H2O = nullptr;
+  if (IsIcePhysicsEnabled()) {
+    H2O = man->FindOrBuildMaterial("G4_ICE");
+  }
+  if (!H2O) {
+    H2O = man->FindOrBuildMaterial("G4_WATER");
+  }
   G4Material* vacuum = man->FindOrBuildMaterial("G4_Galactic");
-  G4Material* nominalIce = BuildNominalIceMaterial();
 
   /*
    If one wishes to test other density value for water material,
    one should use instead:
 
    G4Material * H2O = man->BuildMaterialWithNewDensity("G4_WATER_ICE",
-   "G4_WATER",0.917*g/cm3);
+   "G4_WATER",<density>*g/cm3);
 
    Note: any string for "G4_WATER_MODIFIED" parameter is accepted
    and "G4_WATER" parameter should not be changed
    Both materials are created and can be selected from dna.mac
    */
 
-  if (!fpWaterMaterial) {
-    fpWaterMaterial = nominalIce ? nominalIce : H2O;
-  }
-  if (nominalIce &&
-      (fpWaterMaterial->GetName() == "G4_WATER" ||
-       fpWaterMaterial->GetName() == "G4_ICE")) {
-    fpWaterMaterial = nominalIce;
-  }
+  if (!fpWaterMaterial) fpWaterMaterial = H2O;
   if (!fpWorldMaterial) {
     fpWorldMaterial = vacuum;
   }
@@ -197,11 +169,13 @@ DetectorConstruction::MaterialWithDensity(G4String name, G4double density)
 
 G4VPhysicalVolume* DetectorConstruction::Construct()
 {
-  if (fPhysiWorld) {
-    return fPhysiWorld;
-  }
-
   DefineMaterials();
+
+  G4cout << "DetectorConstruction: building Ice slab "
+         << fIceSizeX / mm << " x " << fIceSizeY / mm << " x "
+         << fIceSizeZ / mm << " mm"
+         << ", material=" << (fpWaterMaterial ? fpWaterMaterial->GetName() : "NULL")
+         << G4endl;
 
   // World volume: vacuum cube sized from ice dimensions.
   const G4double iceMax = std::max({fIceSizeX, fIceSizeY, fIceSizeZ});
@@ -254,11 +228,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 void DetectorConstruction::SetMaterial(const G4String& materialChoice)
 {
   G4Material* pttoMaterial = nullptr;
-  if (materialChoice == "G4_WATER") {
-    // In ice-physics mode, enforce nominal phase densities unless user later
-    // overrides with /dna/test/setMatDens.
-    pttoMaterial = BuildNominalIceMaterial();
-  }
+  pttoMaterial = G4Material::GetMaterial(materialChoice, false);
   if (!pttoMaterial) {
     // Search the material by its name
     pttoMaterial = G4NistManager::Instance()->FindOrBuildMaterial(materialChoice);
@@ -280,7 +250,14 @@ void DetectorConstruction::SetSize(G4double value)
   fIceSizeX = value;
   fIceSizeY = value;
   fIceSizeZ = value;
-  G4RunManager::GetRunManager()->ReinitializeGeometry();
+  G4cout << "DetectorConstruction: SetSize -> "
+         << fIceSizeX / mm << " x " << fIceSizeY / mm << " x "
+         << fIceSizeZ / mm << " mm" << G4endl;
+  fPhysiWorld = nullptr;
+  fPhysiIce = nullptr;
+  fLogicWorld = nullptr;
+  fLogicIce = nullptr;
+  G4RunManager::GetRunManager()->ReinitializeGeometry(true);
 }
 
 void DetectorConstruction::SetIceSize(G4double x, G4double y, G4double z)
@@ -288,5 +265,12 @@ void DetectorConstruction::SetIceSize(G4double x, G4double y, G4double z)
   fIceSizeX = x;
   fIceSizeY = y;
   fIceSizeZ = z;
-  G4RunManager::GetRunManager()->ReinitializeGeometry();
+  G4cout << "DetectorConstruction: SetIceSize -> "
+         << fIceSizeX / mm << " x " << fIceSizeY / mm << " x "
+         << fIceSizeZ / mm << " mm" << G4endl;
+  fPhysiWorld = nullptr;
+  fPhysiIce = nullptr;
+  fLogicWorld = nullptr;
+  fLogicIce = nullptr;
+  G4RunManager::GetRunManager()->ReinitializeGeometry(true);
 }

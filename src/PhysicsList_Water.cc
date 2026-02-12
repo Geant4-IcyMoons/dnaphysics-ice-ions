@@ -215,10 +215,10 @@ void PhysicsList_Water::ConstructProcess()
   if (enableSolvation) {
     auto* process = new G4DNAElectronSolvation("e-_G4DNAElectronSolvation");
     auto* model = new G4DNAOneStepThermalizationModel();
-    model->SetLowEnergyLimit(0. * eV);
+    model->SetLowEnergyLimit(1. * eV);
     model->SetHighEnergyLimit(10. * eV);
     process->SetEmModel(model);
-    process->SetMinKinEnergy(0. * eV);
+    process->SetMinKinEnergy(1. * eV);
     process->SetMaxKinEnergy(10. * eV);
     ph->RegisterProcess(process, electron);
   }

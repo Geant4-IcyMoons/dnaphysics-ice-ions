@@ -48,6 +48,20 @@
 #include "G4Proton.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4Track.hh"
+#include "G4TrackingManager.hh"
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+bool ReadEnvFlag(const char* name, bool defaultValue)
+{
+  const char* env = std::getenv(name);
+  if (!env || !*env) {
+    return defaultValue;
+  }
+  return std::strcmp(env, "0") != 0;
+}
+}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -57,6 +71,16 @@ TrackingAction::TrackingAction() {}
 
 void TrackingAction::PreUserTrackingAction(const G4Track* aTrack)
 {
+  static const G4bool kHideSecondaryElectronTraj =
+    ReadEnvFlag("DNA_VIS_HIDE_SECONDARY_ELECTRON_TRAJ", true);
+  if (kHideSecondaryElectronTraj &&
+      aTrack &&
+      aTrack->GetDefinition() == G4Electron::ElectronDefinition() &&
+      aTrack->GetParentID() > 0 &&
+      fpTrackingManager) {
+    fpTrackingManager->SetStoreTrajectory(false);
+  }
+
   if (!RunAction::IsTrackNtupleEnabled()) {
     return;
   }
