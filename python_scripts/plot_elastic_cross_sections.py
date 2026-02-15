@@ -188,8 +188,8 @@ def plot_elastic_cross_sections():
     ax.axvspan(ELASTIC_BLEND_E0, t, color='lightgray', alpha=0.3, zorder=0)
     
     # Formatting
-    ax.set_xlabel('Electron Energy ($T$; eV)')
-    ax.set_ylabel(r'Cross-Section (cm$^2$)')
+    ax.set_xlabel('Electron energy ($T$; eV)')
+    ax.set_ylabel(r'Cross-section (cm$^2$)')
     # ax.set_title('Electron Elastic Scattering Cross-Sections in Ice')
     ax.legend(loc='best')
     # ax.grid(True, which='both', alpha=0.3, linestyle=':')
@@ -251,7 +251,7 @@ def plot_vibrational_excitations():
             ax1.plot(E_valid, sigma, color=color, linewidth=3, label=label, zorder=3)
         
         # ax1.set_xlabel('Electron Energy (eV)')
-        ax1.set_ylabel(r'Cross-Section (cm$^2$)')
+        ax1.set_ylabel(r'Cross-section (cm$^2$)')
         ax1.legend(loc='best')
         ax1.set_xlim(1, 100)
         
@@ -292,8 +292,8 @@ def plot_vibrational_excitations():
             
             ax2.plot(E_valid, sigma, color=color, linewidth=3, label=label, zorder=3)
         
-        ax2.set_xlabel('Electron Energy ($T$; eV)')
-        ax2.set_ylabel(r'Cross-Section (cm$^2$)')
+        ax2.set_xlabel('Electron energy ($T$; eV)')
+        ax2.set_ylabel(r'Cross-section (cm$^2$)')
         ax2.legend(loc='best')
         ax2.set_xlim(1, 100)
         
@@ -402,8 +402,8 @@ def plot_attachment_cross_section():
     except Exception as e:
         print(f"Error loading attachment data: {e}")
 
-    ax.set_xlabel('Electron Energy ($T$; eV)')
-    ax.set_ylabel(r'Cross-Section (cm$^2$)')
+    ax.set_xlabel('Electron energy ($T$; eV)')
+    ax.set_ylabel(r'Cross-section (cm$^2$)')
     ax.set_xlim(1, 10)
     # ax.legend()
 

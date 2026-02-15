@@ -693,7 +693,7 @@ def _plot(
             ls=series.get("ls", "-"),
             zorder=2,
         )
-    ax_w.set_xlabel("Electron Energy (T; eV)")
+    ax_w.set_xlabel("Electron energy ($T$; eV)")
     ax_w.set_ylabel("W (eV)")
     ax_w.set_xlim(energy_grid.min(), energy_grid.max())
     w_ticks = [25., 50., 100., 200.]

@@ -67,8 +67,9 @@ Environment variables (recommended):
 - `DNA_ROOT_BASENAME`: Output ROOT basename (default: `dna`).
 - `DNA_NTUPLE_FILES`: Number of reduced ntuple files in MT merging mode (default: `0`, single file).  
   Example: `DNA_NTUPLE_FILES=8` writes `dna_m0.root` ... `dna_m7.root` to keep each file smaller.
-- `DNA_ROOT_SPLIT_EVENTS`, `DNA_ROOT_MAX_MB`: in-run rotation controls for single-thread runs.  
-  In multi-thread runs, event-level rotation is disabled for thread safety.
+- `DNA_ROOT_SPLIT_EVENTS`, `DNA_ROOT_MAX_MB`: in-run rotation controls (defaults: disabled / 1024 MB).
+  In MT, rotation is safe only when ntuple merging is OFF.
+  If you request rotation in MT, the code auto-disables `DNA_NTUPLE_MERGE` so each worker rotates its own file.
 
 Run (examples):
 

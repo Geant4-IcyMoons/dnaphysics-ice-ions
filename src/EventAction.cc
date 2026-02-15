@@ -75,8 +75,9 @@ void WarnRotationDisabledInMT()
 {
   static std::once_flag once;
   std::call_once(once, []() {
-    G4cout << "EventAction: ROOT rotation is disabled in multi-thread mode."
-           << " Use multiple runs (separate output files) to keep files small."
+    G4cout << "EventAction: ROOT rotation is disabled while MT ntuple merging is ON."
+           << " Set DNA_NTUPLE_MERGE=0 (or request split via DNA_ROOT_SPLIT_EVENTS / DNA_ROOT_MAX_MB)"
+           << " to allow per-worker rotation."
            << G4endl;
   });
 }
@@ -85,13 +86,14 @@ bool IsRotationUnsafeInCurrentRun()
 {
   auto* runManager = G4RunManager::GetRunManager();
   if (!runManager) return false;
-  return runManager->GetNumberOfThreads() > 1;
+  if (runManager->GetNumberOfThreads() <= 1) return false;
+  return RunAction::IsNtupleMergingEnabled();
 }
 }
 
 EventAction::EventAction(RunAction* runAction) : fRunAction(runAction)
 {
-  const G4long splitEvents = ReadEnvLong("DNA_ROOT_SPLIT_EVENTS", 10);
+  const G4long splitEvents = ReadEnvLong("DNA_ROOT_SPLIT_EVENTS", 0);
   if (splitEvents > 0) {
     fSplitEveryEvents = static_cast<G4int>(splitEvents);
   }
@@ -156,7 +158,9 @@ void EventAction::EndOfEventAction(const G4Event* event)
   }
 
   if (IsRotationUnsafeInCurrentRun()) {
-    WarnRotationDisabledInMT();
+    if (fSplitEveryEvents > 0 || std::getenv("DNA_ROOT_MAX_MB")) {
+      WarnRotationDisabledInMT();
+    }
     return;
   }
   const G4int eventId = event->GetEventID();

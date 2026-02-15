@@ -45,6 +45,7 @@
 #include <vector>
 
 class EventAction;
+class G4Track;
 
 class SteppingAction : public G4UserSteppingAction
 {
@@ -71,6 +72,13 @@ class SteppingAction : public G4UserSteppingAction
 
     static void ClearObservedModels();
     static std::vector<std::string> ObservedModels();
+
+    /// Reset cached fallback-activation state so the next call to
+    /// SetHighEnergyFallbackActive will unconditionally re-evaluate.
+    static void ResetHighEnergyFallbackState();
+    /// Enable / disable standard-EM fallback processes (eIoni, eBrem, msc,
+    /// CoulombScat) based on the track's current kinetic energy vs 10 MeV.
+    static void SetHighEnergyFallbackActive(const G4Track* track);
 
   private:
     EventAction* fEventAction;

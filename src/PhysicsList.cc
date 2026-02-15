@@ -195,6 +195,10 @@ ph->RegisterProcess(theDNAExcitationProcess, G4Electron::ElectronDefinition());
   // ----- Ionisation -----
 auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
 theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglou_iceIonisationModel());
+// Ensure ionisation is active across the DNA + high-EM tiled range.
+// Without explicit bounds, process defaults may clip applicability.
+theDNAIonisationProcess->SetMinKinEnergy(10. * eV);
+theDNAIonisationProcess->SetMaxKinEnergy(1. * GeV);
 ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
 
 // ----- Electron trapping kill (<= 2 eV in Ice) -----
@@ -219,11 +223,20 @@ if (auto* ePM = G4Electron::ElectronDefinition()->GetProcessManager()) {
     msc->SetEmModel(mscModel);
     ph->RegisterProcess(msc, G4Electron::ElectronDefinition());
 
-    // Ionisation high-energy model (>= 10 MeV) - add to existing DNA ionisation process
+    // Ionisation (>= 10 MeV) — must be a separate G4eIonisation
+    // (G4VEnergyLossProcess) so that continuous dE/dx tables are built.
+    // Tiling G4MollerBhabhaModel onto the G4DNAIonisation (G4VEmProcess)
+    // would lose the continuous energy-loss component and prevent the
+    // electron from slowing down through the 10 MeV boundary.
+    // Both processes coexist: G4eIonisation is restricted to >= 10 MeV
+    // by SetMinKinEnergy, and G4DNAIonisation covers 10 eV – 10 MeV.
     auto* highIonModel = new G4MollerBhabhaModel();
     highIonModel->SetLowEnergyLimit(kHighMin);
     highIonModel->SetHighEnergyLimit(kHighMax);
-    theDNAIonisationProcess->AddEmModel(10, highIonModel);
+    auto* ionisation = new G4eIonisation();
+    ionisation->SetMinKinEnergy(kHighMin);
+    ionisation->SetEmModel(highIonModel);
+    ph->RegisterProcess(ionisation, G4Electron::ElectronDefinition());
 
     // Bremsstrahlung (>= 10 MeV)
     auto* brem = new G4eBremsstrahlung();

@@ -38,6 +38,7 @@
 
 #include "TrackingAction.hh"
 #include "RunAction.hh"
+#include "SteppingAction.hh"
 
 #include "G4Alpha.hh"
 #include "G4AnalysisManager.hh"
@@ -71,6 +72,11 @@ TrackingAction::TrackingAction() {}
 
 void TrackingAction::PreUserTrackingAction(const G4Track* aTrack)
 {
+  // Reset fallback-process activation cache so the first step of every
+  // new track unconditionally sets the correct state for its energy.
+  SteppingAction::ResetHighEnergyFallbackState();
+  SteppingAction::SetHighEnergyFallbackActive(aTrack);
+
   static const G4bool kHideSecondaryElectronTraj =
     ReadEnvFlag("DNA_VIS_HIDE_SECONDARY_ELECTRON_TRAJ", true);
   if (kHideSecondaryElectronTraj &&

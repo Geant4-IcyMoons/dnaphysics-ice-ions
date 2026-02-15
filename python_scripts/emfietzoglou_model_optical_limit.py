@@ -929,12 +929,12 @@ def plot_model_vs_experiment_two_panel(use_partitioning: bool = True, savepath: 
 
         ax.set_xlim(0, 30)
         ax.set_ylim(0, 2.9)
-        ax.set_xlabel("Energy Transfer ($E$; eV)")
+        ax.set_xlabel("Energy transfer ($E$; eV)")
         if ice == "amorphous":
-            ax.set_ylabel("Dielectric Properties")
+            ax.set_ylabel("Dielectric properties")
         else:
             ax.set_ylabel("")
-        ax.set_title(f"{ice.capitalize()} Ice")
+        ax.set_title(f"{ice.capitalize()} ice")
         # No grid as requested
 
         handles_all.extend([ln1, ln2, ln3, ln4, ln5, ln6])

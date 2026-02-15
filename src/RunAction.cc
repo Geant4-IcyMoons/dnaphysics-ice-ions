@@ -85,6 +85,12 @@ long ReadEnvLong(const char* name, long defaultValue)
   return val;
 }
 
+bool HasEnv(const char* name)
+{
+  const char* env = std::getenv(name);
+  return (env && *env);
+}
+
 std::string ToLower(std::string value)
 {
   for (auto& ch : value) ch = static_cast<char>(std::tolower(ch));
@@ -176,6 +182,7 @@ RunAction::LogMode RunAction::ParseLogMode(const std::string& mode)
 
 RunAction::LogMode RunAction::fLogMode =
   RunAction::ParseLogMode(ReadEnvString("DNA_LOG_MODE"));
+G4bool RunAction::fNtupleMergingEnabled = true;
 
 void RunAction::SetLogMode(const G4String& mode)
 {
@@ -216,6 +223,11 @@ G4bool RunAction::IsTrackNtupleEnabled()
   return IsFullLogMode();
 }
 
+G4bool RunAction::IsNtupleMergingEnabled()
+{
+  return fNtupleMergingEnabled;
+}
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 RunAction::RunAction() : G4UserRunAction(), fConfigNtupleId(-1), fEventNtupleId(-1)
@@ -232,9 +244,18 @@ RunAction::RunAction() : G4UserRunAction(), fConfigNtupleId(-1), fEventNtupleId(
   auto analysisManager = G4AnalysisManager::Instance();
 
   analysisManager->SetDefaultFileType("root");
-  const G4bool mergeNtuples = ReadEnvFlag("DNA_NTUPLE_MERGE", true);
+  G4bool mergeNtuples = ReadEnvFlag("DNA_NTUPLE_MERGE", true);
   G4int nofReducedNtupleFiles = static_cast<G4int>(ReadEnvLong("DNA_NTUPLE_FILES", 0));
   if (nofReducedNtupleFiles < 0) nofReducedNtupleFiles = 0;
+  const G4bool mtApp = G4Threading::IsMultithreadedApplication();
+  const G4bool splitByEventsRequested = ReadEnvLong("DNA_ROOT_SPLIT_EVENTS", 0) > 0;
+  const G4bool splitBySizeRequested = HasEnv("DNA_ROOT_MAX_MB");
+  if (mtApp && mergeNtuples && (splitByEventsRequested || splitBySizeRequested)) {
+    mergeNtuples = false;
+    G4cout << "RunAction: MT ROOT rotation requested -> disabling ntuple merging "
+           << "so workers can rotate files safely." << G4endl;
+  }
+  fNtupleMergingEnabled = mergeNtuples;
   analysisManager->SetNtupleMerging(mergeNtuples, nofReducedNtupleFiles);
 
   G4cout << "Using " << analysisManager->GetType() << " analysis manager" << G4endl;

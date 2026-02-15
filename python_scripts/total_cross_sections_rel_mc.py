@@ -1271,15 +1271,15 @@ def plot_total_cross_section_two_panel(
 
     ln1 = ax_a.loglog(T_a, pwba_a, "k:", linewidth=2, label="Total PWBA")[0]
     ln2 = ax_a.loglog(T_a, corr_a, "k-", linewidth=2.5, label="Total (all corrections)")[0]
-    ax_a.set_xlabel("Electron energy (T; eV)")
+    ax_a.set_xlabel("Electron energy ($T$; eV)")
     ax_a.set_ylabel("Total cross section sigma(T)")
-    ax_a.set_title("Amorphous Ice")
+    ax_a.set_title("Amorphous ice")
 
     ax_h.loglog(T_h, pwba_h, "k:", linewidth=2, label="Total PWBA")
     ax_h.loglog(T_h, corr_h, "k-", linewidth=2.5, label="Total (all corrections)")
-    ax_h.set_xlabel("Electron energy (T; eV)")
+    ax_h.set_xlabel("Electron energy ($T$; eV)")
     ax_h.set_ylabel("")
-    ax_h.set_title("Hexagonal Ice")
+    ax_h.set_title("Hexagonal ice")
 
     # Enforce common y-range and y-ticks across both panels.
     y_lo = min(ax_a.get_ylim()[0], ax_h.get_ylim()[0])
@@ -1341,10 +1341,10 @@ def plot_channel_cross_sections_two_panel(
     ax_h = fig.add_subplot(gs[0, 1])
     plot_corrected_exc_ion_scaled(T_a, sigma_a, ax=ax_a)
     plot_corrected_exc_ion_scaled(T_h, sigma_h, ax=ax_h)
-    ax_a.set_title("Amorphous Ice")
-    ax_h.set_title("Hexagonal Ice")
-    ax_a.set_xlabel("Electron energy (T; eV)")
-    ax_h.set_xlabel("Electron energy (T; eV)")
+    ax_a.set_title("Amorphous ice")
+    ax_h.set_title("Hexagonal ice")
+    ax_a.set_xlabel("Electron energy ($T$; eV)")
+    ax_h.set_xlabel("Electron energy ($T$; eV)")
     ax_a.set_ylabel(r"Total cross-section (cm$^2$)")
     ax_h.set_ylabel("")
 

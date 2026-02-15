@@ -130,17 +130,25 @@ bool ReadEnvFlag(const char* name, bool defaultValue)
 
 }
 
-namespace {
-void SetHighEnergyFallbackActive(const G4Track* track)
+// Thread-local cached state for high-energy fallback toggling.
+// Reset to -1 at the start of every new track so the first step always
+// evaluates correctly, even if the previous track ended in the same state.
+static thread_local int g_fallbackLastState = -1;
+
+void SteppingAction::ResetHighEnergyFallbackState()
+{
+  g_fallbackLastState = -1;
+}
+
+void SteppingAction::SetHighEnergyFallbackActive(const G4Track* track)
 {
   if (!track) return;
   if (track->GetDefinition() != G4Electron::ElectronDefinition()) return;
   constexpr G4double kHighMin = 10. * MeV;
   const bool enable = (track->GetKineticEnergy() >= kHighMin);
-  static thread_local int lastState = -1;
   const int state = enable ? 1 : 0;
-  if (state == lastState) return;
-  lastState = state;
+  if (state == g_fallbackLastState) return;
+  g_fallbackLastState = state;
 
   auto* pm = track->GetDefinition()->GetProcessManager();
   if (!pm) return;
@@ -156,7 +164,6 @@ void SetHighEnergyFallbackActive(const G4Track* track)
       pm->SetProcessActivation(proc, enable);
     }
   }
-}
 }
 
 namespace {
@@ -232,8 +239,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   if (partDef == instance->GetIon("alpha+")) flagParticle = 5;
   if (partDef == instance->GetIon("helium")) flagParticle = 6;
 
-  // Enforce high-energy fallback activation only above threshold
-  SetHighEnergyFallbackActive(step->GetTrack());
+  // Toggle high-energy fallback processes based on current kinetic energy
+  SteppingAction::SetHighEnergyFallbackActive(step->GetTrack());
 
   // Process identification
   G4StepPoint* preStep = step->GetPreStepPoint();
@@ -269,9 +276,12 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     }
   }
 
+  const bool isElectronDNAIonisation =
+    (processName.find("G4DNAIonisation") != std::string::npos);
+  const bool isElectronFallbackIonisation = (processName == "eIoni");
   if (fEventAction &&
       partDef == G4Electron::ElectronDefinition() &&
-      processName.find("G4DNAIonisation") != std::string::npos) {
+      (isElectronDNAIonisation || isElectronFallbackIonisation)) {
     fEventAction->AddInelastic();
   }
 

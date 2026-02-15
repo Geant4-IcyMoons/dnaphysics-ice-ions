@@ -73,6 +73,7 @@ class RunAction : public G4UserRunAction
     static G4bool IsMinimalLogMode();
     static G4bool IsStepModelDetailEnabled();
     static G4bool IsTrackNtupleEnabled();
+    static G4bool IsNtupleMergingEnabled();
     G4int GetEventNtupleId() const { return fEventNtupleId; }
 
   private:
@@ -91,5 +92,6 @@ class RunAction : public G4UserRunAction
     G4Accumulable<G4double> fPrimaryEnergyCount = 0.0;
 
     static LogMode fLogMode;
+    static G4bool fNtupleMergingEnabled;
 };
 #endif
