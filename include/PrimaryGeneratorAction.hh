@@ -54,6 +54,7 @@ class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
     virtual ~PrimaryGeneratorAction();
 
     virtual void GeneratePrimaries(G4Event*);
+    G4GeneralParticleSource* GetGPS() const;
 
   private:
     // Hold either GPS or ParticleGun via common base for easy switching

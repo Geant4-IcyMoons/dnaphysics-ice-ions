@@ -1,0 +1,4 @@
+root_basename,energy_index,e_center_mev,sim_particles,threads,physics,utc_timestamp
+dna_ice_am_rho0p5_E00000_0p0100288238MeV,0,0.0100288238,10000,10,ice_am,2026-02-19T18:34:01Z
+dna_ice_am_rho0p5_E00001_0p0100867208MeV,1,0.0100867208,10000,10,ice_am,2026-02-19T18:43:42Z
+dna_ice_am_rho0p5_E00002_0p0101449521MeV,2,0.0101449521,10000,10,ice_am,2026-02-19T18:54:14Z

@@ -276,12 +276,9 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     }
   }
 
-  const bool isElectronDNAIonisation =
-    (processName.find("G4DNAIonisation") != std::string::npos);
-  const bool isElectronFallbackIonisation = (processName == "eIoni");
   if (fEventAction &&
       partDef == G4Electron::ElectronDefinition() &&
-      (isElectronDNAIonisation || isElectronFallbackIonisation)) {
+      processName.find("G4DNAIonisation") != std::string::npos) {
     fEventAction->AddInelastic();
   }
 

@@ -41,6 +41,7 @@
 #include "PhysicsList.hh"
 #include "RunAction.hh"
 
+#include "G4GeneralParticleSourceData.hh"
 #include "G4UIcmdWithABool.hh"
 #include "G4UIcmdWithAString.hh"
 #include "G4UIcmdWithoutParameter.hh"
@@ -49,6 +50,12 @@
 #include "G4UIparameter.hh"
 #include "G4UIcmdWithADoubleAndUnit.hh"
 #include "G4UIcmdWith3VectorAndUnit.hh"
+#include "G4UImanager.hh"
+#include "G4SystemOfUnits.hh"
+
+#include <cmath>
+#include <iomanip>
+#include <sstream>
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -109,6 +116,14 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* Det, G4VModularPhysic
   fIceSizeCmd->AvailableForStates(G4State_PreInit, G4State_Idle, G4State_GeomClosed);
   fIceSizeCmd->SetToBeBroadcasted(false);
 
+  fMaxThetaCmd = new G4UIcmdWithABool("/dna/test/setMaxTheta", this);
+  fMaxThetaCmd->SetGuidance("Set cosine maxtheta mode.");
+  fMaxThetaCmd->SetGuidance("true: compute geometry-limited /gps/ang/maxtheta.");
+  fMaxThetaCmd->SetGuidance("false: set /gps/ang/maxtheta to 90 deg.");
+  fMaxThetaCmd->SetDefaultValue(true);
+  fMaxThetaCmd->AvailableForStates(G4State_PreInit, G4State_Idle, G4State_GeomClosed);
+  fMaxThetaCmd->SetToBeBroadcasted(false);
+
   fLogModeCmd = new G4UIcmdWithAString("/dna/test/setLogMode", this);
   fLogModeCmd->SetGuidance("Set simulation logging mode: full or minimal.");
   fLogModeCmd->SetParameterName("mode", false);
@@ -129,6 +144,7 @@ DetectorMessenger::~DetectorMessenger()
   delete fDensityCmd;
   delete fSizeCmd;
   delete fIceSizeCmd;
+  delete fMaxThetaCmd;
   delete fLogModeCmd;
 }
 
@@ -175,6 +191,56 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue)
   if (command == fIceSizeCmd) {
     const auto vec = fIceSizeCmd->GetNew3VectorValue(newValue);
     fpDetector->SetIceSize(vec.x(), vec.y(), vec.z());
+  }
+
+  if (command == fMaxThetaCmd) {
+    const G4bool useGeometryLimitedTheta = fMaxThetaCmd->GetNewBoolValue(newValue);
+    G4double thetaDeg = 90.0;
+
+    if (useGeometryLimitedTheta) {
+      auto* gpsData = G4GeneralParticleSourceData::Instance();
+      auto* source = gpsData ? gpsData->GetCurrentSource() : nullptr;
+      auto* posDist = source ? source->GetPosDist() : nullptr;
+
+      if (!posDist) {
+        G4cout << "DetectorMessenger: /dna/test/setMaxTheta true requires GPS "
+               << "with valid position distribution." << G4endl;
+        return;
+      }
+
+      const G4ThreeVector sourcePos = posDist->GetCentreCoords();
+
+      // Current implementation assumes the incoming surface normal is +z
+      // (the standard slab setup used in this project).
+      const G4double zDistToTop = -sourcePos.z();  // slab starts at z=0
+      const G4double marginX = 0.5 * fpDetector->GetIceSizeX() - std::abs(sourcePos.x());
+      const G4double marginY = 0.5 * fpDetector->GetIceSizeY() - std::abs(sourcePos.y());
+      const G4double minMargin = std::min(marginX, marginY);
+
+      if (zDistToTop > 0.0 && minMargin > 0.0) {
+        thetaDeg = std::atan(minMargin / zDistToTop) / deg;
+        thetaDeg = std::max(0.0, std::min(89.999999, thetaDeg));
+      } else if (minMargin <= 0.0) {
+        thetaDeg = 0.0;
+      } else {
+        G4cout << "DetectorMessenger: /dna/test/setMaxTheta true expects source z < 0 "
+               << "for slab-at-z=0 geometry. Using 90 deg." << G4endl;
+      }
+    }
+
+    std::ostringstream cmd;
+    cmd << std::fixed << std::setprecision(6)
+        << "/gps/ang/maxtheta " << thetaDeg << " deg";
+    auto* ui = G4UImanager::GetUIpointer();
+    const G4int status = ui->ApplyCommand(cmd.str().c_str());
+    if (status != 0) {
+      G4cout << "DetectorMessenger: failed to apply command: " << cmd.str()
+             << " (status=" << status << ")" << G4endl;
+    } else {
+      G4cout << "DetectorMessenger: "
+             << (useGeometryLimitedTheta ? "setMaxTheta true" : "setMaxTheta false")
+             << " -> /gps/ang/maxtheta " << thetaDeg << " deg" << G4endl;
+    }
   }
 
   if (command == fLogModeCmd) {

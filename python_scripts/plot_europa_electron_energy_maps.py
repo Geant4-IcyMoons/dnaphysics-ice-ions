@@ -253,7 +253,7 @@ def main() -> None:
         ticks=trailing_bounds,
         spacing="proportional",
     )
-    cbar2.set_label("Electron Energy (T; MeV)")
+    cbar2.set_label("Electron energy ($T$; MeV)")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(args.out, bbox_inches="tight")
     print(f"Plot saved to: {args.out}")

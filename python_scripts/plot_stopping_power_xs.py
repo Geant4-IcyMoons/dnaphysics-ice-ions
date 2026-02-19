@@ -72,6 +72,8 @@ VIB_ELOSS_EEV = np.array(
 )
 
 HIGH_ENERGY_SWITCH_EEV = 1.0e4
+WVALUE_MAX_WATER_EEV = 1.0e6
+WVALUE_MAX_ICE_EEV = 1.0e7
 
 
 def _data_root() -> Path:
@@ -604,6 +606,8 @@ def _plot(
     out_path: Path,
     rho_water: float,
     water_emax: float | None = None,
+    water_w_emax: float | None = None,
+    ice_w_emax_by_type: dict[str, float] | None = None,
     w_text_curves: dict[str, dict[str, np.ndarray]] | None = None,
 ) -> None:
     water_plot, ylabel = _units_and_label(units, rho_water, water_dedx)
@@ -658,8 +662,8 @@ def _plot(
         & np.isfinite(water_w_energy)
         & (water_w_energy > 0)
     )
-    if water_emax is not None:
-        valid_wv &= water_w_energy <= water_emax
+    if water_w_emax is not None:
+        valid_wv &= water_w_energy <= water_w_emax
     ax_w.loglog(
         water_w_energy[valid_wv],
         water_w_vals[valid_wv],
@@ -682,8 +686,18 @@ def _plot(
             & (ice_w_energy > 0)
         )
         ice_emax = series.get("emax")
-        if ice_emax is not None:
-            valid_iw &= ice_w_energy <= ice_emax
+        ice_w_emax = None
+        if isinstance(ice_type, str) and ice_w_emax_by_type is not None:
+            ice_w_emax = ice_w_emax_by_type.get(ice_type)
+        max_w_e = None
+        if ice_emax is not None and ice_w_emax is not None:
+            max_w_e = min(float(ice_emax), float(ice_w_emax))
+        elif ice_emax is not None:
+            max_w_e = float(ice_emax)
+        elif ice_w_emax is not None:
+            max_w_e = float(ice_w_emax)
+        if max_w_e is not None:
+            valid_iw &= ice_w_energy <= max_w_e
         ax_w.loglog(
             ice_w_energy[valid_iw],
             ice_w_vals[valid_iw],
@@ -985,6 +999,7 @@ def main() -> None:
         )
 
     _print_w_assumptions()
+    water_w_plot_emax = min(max_supported_water, WVALUE_MAX_WATER_EEV)
     _print_w_diagnostics(
         "Water",
         energy,
@@ -994,9 +1009,10 @@ def main() -> None:
         water_components["ion"],
         water_exc_for_w,
         water_w,
-        emax=max_supported_water,
+        emax=water_w_plot_emax,
     )
     for series in ice_series:
+        ice_w_plot_emax = min(float(series.get("emax", np.inf)), WVALUE_MAX_ICE_EEV)
         _print_w_diagnostics(
             series["label"],
             energy,
@@ -1006,7 +1022,7 @@ def main() -> None:
             series["ion_dedx"],
             series["exc_dedx_for_w"],
             series["w_value"],
-            emax=series.get("emax"),
+            emax=ice_w_plot_emax,
         )
 
     w_text_curves: dict[str, dict[str, np.ndarray]] = {}
@@ -1031,6 +1047,13 @@ def main() -> None:
         w_text_curves[phase] = {"energy": w_e, "w": w_v}
         print(f"Using W-value text for {phase}: {resolved}")
 
+    ice_w_emax_by_type = {}
+    for ice_type in ice_types:
+        max_ice = ice_max_by_type.get(ice_type)
+        if max_ice is None:
+            continue
+        ice_w_emax_by_type[ice_type] = min(float(max_ice), WVALUE_MAX_ICE_EEV)
+
     _plot(
         energy_grid=energy,
         water_dedx=water_dedx,
@@ -1040,6 +1063,8 @@ def main() -> None:
         out_path=args.out,
         rho_water=args.rho_water,
         water_emax=max_supported_water,
+        water_w_emax=water_w_plot_emax,
+        ice_w_emax_by_type=ice_w_emax_by_type,
         w_text_curves=w_text_curves,
     )
 

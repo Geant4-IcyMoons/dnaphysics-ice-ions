@@ -67,6 +67,9 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     G4Material* 
     MaterialWithDensity(G4String, G4double); 
     G4double GetSize() { return fWorldSize; }
+    G4double GetIceSizeX() const { return fIceSizeX; }
+    G4double GetIceSizeY() const { return fIceSizeY; }
+    G4double GetIceSizeZ() const { return fIceSizeZ; }
      
   private:
    

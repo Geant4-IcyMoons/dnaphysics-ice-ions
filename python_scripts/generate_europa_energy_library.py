@@ -269,6 +269,7 @@ def _build_macro_header(
     source_dir_y: float,
     source_dir_z: float,
     angular_dist: str,
+    maxtheta: bool,
     log_mode: str,
     manual_density_gcm3: float | None,
 ) -> list[str]:
@@ -311,11 +312,11 @@ def _build_macro_header(
         rot1, rot2 = _orthonormal_axes_from_normal(dir_x, dir_y, dir_z)
         lines.append("/gps/ang/type cos")
         lines.append("/gps/ang/mintheta 0 deg")
-        lines.append("/gps/ang/maxtheta 90 deg")
         lines.append("/gps/ang/minphi 0 deg")
         lines.append("/gps/ang/maxphi 360 deg")
         lines.append(f"/gps/ang/rot1 {rot1[0]:.9g} {rot1[1]:.9g} {rot1[2]:.9g}")
         lines.append(f"/gps/ang/rot2 {rot2[0]:.9g} {rot2[1]:.9g} {rot2[2]:.9g}")
+        lines.append(f"/dna/test/setMaxTheta {'true' if maxtheta else 'false'}")
     else:
         raise ValueError(f"Unsupported angular distribution: {angular_dist}")
     lines.append("/gps/ene/type Mono")
@@ -327,7 +328,7 @@ def _write_library_macro(
     out_path: Path,
     *,
     energies_mev: np.ndarray,
-    n_per_energy: int,
+    n_per_energy_values: np.ndarray,
     n_threads: int,
     x_half_mm: float,
     y_half_mm: float,
@@ -339,16 +340,28 @@ def _write_library_macro(
     source_dir_y: float,
     source_dir_z: float,
     angular_dist: str,
+    maxtheta: bool,
     log_mode: str,
     manual_density_gcm3: float | None,
 ) -> None:
+    if energies_mev.shape != n_per_energy_values.shape:
+        raise ValueError(
+            "energies_mev and n_per_energy_values must have identical shapes."
+        )
     lines: list[str] = []
     lines.append("# Global Europa energy-library macro (auto-generated)")
     lines.append("# One monoenergetic run per global energy bin center.")
     lines.append("# Reweight per-cell offline using the generated scaling table.")
     lines.append(f"# Energies: {len(energies_mev)} bins")
-    lines.append(f"# Particles per energy: {int(n_per_energy)}")
+    unique_counts = np.unique(n_per_energy_values)
+    if unique_counts.size == 1:
+        lines.append(f"# Particles per energy: {int(unique_counts[0])}")
+    else:
+        lines.append(
+            f"# Particles per energy: piecewise ({int(unique_counts.min())}..{int(unique_counts.max())})"
+        )
     lines.append(f"# Angular distribution: {angular_dist}")
+    lines.append(f"# maxtheta={str(maxtheta).lower()}")
     lines.append("")
     lines.extend(
         _build_macro_header(
@@ -363,14 +376,15 @@ def _write_library_macro(
             source_dir_y=source_dir_y,
             source_dir_z=source_dir_z,
             angular_dist=angular_dist,
+            maxtheta=maxtheta,
             log_mode=log_mode,
             manual_density_gcm3=manual_density_gcm3,
         )
     )
 
-    for e_mev in energies_mev:
+    for e_mev, n_particles in zip(energies_mev, n_per_energy_values):
         lines.append(f"/gps/ene/mono {e_mev:.9g} MeV")
-        lines.append(f"/run/beamOn {int(n_per_energy)}")
+        lines.append(f"/run/beamOn {int(n_particles)}")
 
     out_path.write_text("\n".join(lines) + "\n")
 
@@ -416,11 +430,60 @@ def _root_basename_for_energy(
     )
 
 
+def _resolve_n_per_energy_schedule(
+    *,
+    energies_mev: np.ndarray,
+    default_n_per_energy: int,
+    thresholds_mev: list[float] | None,
+    values: list[int] | None,
+    global_e_max: float,
+) -> np.ndarray:
+    if thresholds_mev is None and values is None:
+        return np.full(energies_mev.shape, int(default_n_per_energy), dtype=int)
+
+    if thresholds_mev is None or values is None:
+        raise ValueError(
+            "Both --n-per-energy-thresholds and --n-per-energy-values must be provided together."
+        )
+
+    if len(thresholds_mev) != len(values):
+        raise ValueError(
+            "Length mismatch: --n-per-energy-thresholds and --n-per-energy-values must have the same length."
+        )
+
+    if len(thresholds_mev) == 0:
+        raise ValueError("At least one threshold/value pair is required.")
+
+    thresholds_arr = np.asarray(thresholds_mev, dtype=float)
+    values_arr = np.asarray(values, dtype=int)
+
+    if np.any(~np.isfinite(thresholds_arr)) or np.any(thresholds_arr <= 0.0):
+        raise ValueError("All thresholds must be finite and > 0 MeV.")
+    if np.any(np.diff(thresholds_arr) <= 0.0):
+        raise ValueError("Thresholds must be strictly increasing.")
+    if np.any(values_arr <= 0):
+        raise ValueError("All n-per-energy values must be positive integers.")
+
+    if thresholds_arr[-1] < global_e_max:
+        raise ValueError(
+            f"Highest threshold ({thresholds_arr[-1]:.9g} MeV) must be >= global E_max "
+            f"({global_e_max:.9g} MeV)."
+        )
+
+    # Interval convention: E in (threshold[i-1], threshold[i]] gets values[i].
+    idx = np.searchsorted(thresholds_arr, energies_mev, side="left")
+    if np.any(idx >= len(thresholds_arr)):
+        raise ValueError(
+            "Some energy bins are above the highest provided threshold; expand threshold list."
+        )
+    return values_arr[idx].astype(int, copy=False)
+
+
 def _write_per_energy_macros(
     out_dir: Path,
     *,
     energies_mev: np.ndarray,
-    n_per_energy: int,
+    n_per_energy_values: np.ndarray,
     dna_physics: str,
     density_gcm3: float,
     n_threads: int,
@@ -434,11 +497,19 @@ def _write_per_energy_macros(
     source_dir_y: float,
     source_dir_z: float,
     angular_dist: str,
+    maxtheta: bool,
     log_mode: str,
     manual_density_gcm3: float | None,
 ) -> list[dict[str, str]]:
+    if energies_mev.shape != n_per_energy_values.shape:
+        raise ValueError(
+            "energies_mev and n_per_energy_values must have identical shapes."
+        )
     macro_dir = out_dir / "macros"
     macro_dir.mkdir(parents=True, exist_ok=True)
+    # Avoid stale per-energy macros from previous generations.
+    for old_macro in macro_dir.glob("europa_E*.mac"):
+        old_macro.unlink()
 
     common_lines = _build_macro_header(
         n_threads=n_threads,
@@ -452,12 +523,13 @@ def _write_per_energy_macros(
         source_dir_y=source_dir_y,
         source_dir_z=source_dir_z,
         angular_dist=angular_dist,
+        maxtheta=maxtheta,
         log_mode=log_mode,
         manual_density_gcm3=manual_density_gcm3,
     )
 
     run_rows: list[dict[str, str]] = []
-    for idx, e_mev in enumerate(energies_mev):
+    for idx, (e_mev, n_particles) in enumerate(zip(energies_mev, n_per_energy_values)):
         tag = _energy_tag_mev(float(e_mev))
         macro_name = f"europa_E{idx:05d}_{tag}.mac"
         macro_path = macro_dir / macro_name
@@ -466,14 +538,15 @@ def _write_per_energy_macros(
         lines.append("# Europa per-energy macro (auto-generated)")
         lines.append(f"# energy_index={idx}")
         lines.append(f"# energy_center={float(e_mev):.9g} MeV")
-        lines.append(f"# sim_particles={int(n_per_energy)}")
+        lines.append(f"# sim_particles={int(n_particles)}")
         lines.append(f"# dna_physics={dna_physics}")
         lines.append(f"# density_gcm3={density_gcm3:.9g}")
         lines.append(f"# angular_dist={angular_dist}")
+        lines.append(f"# maxtheta={str(maxtheta).lower()}")
         lines.append("")
         lines.extend(common_lines)
         lines.append(f"/gps/ene/mono {float(e_mev):.9g} MeV")
-        lines.append(f"/run/beamOn {int(n_per_energy)}")
+        lines.append(f"/run/beamOn {int(n_particles)}")
         macro_path.write_text("\n".join(lines) + "\n")
 
         root_basename = _root_basename_for_energy(
@@ -486,6 +559,7 @@ def _write_per_energy_macros(
                 "macro_relpath": f"macros/{macro_name}",
                 "root_basename": root_basename,
                 "root_relpath": f"root/{root_basename}.root",
+                "sim_particles": str(int(n_particles)),
                 "dna_physics": dna_physics,
                 "density_gcm3": f"{density_gcm3:.9g}",
             }
@@ -503,6 +577,7 @@ def _write_runner_script(out_dir: Path, default_threads: int, default_physics: s
         'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
         'RUN_TABLE="${SCRIPT_DIR}/per_energy_runs.csv"',
         'ROOT_DIR="${SCRIPT_DIR}/root"',
+        'CACHE_FILE="${SCRIPT_DIR}/run_per_energy.cache.csv"',
         'mkdir -p "${ROOT_DIR}"',
         "",
         'DNAPHYSICS_BIN_INPUT="${1:-${SCRIPT_DIR}/../build/dnaphysics}"',
@@ -525,24 +600,61 @@ def _write_runner_script(out_dir: Path, default_threads: int, default_physics: s
         "  exit 1",
         "fi",
         "",
+        'if [[ ! -f "${CACHE_FILE}" ]]; then',
+        '  echo "root_basename,energy_index,e_center_mev,sim_particles,threads,physics,utc_timestamp" > "${CACHE_FILE}"',
+        "fi",
+        "",
+        "have_outputs() {",
+        '  local base="$1"',
+        '  compgen -G "${ROOT_DIR}/${base}*.root" > /dev/null',
+        "}",
+        "",
+        "is_cached() {",
+        '  local base="$1"',
+        '  awk -F, -v b="${base}" \'NR>1 && $1==b {found=1; exit} END {exit !found}\' "${CACHE_FILE}"',
+        "}",
+        "",
+        "mark_cached() {",
+        '  local base="$1"',
+        '  local idx="$2"',
+        '  local ecenter="$3"',
+        '  local np="$4"',
+        '  local stamp',
+        '  stamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"',
+        '  printf "%s,%s,%s,%s,%s,%s,%s\\n" "${base}" "${idx}" "${ecenter}" "${np}" "${THREADS}" "${PHYSICS}" "${stamp}" >> "${CACHE_FILE}"',
+        "}",
+        "",
         'echo "Running per-energy Europa library with DNA_PHYSICS=${PHYSICS}, threads=${THREADS}"',
+        'echo "Cache file: ${CACHE_FILE}"',
         "",
         'tail -n +2 "${RUN_TABLE}" | while IFS=, read -r energy_index e_low_mev e_high_mev e_center_mev dE_mev sim_particles macro_relpath root_basename root_relpath csv_physics csv_density; do',
         '  macro_path="${SCRIPT_DIR}/${macro_relpath}"',
-        '  root_path="${SCRIPT_DIR}/${root_relpath}"',
         '  if [[ ! -f "${macro_path}" ]]; then',
         '    echo "Missing macro: ${macro_path}" >&2',
         "    exit 1",
         "  fi",
-        '  if [[ -f "${root_path}" ]]; then',
-        '    echo "[energy ${energy_index}] SKIP existing ${root_relpath}"',
+        '  if have_outputs "${root_basename}"; then',
+        '    if ! is_cached "${root_basename}"; then',
+        '      mark_cached "${root_basename}" "${energy_index}" "${e_center_mev}" "${sim_particles}"',
+        "    fi",
+        '    echo "[energy ${energy_index}] SKIP cached/output ${root_basename}*.root"',
         "    continue",
         "  fi",
-        '  echo "[energy ${energy_index}] E=${e_center_mev} MeV -> ${root_relpath}"',
+        '  if is_cached "${root_basename}"; then',
+        '    echo "[energy ${energy_index}] cache entry exists but outputs are missing; rerunning ${root_basename}"',
+        "  fi",
+        '  echo "[energy ${energy_index}] E=${e_center_mev} MeV -> ${root_basename}*.root"',
         '  (',
         '    cd "${ROOT_DIR}"',
         '    DNA_PHYSICS="${PHYSICS}" DNA_NTUPLE_FILES=0 DNA_ROOT_BASENAME="${root_basename}" "${DNAPHYSICS_BIN}" "${macro_path}" "${THREADS}"',
         "  )",
+        '  if have_outputs "${root_basename}"; then',
+        '    if ! is_cached "${root_basename}"; then',
+        '      mark_cached "${root_basename}" "${energy_index}" "${e_center_mev}" "${sim_particles}"',
+        "    fi",
+        "  else",
+        '    echo "[energy ${energy_index}] WARNING: run finished but no ${root_basename}*.root was found." >&2',
+        "  fi",
         "done",
     ]
     script_path.write_text("\n".join(lines) + "\n")
@@ -604,6 +716,30 @@ def main() -> None:
         type=int,
         default=100,
         help="Simulated primary electrons per global energy bin.",
+    )
+    ap.add_argument(
+        "--n-per-energy-thresholds",
+        "--n_per_energy_thresholds",
+        dest="n_per_energy_thresholds",
+        nargs="+",
+        type=float,
+        default=None,
+        help=(
+            "Optional piecewise upper thresholds in MeV for per-bin sim_particles. "
+            "Example: 0.1 1 10 100."
+        ),
+    )
+    ap.add_argument(
+        "--n-per-energy-values",
+        "--n_per_energy_values",
+        dest="n_per_energy_values",
+        nargs="+",
+        type=int,
+        default=None,
+        help=(
+            "Optional piecewise sim_particles values matching thresholds. "
+            "Example: 10000 1000 100 10."
+        ),
     )
     ap.add_argument(
         "--dna-physics",
@@ -800,6 +936,13 @@ def main() -> None:
     widths_mev = edges_mev[1:] - edges_mev[:-1]
     if centers_mev.size == 0:
         raise ValueError("No global energy bins were generated.")
+    n_per_energy_values = _resolve_n_per_energy_schedule(
+        energies_mev=centers_mev,
+        default_n_per_energy=int(args.n_per_energy),
+        thresholds_mev=args.n_per_energy_thresholds,
+        values=args.n_per_energy_values,
+        global_e_max=global_e_max,
+    )
     density_gcm3 = _resolve_density_gcm3(
         str(args.dna_physics),
         args.manual_density_gcm3,
@@ -810,7 +953,7 @@ def main() -> None:
     _write_library_macro(
         combined_macro_path,
         energies_mev=centers_mev,
-        n_per_energy=int(args.n_per_energy),
+        n_per_energy_values=n_per_energy_values,
         n_threads=int(args.threads),
         x_half_mm=float(args.x_half_mm),
         y_half_mm=float(args.y_half_mm),
@@ -822,6 +965,7 @@ def main() -> None:
         source_dir_y=float(args.source_dir_y),
         source_dir_z=float(args.source_dir_z),
         angular_dist=str(args.angular_dist),
+        maxtheta=True,
         log_mode=str(args.log_mode),
         manual_density_gcm3=args.manual_density_gcm3,
     )
@@ -830,7 +974,7 @@ def main() -> None:
     run_rows = _write_per_energy_macros(
         out_dir,
         energies_mev=centers_mev,
-        n_per_energy=int(args.n_per_energy),
+        n_per_energy_values=n_per_energy_values,
         dna_physics=str(args.dna_physics),
         density_gcm3=density_gcm3,
         n_threads=int(args.threads),
@@ -844,6 +988,7 @@ def main() -> None:
         source_dir_y=float(args.source_dir_y),
         source_dir_z=float(args.source_dir_z),
         angular_dist=str(args.angular_dist),
+        maxtheta=True,
         log_mode=str(args.log_mode),
         manual_density_gcm3=args.manual_density_gcm3,
     )
@@ -877,7 +1022,7 @@ def main() -> None:
                     f"{ehi:.9g}",
                     f"{ec:.9g}",
                     f"{de:.9g}",
-                    int(args.n_per_energy),
+                    int(run_row["sim_particles"]),
                     run_row["macro_relpath"],
                     run_row["root_basename"],
                     run_row["root_relpath"],
@@ -913,7 +1058,7 @@ def main() -> None:
                     f"{ehi:.9g}",
                     f"{ec:.9g}",
                     f"{de:.9g}",
-                    int(args.n_per_energy),
+                    int(run_row["sim_particles"]),
                     run_row["macro_relpath"],
                     run_row["root_basename"],
                     run_row["root_relpath"],
@@ -933,7 +1078,7 @@ def main() -> None:
     # For each valid cell and assigned energy index:
     #   flux_bin_model := J(E_i)*overlap_dE
     #   weight_norm := flux_bin_model / sum_j flux_bin_model
-    #   scale_to_sim := flux_bin_model / n_per_energy
+    #   scale_to_sim := flux_bin_model / n_per_energy(E_i)
     scaling_csv_gz = out_dir / "latlon_energy_scaling.csv.gz"
     flux_all = electron_spectrum_fit(centers_mev)
 
@@ -1011,7 +1156,7 @@ def main() -> None:
             if norm <= 0.0:
                 continue
             weights = weights_raw / norm
-            scales = weights_raw / float(args.n_per_energy)
+            scales = weights_raw / n_per_energy_values[assigned].astype(float)
 
             for idx, w_raw, w, s in zip(assigned, weights_raw, weights, scales):
                 scale_wr.writerow(
@@ -1026,7 +1171,7 @@ def main() -> None:
                         f"{flux_all[idx]:.9g}",
                         f"{w_raw:.9g}",
                         f"{w:.9g}",
-                        int(args.n_per_energy),
+                        int(n_per_energy_values[idx]),
                         f"{s:.9g}",
                     ]
                 )
@@ -1043,6 +1188,14 @@ def main() -> None:
     print(f"Default DNA_PHYSICS in runner: {args.dna_physics}")
     print(f"Density used in macros: {density_gcm3:.9g} g/cm3")
     print(f"Angular distribution in macros: {args.angular_dist}")
+    if args.n_per_energy_thresholds is None:
+        print(f"Sim particles per energy bin: constant {int(args.n_per_energy)}")
+    else:
+        pairs = ", ".join(
+            f"E<= {thr:.9g} MeV -> {int(n)}"
+            for thr, n in zip(args.n_per_energy_thresholds, args.n_per_energy_values)
+        )
+        print(f"Sim particles per energy bin: piecewise [{pairs}]")
     if integral_sum > 0.0:
         delta_pct = 100.0 * (ratio - 1.0)
         print(f"Riemann/Integral ratio over global range: {ratio:.9g} ({delta_pct:+.4f}%)")

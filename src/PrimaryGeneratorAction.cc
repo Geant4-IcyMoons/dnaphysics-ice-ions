@@ -75,3 +75,8 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
   // The /gps or /gun UI commands control the generator state.
   fPrimaryGen->GeneratePrimaryVertex(anEvent);
 }
+
+G4GeneralParticleSource* PrimaryGeneratorAction::GetGPS() const
+{
+  return dynamic_cast<G4GeneralParticleSource*>(fPrimaryGen);
+}

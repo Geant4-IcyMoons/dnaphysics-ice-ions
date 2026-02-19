@@ -487,6 +487,199 @@ def _iter_root_arrays(path: str, tree_name: str, columns: list[str], step_size: 
         for chunk in uproot.iterate(tree_spec, columns, library="np", step_size=step_size):
             yield chunk
 
+
+def _update_first_two_primary_steps(
+    state: dict[int, tuple[int, float, float, float] | None],
+    event_id: int,
+    step_id: int,
+    x: float,
+    y: float,
+    z: float,
+) -> None:
+    key_first = event_id * 2
+    key_second = event_id * 2 + 1
+    first = state.get(key_first)
+    second = state.get(key_second)
+    current = (step_id, x, y, z)
+    if first is None:
+        state[key_first] = current
+        return
+    if step_id < first[0]:
+        state[key_second] = first
+        state[key_first] = current
+        return
+    if step_id == first[0]:
+        return
+    if second is None or step_id < second[0]:
+        state[key_second] = current
+
+
+def extract_initial_angle_distributions(
+    root_arg: str,
+    deposition_epsilon_frac: float,
+    step_size: int,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    paths = resolve_root_paths(root_arg)
+    if not paths:
+        raise FileNotFoundError(root_arg)
+
+    theta_all: list[float] = []
+    theta_incomplete: list[float] = []
+    n_events_used = 0
+
+    for path in paths:
+        with uproot.open(path) as rootf:
+            if "event" not in rootf or "step" not in rootf:
+                continue
+            et = rootf["event"]
+            st = rootf["step"]
+            event_required = ["eventID", "primaryEnergy", "depositedEnergy"]
+            step_required = ["eventID", "parentID", "flagParticle", "x", "y", "z"]
+            has_track_id = "trackID" in st.keys()
+            has_step_id = "stepID" in st.keys()
+            if has_track_id:
+                step_required.append("trackID")
+            if has_step_id:
+                step_required.append("stepID")
+            if not all(name in et.keys() for name in event_required):
+                continue
+            if not all(name in st.keys() for name in step_required):
+                continue
+
+            event_arr = et.arrays(event_required, library="np")
+            event_budget = {
+                int(eid): (float(pe), float(de))
+                for eid, pe, de in zip(
+                    event_arr["eventID"],
+                    event_arr["primaryEnergy"],
+                    event_arr["depositedEnergy"],
+                )
+            }
+
+            step_state: dict[int, tuple[int, float, float, float] | None] = {}
+            step_state_seq: dict[int, list[tuple[float, float, float]]] = {}
+            for chunk in st.iterate(step_required, library="np", step_size=step_size):
+                m_primary = (
+                    (np.asarray(chunk["parentID"], dtype=np.int64) == 0)
+                    & (np.asarray(chunk["flagParticle"], dtype=np.int64) == 1)
+                )
+                if has_track_id:
+                    m_primary &= np.asarray(chunk["trackID"], dtype=np.int64) == 1
+                if not np.any(m_primary):
+                    continue
+                event_ids = np.asarray(chunk["eventID"], dtype=np.int64)[m_primary]
+                xs = np.asarray(chunk["x"], dtype=np.float64)[m_primary]
+                ys = np.asarray(chunk["y"], dtype=np.float64)[m_primary]
+                zs = np.asarray(chunk["z"], dtype=np.float64)[m_primary]
+                if has_step_id:
+                    step_ids = np.asarray(chunk["stepID"], dtype=np.int64)[m_primary]
+                    for eid, sid, x, y, z in zip(event_ids, step_ids, xs, ys, zs):
+                        _update_first_two_primary_steps(
+                            step_state,
+                            int(eid),
+                            int(sid),
+                            float(x),
+                            float(y),
+                            float(z),
+                        )
+                else:
+                    for eid, x, y, z in zip(event_ids, xs, ys, zs):
+                        eid_i = int(eid)
+                        pts = step_state_seq.get(eid_i)
+                        if pts is None:
+                            step_state_seq[eid_i] = [(float(x), float(y), float(z))]
+                        elif len(pts) < 2:
+                            pts.append((float(x), float(y), float(z)))
+
+            for event_id, (primary_e, deposited_e) in event_budget.items():
+                if has_step_id:
+                    first = step_state.get(event_id * 2)
+                    second = step_state.get(event_id * 2 + 1)
+                    if first is None or second is None:
+                        continue
+                    x0, y0, z0 = first[1], first[2], first[3]
+                    x1, y1, z1 = second[1], second[2], second[3]
+                else:
+                    pts = step_state_seq.get(event_id)
+                    if pts is None or len(pts) < 2:
+                        continue
+                    x0, y0, z0 = pts[0]
+                    x1, y1, z1 = pts[1]
+                dx = x1 - x0
+                dy = y1 - y0
+                dz = z1 - z0
+                norm = float(np.sqrt(dx * dx + dy * dy + dz * dz))
+                if norm <= 0.0:
+                    continue
+                uz = dz / norm
+                theta = float(np.degrees(np.arccos(np.clip(uz, -1.0, 1.0))))
+                theta_all.append(theta)
+                n_events_used += 1
+
+                if primary_e > 0.0:
+                    missing_frac = max(0.0, (primary_e - deposited_e) / primary_e)
+                    if missing_frac > deposition_epsilon_frac:
+                        theta_incomplete.append(theta)
+
+    return (
+        np.asarray(theta_all, dtype=np.float64),
+        np.asarray(theta_incomplete, dtype=np.float64),
+        n_events_used,
+    )
+
+
+def plot_initial_angle_diagnostics(
+    root_arg: str,
+    out_path: str,
+    deposition_epsilon_frac: float,
+    step_size: int,
+) -> str | None:
+    if not out_path:
+        return None
+    try:
+        theta_all, theta_incomplete, n_events_used = extract_initial_angle_distributions(
+            root_arg=root_arg,
+            deposition_epsilon_frac=deposition_epsilon_frac,
+            step_size=step_size,
+        )
+    except Exception as exc:
+        print(f"Initial-angle diagnostics skipped: {exc}")
+        return None
+
+    if theta_all.size == 0:
+        print("Initial-angle diagnostics skipped: no valid primary launch angles found.")
+        return None
+
+    fig, (ax_all, ax_incomplete) = plt.subplots(
+        1, 2, figsize=(12, 5), sharey=True, constrained_layout=True
+    )
+    bins = np.linspace(0.0, 90.0, 46)
+
+    ax_all.hist(theta_all, bins=bins, histtype="stepfilled", alpha=0.85, color="lightgray")
+    ax_all.set_xlim(0.0, 90.0)
+    ax_all.set_xlabel(r"$\theta$ (deg)")
+    ax_all.set_ylabel("Counts")
+    ax_all.set_title(f"Initial angle (all, N={n_events_used})")
+
+    ax_incomplete.hist(
+        theta_incomplete,
+        bins=bins,
+        histtype="stepfilled",
+        alpha=0.85,
+        color="dimgray",
+    )
+    ax_incomplete.set_xlim(0.0, 90.0)
+    ax_incomplete.set_xlabel(r"$\theta$ (deg)")
+    ax_incomplete.set_title(
+        f"Incomplete deposition (N={theta_incomplete.size}, eps={deposition_epsilon_frac:g})"
+    )
+
+    out_resolved = _resolve_output(out_path)
+    fig.savefig(out_resolved, bbox_inches="tight")
+    print(f"Wrote {out_resolved}")
+    return out_resolved
+
+
 def _make_energy_bins(e_min: float, e_max: float, nbins: int = 60) -> tuple[np.ndarray, np.ndarray, bool] | None:
     """Create energy bins and centers; returns (bins, centers, is_log) or None."""
     if not (np.isfinite(e_min) and np.isfinite(e_max)):
@@ -2264,7 +2457,7 @@ def plot_deflection_angles_all(arrs, out_path: str, fontsize: float = FONTSIZE):
 # -------- CLI --------
 def main():
     ap = argparse.ArgumentParser(description="Plot cross-sections, deflection angles, and summaries from dna.root and optional reference .dat")
-    ap.add_argument("--root", default="build/europa_test.root", help="Path to ROOT file (default: build/dna.root)")
+    ap.add_argument("--root", default="build/europa_test_e2.root", help="Path to ROOT file (default: build/dna.root)")
     ap.add_argument("--process", type=int, default=15, help="Single process code to plot when --processes is not given (default: 15)")
     ap.add_argument("--processes", default=None, help="Comma-separated process codes or 'all' to iterate over all present in ROOT")
     ap.add_argument("--dat", default=None, help="Absolute path to a reference .dat file (energy + partial XS columns). Overrides auto lookup")
@@ -2272,6 +2465,17 @@ def main():
     ap.add_argument("--summary_out", default="summary_panels.png", help="Output image for 4-panel summary")
     ap.add_argument("--deflection_out", default="deflection_angles.png", help="Output image for deflection-angle distributions")
     ap.add_argument("--de_hist_out", default="de_hist_vib.png", help="Output image for vib energy-loss histograms")
+    ap.add_argument(
+        "--initial_angles_out",
+        default="initial_angle_diagnostics.png",
+        help="Output image for initial-angle diagnostics (all vs incomplete deposition)",
+    )
+    ap.add_argument(
+        "--deposition-epsilon-frac",
+        type=float,
+        default=1e-6,
+        help="Fractional tolerance on missing energy for classifying incomplete deposition",
+    )
     ap.add_argument("--ncols", type=int, default=5, help="Max panels per row (default: 5)")
     ap.add_argument("--scale", type=float, default=1e16, help="Y-scale multiplier for microscopic XS (default: 1e16)")
     ap.add_argument("--nH2O_cm3", type=float, default=3.343e22, help="Number density (cm^-3) for macro→micro conversion")
@@ -2372,6 +2576,12 @@ def main():
         plot_vib_energy_loss_hist_stream(acc, args.ncols, args.de_hist_out, lineshapes)
         plot_summary_stream(acc, args.summary_out, fontsize=FONTSIZE)
         plot_deflection_angles_all_stream(acc, args.deflection_out, fontsize=FONTSIZE)
+        plot_initial_angle_diagnostics(
+            root_arg=root_arg,
+            out_path=args.initial_angles_out,
+            deposition_epsilon_frac=float(args.deposition_epsilon_frac),
+            step_size=int(args.step_size),
+        )
         return
 
     # ---- non-streaming path ----
@@ -2478,6 +2688,12 @@ def main():
     # Summary and deflection angles
     plot_summary(arrs, args.summary_out, fontsize=FONTSIZE)
     plot_deflection_angles_all(arrs, args.deflection_out, fontsize=FONTSIZE)
+    plot_initial_angle_diagnostics(
+        root_arg=root_arg,
+        out_path=args.initial_angles_out,
+        deposition_epsilon_frac=float(args.deposition_epsilon_frac),
+        step_size=int(args.step_size),
+    )
 
 
 if __name__ == "__main__":
