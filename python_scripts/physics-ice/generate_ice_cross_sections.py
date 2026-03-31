@@ -461,7 +461,7 @@ def _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=400, use_rel=False):
 
 def _sigma_pwba_excitation_shifted_T(s, C, Tshift, Tj, k, NE=400, Nq=400, use_rel=False):
     """sigma_PWBA for excitation k, with shifted kernel but kinematic E-window from Tj."""
-    Emin = float(s.excitations[k].Bth)
+    Emin = float(s.Bmin)
     Emax = float(Tj)
     if Emin >= Emax:
         return 0.0
@@ -500,7 +500,7 @@ def _total_transverse_sigma(s, C, Tj, NE=400, use_density_effect=False):
     ion_total = 0.0
 
     for k in range(len(s.excitations)):
-        Emin = float(s.excitations[k].Bth)
+        Emin = float(s.Bmin)
         Emax = Tj
         if Emin >= Emax:
             continue
@@ -623,7 +623,7 @@ def integrate_elf_channels_per_channel_q(
     """
 
     # --- Channel energy windows ---
-    exc_Emin = np.array([osc.Bth for osc in s.excitations], float)
+    exc_Emin = np.full(len(s.excitations), float(s.Bmin), dtype=float)
     exc_Emax = np.array([T for _ in s.excitations], float)
 
     ion_Emin = np.array([osc.Bth for osc in s.ionizations], float)
@@ -859,7 +859,7 @@ def integrate_elf_double_integral(
         use_rel_in_mc = use_rel_long
         exc_sigma_mc = []
         for k in range(len(s.excitations)):
-            Bk = float(s.excitations[k].Bth)
+            Ek = float(s.excitations[k].E0)
             Tshift = float(T + 2.0 * Bk)
             exc_sigma_mc.append(
                 _sigma_pwba_excitation_shifted_T(
