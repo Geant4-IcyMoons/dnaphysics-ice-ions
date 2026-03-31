@@ -1,7 +1,7 @@
 # dnaphysics-ice
 
 <p align="center">
-  <img src="logo.png" alt="dnaphysics-ice logo" />
+  <img src="icymoons_logo.png" alt="dnaphysics-ice logo" />
 </p>
 
 Geant4‑DNA based simulation for electron transport in icy media (water ice). This setup extends the standard Geant4‑DNA physics with Michaud et al. (2003) vibronic/elastic/attachment cross‑sections and associated differential angular data tailored for low‑energy electrons in ice.

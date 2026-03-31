@@ -1,0 +1,125 @@
+# Example 5
+# Hexagonal-ice W-value scan.
+# This mirrors the current W-value workflow in wvalue_ice.in.
+# Phase selection is handled by the runner via DNA_PHYSICS=ice_hex.
+
+/control/verbose 0
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+
+/control/alias NEVT 100
+/control/alias NEVT_big 10
+/control/alias NEVT_huge 5
+
+/control/alias LOG_MODE minimal
+
+/run/numberOfThreads 12
+
+/dna/test/setMat G4_WATER
+/dna/test/setIceSize 20000 20000 20000 mm
+/dna/test/setLogMode {LOG_MODE}
+
+/run/initialize
+
+/gps/particle e-
+/gps/number 1
+/gps/pos/type Point
+/gps/pos/centre 0 0 100 mm
+/gps/direction 0 0 1
+/gps/ene/type Mono
+
+/gps/ene/mono 12 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 15 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 20 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 30 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 40 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 50 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 60 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 70 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 80 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 90 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 100 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 200 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 300 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 400 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 500 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 600 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 700 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 800 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 900 eV
+/run/beamOn {NEVT}
+/gps/ene/mono 1 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 2 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 3 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 4 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 5 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 6 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 7 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 8 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 9 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 10 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 20 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 30 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 40 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 50 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 60 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 70 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 80 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 90 keV
+/run/beamOn {NEVT}
+/gps/ene/mono 100 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 200 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 300 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 400 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 500 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 600 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 700 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 800 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 900 keV
+/run/beamOn {NEVT_big}
+/gps/ene/mono 1 MeV
+/run/beamOn {NEVT_huge}
