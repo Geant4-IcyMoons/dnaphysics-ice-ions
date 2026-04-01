@@ -34,6 +34,7 @@ import argparse
 import json
 import math
 import os
+import sys
 from pathlib import Path
 from typing import List
 import warnings
@@ -43,7 +44,8 @@ import matplotlib.pyplot as plt
 import uproot
 
 from root_utils import resolve_root_paths, resolve_first_root
-from constants import (
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from physics_ice.constants import (
     CROSS_SECTIONS_DIR,
     CUSTOM_DATA_ROOT_GEANT4,
     EMFI_EXCITATION_EEV,

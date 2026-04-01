@@ -28,9 +28,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import os
+import sys
 import pathlib
 
-from constants import (
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from physics_ice.constants import (
     CUSTOM_DATA_ROOT_PROJECT,
     FONTSIZE_12,
     MICHAUD_TABLE2_PATH,
