@@ -2,7 +2,7 @@
 
 This README documents the macro-and-table generator:
 
-- [`python_scripts/europa/generate_europa_energy_library.py`](../python_scripts/generate_europa_energy_library.py)
+- [`python_scripts/europa/generate_europa_energy_library.py`](../python_scripts/europa/generate_europa_energy_library.py)
 
 It is the README for the generator itself, not the full end-to-end production pipeline.
 
@@ -495,4 +495,4 @@ That script:
 
 For the full Europa production workflow, including how to run and consume the generated library, see:
 
-- [`../README_europa.md`](../README_europa.md)
+- [`../README_europa.md`](../../README_europa.md)
