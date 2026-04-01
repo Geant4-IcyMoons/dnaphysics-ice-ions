@@ -14,9 +14,11 @@ from pathlib import Path
 import pickle
 
 import numpy as np
+import sys
+import os
 
-from constants import TOP_ROOT
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from physics_ice.constants import TOP_ROOT
 
 def electron_spectrum_fit(E, j0=4.23, E0=3.11, a=-1.58, b=1.86):
     # E in MeV
@@ -328,12 +330,12 @@ def main() -> None:
         raise ValueError("Trailing hemisphere expects west longitude in [180, 360].")
 
     if hemisphere == "leading":
-        map_path = TOP_ROOT / "e_bombardment_leading"
+        map_path = TOP_ROOT / "dnaphysics-ice/python_scripts/europa/e_bombardment_leading"
         data = _load_map(map_path)
         if data.ndim != 2:
             raise ValueError(f"Expected 2D leading map, got shape {data.shape}")
     else:
-        map_path = TOP_ROOT / "e_bombardment_trailing"
+        map_path = TOP_ROOT / "dnaphysics-ice/python_scripts/europa/e_bombardment_trailing"
         data = _load_map(map_path)
         if data.ndim != 3:
             raise ValueError(f"Expected 3D trailing map, got shape {data.shape}")

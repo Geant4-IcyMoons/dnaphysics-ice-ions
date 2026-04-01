@@ -24,6 +24,9 @@ import argparse
 import csv
 import gzip
 from pathlib import Path
+import sys
+import os
+
 
 import numpy as np
 
@@ -38,7 +41,8 @@ from generate_europa_electron_bins import (
     electron_spectrum_fit,
 )
 
-from constants import TOP_ROOT
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from physics_ice.constants import TOP_ROOT
 
 
 def _lat_lon_centers(n_lat: int, n_lon: int) -> tuple[np.ndarray, np.ndarray]:
@@ -830,8 +834,8 @@ def main() -> None:
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    leading_map = _load_map(TOP_ROOT / "e_bombardment_leading")
-    trailing_map = _load_map(TOP_ROOT / "e_bombardment_trailing")
+    leading_map = _load_map(TOP_ROOT / "dnaphysics-ice/python_scripts/europa/e_bombardment_leading")
+    trailing_map = _load_map(TOP_ROOT / "dnaphysics-ice/python_scripts/europa/e_bombardment_trailing")
 
     if leading_map.ndim != 2:
         raise ValueError(f"Expected 2D leading map, got shape {leading_map.shape}")
