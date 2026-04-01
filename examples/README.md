@@ -1,4 +1,4 @@
-# Geant4_icyMoons_examples
+# Geant4 IcyMoons Examples
 
 This folder contains six standalone examples:
 

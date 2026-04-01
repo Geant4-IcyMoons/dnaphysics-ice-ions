@@ -82,7 +82,7 @@ You need:
 
 Typical executable path:
 
-- `<repo>/geant4_projects/dnaphysics-ice/build/dnaphysics`
+- `<repo>/dnaphysics-ice/build/dnaphysics`
 
 Typical `G4LEDATA`:
 
@@ -98,12 +98,10 @@ export G4LEDATA="/absolute/path/to/G4EMLOW8.6.1"
 
 From the `dnaphysics-ice` repo directory:
 
-- `geant4_projects/dnaphysics-ice`
-
 run:
 
 ```bash
-./Geant4_icyMoons_examples/example_3/run_example_3.sh \
+./examples/example_3/run_example_3.sh \
   --binary "./build/dnaphysics"
 ```
 
@@ -131,15 +129,15 @@ The plotting script reads the single `0.5 MeV` batch in this example and produce
 Run:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_3/plot_example_3_depth_diagnostics.py
+python3 examples/example_3/plot_example_3_depth_diagnostics.py
 ```
 
 or explicitly:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_3/plot_example_3_depth_diagnostics.py \
-  --root "Geant4_icyMoons_examples/example_3/outputs/example_3.root" \
-  --out "Geant4_icyMoons_examples/example_3/outputs/example_3_depth_diagnostics.png"
+python3 examples/example_3/plot_example_3_depth_diagnostics.py \
+  --root "examples/example_3/outputs/example_3.root" \
+  --out "examples/example_3/outputs/example_3_depth_diagnostics.png"
 ```
 
 The plot shows:

@@ -1,4 +1,4 @@
-# example_1
+# Example 1
 
 `example_1` is the minimal-logging Geant4-IcyMoons example.
 
@@ -50,7 +50,7 @@ You need:
 
 Typical executable path:
 
-- `<repo>/geant4_projects/dnaphysics-ice/build/dnaphysics`
+- `<repo>/dnaphysics-ice/build/dnaphysics`
 
 Typical `G4LEDATA`:
 
@@ -66,12 +66,10 @@ export G4LEDATA="/absolute/path/to/G4EMLOW8.6.1"
 
 From the `dnaphysics-ice` repo directory:
 
-- `geant4_projects/dnaphysics-ice`
-
 run:
 
 ```bash
-./Geant4_icyMoons_examples/example_1/run_example_1.sh \
+./examples/example_1/run_example_1.sh \
   --binary "./build/dnaphysics"
 ```
 
@@ -100,15 +98,15 @@ The plotting script is designed for this single ROOT file and separates the thre
 Run:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_1/plot_example_1_depth_diagnostics.py
+python3 examples/example_1/plot_example_1_depth_diagnostics.py
 ```
 
 or explicitly:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_1/plot_example_1_depth_diagnostics.py \
-  --root "Geant4_icyMoons_examples/example_1/outputs/example_1.root" \
-  --out "Geant4_icyMoons_examples/example_1/outputs/example_1_depth_diagnostics.png"
+python3 examples/example_1/plot_example_1_depth_diagnostics.py \
+  --root "examples/example_1/outputs/example_1.root" \
+  --out "examples/example_1/outputs/example_1_depth_diagnostics.png"
 ```
 
 The plot shows, by event energy:

@@ -50,7 +50,7 @@ You need:
 
 Typical executable path:
 
-- `<repo>/geant4_projects/dnaphysics-ice/build/dnaphysics`
+- `<repo>/dnaphysics-ice/build/dnaphysics`
 
 Typical `G4LEDATA`:
 
@@ -66,12 +66,10 @@ export G4LEDATA="/absolute/path/to/G4EMLOW8.6.1"
 
 From the `dnaphysics-ice` repo directory:
 
-- `geant4_projects/dnaphysics-ice`
-
 run:
 
 ```bash
-./Geant4_icyMoons_examples/example_2/run_example_2.sh \
+./examples/example_2/run_example_2.sh \
   --binary "./build/dnaphysics"
 ```
 
@@ -100,15 +98,15 @@ The plotting script is designed for this single ROOT file and separates the thre
 Run:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_2/plot_example_2_process_diagnostics.py
+python3 examples/example_2/plot_example_2_process_diagnostics.py
 ```
 
 or explicitly:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_2/plot_example_2_process_diagnostics.py \
-  --root "Geant4_icyMoons_examples/example_2/outputs/example_2.root" \
-  --out "Geant4_icyMoons_examples/example_2/outputs/example_2_process_diagnostics.png"
+python3 examples/example_2/plot_example_2_process_diagnostics.py \
+  --root "examples/example_2/outputs/example_2.root" \
+  --out "examples/example_2/outputs/example_2_process_diagnostics.png"
 ```
 
 The plot shows, by event energy:

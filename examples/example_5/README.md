@@ -51,7 +51,7 @@ You need:
 
 Typical executable path:
 
-- `<repo>/geant4_projects/dnaphysics-ice/build/dnaphysics`
+- `<repo>/dnaphysics-ice/build/dnaphysics`
 
 Typical `G4LEDATA`:
 
@@ -67,12 +67,10 @@ export G4LEDATA="/absolute/path/to/G4EMLOW8.6.1"
 
 From the `dnaphysics-ice` repo directory:
 
-- `geant4_projects/dnaphysics-ice`
-
 run:
 
 ```bash
-./Geant4_icyMoons_examples/example_5/run_example_5.sh \
+./examples/example_5/run_example_5.sh \
   --binary "./build/dnaphysics"
 ```
 
@@ -103,15 +101,15 @@ The W-value text file is appended to if it already exists. Remove it first if yo
 Run:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_5/plot_example_5_wvalue.py
+python3 examples/example_5/plot_example_5_wvalue.py
 ```
 
 or explicitly:
 
 ```bash
-python3 Geant4_icyMoons_examples/example_5/plot_example_5_wvalue.py \
-  --txt "Geant4_icyMoons_examples/example_5/outputs/example_5_wvalue.txt" \
-  --out "Geant4_icyMoons_examples/example_5/outputs/example_5_wvalue.png"
+python3 examples/example_5/plot_example_5_wvalue.py \
+  --txt "examples/example_5/outputs/example_5_wvalue.txt" \
+  --out "examples/example_5/outputs/example_5_wvalue.png"
 ```
 
 The plot shows:
