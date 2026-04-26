@@ -63,18 +63,38 @@
 #include "G4SystemOfUnits.hh"
 #include "G4UserSpecialCuts.hh"
 #include "G4PhysicsListHelper.hh"
+#include "G4VEmProcess.hh"
+#include "G4VEmModel.hh"
+#include "G4ProcessManager.hh"
 
 //****** ICE *****
 #include "G4DNAVibExcitation.hh"
 #include "G4DNAElastic.hh"
 #include "G4DNAAttachment.hh"
+#include "G4DNAExcitation.hh"
+#include "G4DNAIonisation.hh"
 #include "G4Electron.hh"
 #include "G4DNASancheExcitationModel.hh"
 #include "G4DNAMichaudExcitationModel.hh"
 #include "G4DNAMichaudAttachmentModel.hh"
 #include "G4DNAMichaudElasticModel.hh"
+#include "G4DNAMichaud_ELSEPA_LOW_ElasticModel.hh"
+#include "G4DNAMichaud_ELSEPA_HIGH_ElasticModel.hh"
+#include "G4DNAEmfietzoglou_iceExcitationModel.hh"
+#include "G4DNAEmfietzoglou_iceIonisationModel.hh"
+#include "G4DNAElectronTrappingKill.hh"
 //****** END ICE *****
 
+//****** High-energy standard EM models (>10 MeV) *****
+#include "G4eMultipleScattering.hh"
+#include "G4eBremsstrahlung.hh"
+#include "G4eIonisation.hh"
+#include "G4MollerBhabhaModel.hh"
+#include "G4SeltzerBergerModel.hh"
+#include "G4UrbanMscModel.hh"
+#include "G4WentzelVIModel.hh"
+#include "G4CoulombScattering.hh"
+//****** END High-energy *****
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -123,21 +143,119 @@ void PhysicsList::ConstructProcess()
 
   // Vibrational excitation process & model
 
-  G4PhysicsListHelper* ph = G4PhysicsListHelper::GetPhysicsListHelper();
-   
- G4DNAVibExcitation* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
- G4DNAElastic* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
-  G4DNAAttachment* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
-  // theDNAVibProcess->SetEmModel(new G4DNASancheExcitationModel()  );
- theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel()  );
- theDNAElasticProcess->SetEmModel(new G4DNAMichaudElasticModel()  );
-  theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel()  );
-    
- ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
- ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
-  ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
+G4PhysicsListHelper* ph = G4PhysicsListHelper::GetPhysicsListHelper();
 
+// ----- Elastic (choose one block) -----
+auto* theDNAElasticProcess = new G4DNAElastic("e-_G4DNAElastic_ICE");
+
+// 1) Michaud only (1.7–100 eV)
+// theDNAElasticProcess->SetEmModel(new G4DNAMichaudElasticModel());
+
+// 2) Blended Michaud–ELSEPA low only (2–199 eV)
+// auto* low = new G4DNAMichaud_ELSEPA_LOW_ElasticModel();
+// low->SetLowEnergyLimit(2.*eV);
+// low->SetHighEnergyLimit(199.*eV);
+// theDNAElasticProcess->SetEmModel(low);
+
+// 3) Blended Michaud–ELSEPA high only (200 eV–1 MeV)
+// auto* high = new G4DNAMichaud_ELSEPA_HIGH_ElasticModel();
+// high->SetLowEnergyLimit(200.*eV);
+// high->SetHighEnergyLimit(10.*MeV);
+// theDNAElasticProcess->SetEmModel(high);
+
+// 4) Blended low + high tiled
+theDNAElasticProcess->SetMinKinEnergy(2.*eV);
+theDNAElasticProcess->SetMaxKinEnergy(10.*MeV);
+auto* low = new G4DNAMichaud_ELSEPA_LOW_ElasticModel();
+low->SetLowEnergyLimit(2.*eV);
+low->SetHighEnergyLimit(200.*eV);
+theDNAElasticProcess->SetEmModel(low); // sets default so SR is not re-inserted
+auto* high = new G4DNAMichaud_ELSEPA_HIGH_ElasticModel();
+high->SetLowEnergyLimit(200.*eV);
+high->SetHighEnergyLimit(10.*MeV);
+theDNAElasticProcess->AddEmModel(2, high);
+
+ph->RegisterProcess(theDNAElasticProcess, G4Electron::ElectronDefinition());
+
+// ----- Vibrational excitation (uncomment to enable) -----
+auto* theDNAVibProcess = new G4DNAVibExcitation("e-_G4DNAVib_ICE");
+theDNAVibProcess->SetEmModel(new G4DNAMichaudExcitationModel());
+ph->RegisterProcess(theDNAVibProcess, G4Electron::ElectronDefinition());
+
+// ----- Attachment (uncomment to enable) -----
+auto* theDNAAttachmentProcess = new G4DNAAttachment("e-_G4DNAAttachment_ICE");
+theDNAAttachmentProcess->SetEmModel(new G4DNAMichaudAttachmentModel());
+ph->RegisterProcess(theDNAAttachmentProcess, G4Electron::ElectronDefinition());
+
+// ----- Excitation -----
+auto* theDNAExcitationProcess = new G4DNAExcitation("e-_G4DNAExcitation_ICE");
+theDNAExcitationProcess->SetEmModel(new G4DNAEmfietzoglou_iceExcitationModel());
+ph->RegisterProcess(theDNAExcitationProcess, G4Electron::ElectronDefinition());
+
+  // ----- Ionisation -----
+auto* theDNAIonisationProcess = new G4DNAIonisation("e-_G4DNAIonisation_ICE");
+theDNAIonisationProcess->SetEmModel(new G4DNAEmfietzoglou_iceIonisationModel());
+// Ensure ionisation is active across the DNA + high-EM tiled range.
+// Without explicit bounds, process defaults may clip applicability.
+theDNAIonisationProcess->SetMinKinEnergy(10. * eV);
+theDNAIonisationProcess->SetMaxKinEnergy(1. * GeV);
+ph->RegisterProcess(theDNAIonisationProcess, G4Electron::ElectronDefinition());
+
+// ----- Electron trapping kill (<= 2 eV in Ice) -----
+auto* theDNAElectronTrappingKill = new G4DNAElectronTrappingKill("e-_G4DNAElectronTrappingKill_ICE");
+theDNAElectronTrappingKill->SetKillEnergyThreshold(2.0 * eV);
+if (auto* ePM = G4Electron::ElectronDefinition()->GetProcessManager()) {
+  ePM->AddDiscreteProcess(theDNAElectronTrappingKill);
+}
   //****** END ICE *****
+
+  // -------- High-energy fallback (>= 10 MeV): standard EM option4 models --------
+  {
+    const G4double kHighMin = 10. * MeV;
+    const G4double kHighMax = 1. * GeV;
+
+    // Multiple scattering (>= 10 MeV)
+    // Note: MSC is a continuous process without SetMinKinEnergy; energy range controlled by model
+    auto* msc = new G4eMultipleScattering();
+    auto* mscModel = new G4UrbanMscModel();
+    mscModel->SetLowEnergyLimit(kHighMin);
+    mscModel->SetHighEnergyLimit(kHighMax);
+    msc->SetEmModel(mscModel);
+    ph->RegisterProcess(msc, G4Electron::ElectronDefinition());
+
+    // Ionisation (>= 10 MeV) — must be a separate G4eIonisation
+    // (G4VEnergyLossProcess) so that continuous dE/dx tables are built.
+    // Tiling G4MollerBhabhaModel onto the G4DNAIonisation (G4VEmProcess)
+    // would lose the continuous energy-loss component and prevent the
+    // electron from slowing down through the 10 MeV boundary.
+    // Both processes coexist: G4eIonisation is restricted to >= 10 MeV
+    // by SetMinKinEnergy, and G4DNAIonisation covers 10 eV – 10 MeV.
+    auto* highIonModel = new G4MollerBhabhaModel();
+    highIonModel->SetLowEnergyLimit(kHighMin);
+    highIonModel->SetHighEnergyLimit(kHighMax);
+    auto* ionisation = new G4eIonisation();
+    ionisation->SetMinKinEnergy(kHighMin);
+    ionisation->SetEmModel(highIonModel);
+    ph->RegisterProcess(ionisation, G4Electron::ElectronDefinition());
+
+    // Bremsstrahlung (>= 10 MeV)
+    auto* brem = new G4eBremsstrahlung();
+    brem->SetMinKinEnergy(kHighMin);
+    auto* bremModel = new G4SeltzerBergerModel();
+    bremModel->SetLowEnergyLimit(kHighMin);
+    bremModel->SetHighEnergyLimit(kHighMax);
+    brem->SetEmModel(bremModel);
+    ph->RegisterProcess(brem, G4Electron::ElectronDefinition());
+
+    // Coulomb scattering (>= 10 MeV)
+    auto* cs = new G4CoulombScattering();
+    cs->SetMinKinEnergy(kHighMin);
+    auto* csModel = new G4WentzelVIModel();
+    csModel->SetLowEnergyLimit(kHighMin);
+    csModel->SetHighEnergyLimit(kHighMax);
+    cs->SetEmModel(csModel);
+    ph->RegisterProcess(cs, G4Electron::ElectronDefinition());
+  }
 
   /*
   fEmPhysicsList->ConstructProcess();

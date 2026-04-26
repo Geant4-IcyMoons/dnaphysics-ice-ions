@@ -1,5 +1,0 @@
-/process/em/fluo true
-/process/em/auger true
-/process/em/augerCascade true
-/process/em/deexcitationIgnoreCut true
-/process/em/AddDNARegion Target DNA_Opt4

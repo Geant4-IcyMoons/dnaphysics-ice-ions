@@ -1,5 +1,0 @@
-/setMode tracking
-/run/numberOfThreads 1
-
-/run/initialize
-/run/beamOn 1000

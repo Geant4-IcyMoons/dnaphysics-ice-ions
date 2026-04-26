@@ -80,6 +80,10 @@ public:
 
   inline void SelectStationary(G4bool input); 
 
+  // Last selected vibrational channel (per thread)
+  static G4int GetLastChannelIndex();
+  static G4double GetLastPartialSigma_cm2();
+
 protected:
 
   G4ParticleChangeForGamma* fParticleChangeForGamma;

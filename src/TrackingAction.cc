@@ -37,6 +37,8 @@
 /// \brief Implementation of the TrackingAction class
 
 #include "TrackingAction.hh"
+#include "RunAction.hh"
+#include "SteppingAction.hh"
 
 #include "G4Alpha.hh"
 #include "G4AnalysisManager.hh"
@@ -47,6 +49,20 @@
 #include "G4Proton.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4Track.hh"
+#include "G4TrackingManager.hh"
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+bool ReadEnvFlag(const char* name, bool defaultValue)
+{
+  const char* env = std::getenv(name);
+  if (!env || !*env) {
+    return defaultValue;
+  }
+  return std::strcmp(env, "0") != 0;
+}
+}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -56,6 +72,25 @@ TrackingAction::TrackingAction() {}
 
 void TrackingAction::PreUserTrackingAction(const G4Track* aTrack)
 {
+  // Reset fallback-process activation cache so the first step of every
+  // new track unconditionally sets the correct state for its energy.
+  SteppingAction::ResetHighEnergyFallbackState();
+  SteppingAction::SetHighEnergyFallbackActive(aTrack);
+
+  static const G4bool kHideSecondaryElectronTraj =
+    ReadEnvFlag("DNA_VIS_HIDE_SECONDARY_ELECTRON_TRAJ", true);
+  if (kHideSecondaryElectronTraj &&
+      aTrack &&
+      aTrack->GetDefinition() == G4Electron::ElectronDefinition() &&
+      aTrack->GetParentID() > 0 &&
+      fpTrackingManager) {
+    fpTrackingManager->SetStoreTrajectory(false);
+  }
+
+  if (!RunAction::IsTrackNtupleEnabled()) {
+    return;
+  }
+
   G4double flagParticle = -1.;
   G4double x, y, z, dirx, diry, dirz;
 

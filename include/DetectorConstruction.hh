@@ -46,36 +46,46 @@
 #include "G4VisAttributes.hh"
 
 class DetectorMessenger;
-class PhysicsList;
+class G4VModularPhysicsList;
 class G4LogicalVolume;
 class G4PVPlacement;
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
   public:
-    DetectorConstruction(PhysicsList*);
+    DetectorConstruction(G4VModularPhysicsList*);
 
     ~DetectorConstruction() override;
     G4VPhysicalVolume* Construct() override;
     
     void SetMaterial(const G4String&);
-    void SetSize(G4double); 
+    void SetSize(G4double);
+    void SetIceSize(G4double, G4double, G4double);
 
   public:
     
     G4Material* 
     MaterialWithDensity(G4String, G4double); 
-    G4double GetSize() {return fWorldSize;};
+    G4double GetSize() { return fWorldSize; }
+    G4double GetIceSizeX() const { return fIceSizeX; }
+    G4double GetIceSizeY() const { return fIceSizeY; }
+    G4double GetIceSizeZ() const { return fIceSizeZ; }
      
   private:
    
+    G4double fIceSizeX = 0.;
+    G4double fIceSizeY = 0.;
+    G4double fIceSizeZ = 0.;
     G4double fWorldSize = 0.;
     
     void DefineMaterials();
 
     DetectorMessenger* fDetectorMessenger;
     G4Material* fpWaterMaterial;
+    G4Material* fpWorldMaterial;
     G4LogicalVolume* fLogicWorld;
+    G4LogicalVolume* fLogicIce;
     G4PVPlacement* fPhysiWorld;
+    G4PVPlacement* fPhysiIce;
 };
 #endif

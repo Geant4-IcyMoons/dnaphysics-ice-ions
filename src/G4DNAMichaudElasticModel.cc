@@ -30,6 +30,7 @@
 #include "G4SystemOfUnits.hh"
 #include "G4DNAMolecularMaterial.hh"
 #include "G4Exp.hh"
+#include "ModelDataRegistry.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
@@ -129,6 +130,9 @@ void G4DNAMichaudElasticModel::Initialise(const G4ParticleDefinition* particle,
   G4double scaleFactor = 1e-16*cm*cm;
 
   G4String fileElectron("dna/sigma_elastic_e_michaud");
+  ModelDataRegistry::Instance().Record(
+    std::string("model_ref:") + GetName(),
+    ModelDataRegistry::NormalizeDatBasename(fileElectron));
 
   fpData = new G4DNACrossSectionDataSet(new G4LogLogInterpolation(),
                                         eV,

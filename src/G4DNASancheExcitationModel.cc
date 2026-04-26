@@ -30,12 +30,28 @@
 #include "G4DNASancheExcitationModel.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4DNAMolecularMaterial.hh"
+#include "ModelDataRegistry.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 using namespace std;
 
 //#define SANCHE_VERBOSE
+
+namespace {
+thread_local G4int g_lastSancheLevel = -1;
+thread_local G4double g_lastSanchePartialSigma_cm2 = -1.0;
+}
+
+G4int G4DNASancheExcitationModel::GetLastChannelIndex()
+{
+  return g_lastSancheLevel;
+}
+
+G4double G4DNASancheExcitationModel::GetLastPartialSigma_cm2()
+{
+  return g_lastSanchePartialSigma_cm2;
+}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -138,6 +154,23 @@ Initialise(const G4ParticleDefinition* /*particle*/,
   const char *path = G4FindDataDir("G4LEDATA");
   std::ostringstream eFullFileName;
   eFullFileName << path << "/dna/sigma_excitationvib_e_sanche.dat";
+  ModelDataRegistry::Instance().Record(
+    std::string("model_ref:") + GetName(),
+    ModelDataRegistry::NormalizeDatBasename(eFullFileName.str()));
+  {
+    static const G4double energies[9] = { 0.01, 0.024, 0.061, 0.092, 0.204, 0.417, 0.460,
+                                          0.500, 0.835 };
+    std::ostringstream meta;
+    meta.setf(std::ios::fixed);
+    meta << "{\"shape\":\"delta\",\"centers\":[";
+    for (size_t i = 0; i < 9; ++i) {
+      if (i) meta << ",";
+      meta << std::setprecision(6) << energies[i];
+    }
+    meta << "]}";
+    ModelDataRegistry::Instance().Record(
+      std::string("model_lineshape:") + GetName(), meta.str());
+  }
   std::ifstream input(eFullFileName.str().c_str());
 
   if (!input)
@@ -242,6 +275,12 @@ void G4DNASancheExcitationModel::SampleSecondaries(std::vector<
 
   G4double electronEnergy0 = aDynamicElectron->GetKineticEnergy();
   G4int level = RandomSelect(electronEnergy0);
+  g_lastSancheLevel = level;
+  if (level >= 0 && level < nLevels) {
+    g_lastSanchePartialSigma_cm2 = PartialCrossSection(electronEnergy0, level);
+  } else {
+    g_lastSanchePartialSigma_cm2 = -1.0;
+  }
   G4double excitationEnergy = VibrationEnergy(level); // levels go from 0 to 8
   G4double newEnergy = electronEnergy0 - excitationEnergy;
 
@@ -418,4 +457,3 @@ G4double G4DNASancheExcitationModel::LinInterpolate(G4double e1,
 
   return value;
 }
-

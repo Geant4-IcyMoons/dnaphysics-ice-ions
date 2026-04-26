@@ -1,0 +1,32 @@
+# Example 2
+# Amorphous ice, full logging.
+# Runs three single-electron events in one macro:
+#   0.1 MeV, 1 MeV, 10 MeV
+
+/control/verbose 0
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+
+/dna/test/setLogMode full
+/dna/test/setIceSize 10 10 100 mm
+/dna/test/setMatDens G4_WATER_ICE_USER 0.94 g/cm3
+/dna/test/setMat G4_WATER_ICE_USER
+
+/run/initialize
+
+/gps/particle e-
+/gps/number 1
+/gps/pos/type Point
+/gps/pos/centre 0 0 -0.01 mm
+/gps/direction 0 0 1
+/gps/ene/type Mono
+
+/gps/ene/mono 0.1 MeV
+/run/beamOn 1
+
+/gps/ene/mono 1 MeV
+/run/beamOn 1
+
+/gps/ene/mono 10 MeV
+/run/beamOn 1

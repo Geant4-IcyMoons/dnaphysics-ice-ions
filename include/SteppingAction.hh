@@ -40,13 +40,17 @@
 #define SteppingAction_h 1
 
 #include "G4UserSteppingAction.hh"
-#include <vector>
+#include <set>
 #include <string>
+#include <vector>
+
+class EventAction;
+class G4Track;
 
 class SteppingAction : public G4UserSteppingAction
 {
   public:
-    SteppingAction();
+    explicit SteppingAction(EventAction* eventAction);
     virtual ~SteppingAction();
 
     virtual void UserSteppingAction(const G4Step*);
@@ -56,11 +60,27 @@ class SteppingAction : public G4UserSteppingAction
       double kinE_eV;
       std::string process;
       std::string channel; // optional sub-channel/model if derivable
+      std::string model;
       double sigma_area_cm2; // microscopic cross section (cm^2), -1 if not available
     };
 
     // Accessors for collected per-step logs (used by RunAction to print after run)
+    static void SetLoggingEnabled(bool enabled);
+    static bool IsLoggingEnabled();
     static std::vector<StepRecord>& Logs();
     static void ClearLogs();
+
+    static void ClearObservedModels();
+    static std::vector<std::string> ObservedModels();
+
+    /// Reset cached fallback-activation state so the next call to
+    /// SetHighEnergyFallbackActive will unconditionally re-evaluate.
+    static void ResetHighEnergyFallbackState();
+    /// Enable / disable standard-EM fallback processes (eIoni, eBrem, msc,
+    /// CoulombScat) based on the track's current kinetic energy vs 10 MeV.
+    static void SetHighEnergyFallbackActive(const G4Track* track);
+
+  private:
+    EventAction* fEventAction;
 };
 #endif

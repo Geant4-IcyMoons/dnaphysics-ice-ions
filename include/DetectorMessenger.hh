@@ -43,31 +43,35 @@
 #include "globals.hh"
 
 class DetectorConstruction;
-class PhysicsList;
+class G4VModularPhysicsList;
 
 class G4UIdirectory;
 class G4UIcmdWithAString;
 class G4UIcmdWithABool;
 class G4UIcommand;
 class G4UIcmdWithADoubleAndUnit;
+class G4UIcmdWith3VectorAndUnit;
 
 class DetectorMessenger : public G4UImessenger
 {
   public:
-    DetectorMessenger(DetectorConstruction*, PhysicsList*);
+    DetectorMessenger(DetectorConstruction*, G4VModularPhysicsList*);
     ~DetectorMessenger() override;
 
     void SetNewValue(G4UIcommand*, G4String) override;
 
   private:
     DetectorConstruction* fpDetector;
-    PhysicsList* fpPhysList;
+    G4VModularPhysicsList* fpPhysList;
     G4UIdirectory* fpDetDir;
     G4UIcmdWithAString* fpMaterCmd;
     G4UIcmdWithAString* fpPhysCmd;
     G4UIcmdWithABool* fpTrackingCutCmd;
     G4UIcommand* fDensityCmd;
     G4UIcmdWithADoubleAndUnit* fSizeCmd;
+    G4UIcmdWith3VectorAndUnit* fIceSizeCmd;
+    G4UIcmdWithABool* fMaxThetaCmd;
+    G4UIcmdWithAString* fLogModeCmd;
 };
 
 #endif
