@@ -1,0 +1,28 @@
+# Proton test macro (excitation + ionisation)
+
+/control/verbose 1
+/run/verbose 1
+/event/verbose 1
+/tracking/verbose 1
+
+# number of threads (for MT build)
+/run/numberOfThreads 8
+
+/dna/test/setLogMode full
+
+/dna/test/setIceSize 100 100 1000 mm
+/dna/test/setMatDens G4_WATER_ICE_USER 1. g/cm3
+/dna/test/setMat G4_WATER_ICE_USER
+
+/run/initialize
+
+/gps/particle proton
+/gps/number 1
+/gps/pos/type Point
+/gps/pos/centre 0 0 -0.01 mm
+/gps/direction 0 0 1
+/gps/ene/type Mono
+
+# Must stay inside proton model limits: 0.1 MeV - 10 MeV
+/gps/ene/mono 0.5 MeV
+/run/beamOn 10
