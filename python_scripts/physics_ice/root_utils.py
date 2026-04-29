@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Iterable, List
 
-from constants import PROJECT_ROOT
+from .constants import PROJECT_ROOT
 
 
 def _has_wildcards(path_str: str) -> bool:
