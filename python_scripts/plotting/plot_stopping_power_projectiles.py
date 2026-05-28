@@ -23,6 +23,8 @@ if str(PHYSICS_ICE_DIR) not in sys.path:
 
 from constants import (  # noqa: E402
     CROSS_SECTIONS_DIR,
+    CUSTOM_DATA_ROOT_GEANT4,
+    CUSTOM_DATA_ROOT_PROJECT,
     EMFIETZOGLOU_SCALE_1E16,
     FONT_COURIER,
     FONTSIZE_24,
@@ -45,6 +47,8 @@ EV_NM_TO_MEV_CM = 10.0
 EV_NM_TO_EV_ANG = 0.1
 WATER_DENSITY_G_CM3 = 1.0
 N_CM3_WATER = N / 1.0e6
+GEANT4_DNA_SCALE_CM2 = EMFIETZOGLOU_SCALE_1E16 * 1.0e-16
+WATER_EXCITATION_ENERGIES_EV = np.array([8.22, 10.00, 11.24, 12.61, 13.77], dtype=float)
 ICE_DENSITY_BY_TYPE = {
     "amorphous": ICE_AMORPHOUS_DENSITY_G_CM3,
     "hexagonal": ICE_HEXAGONAL_DENSITY_G_CM3,
@@ -94,6 +98,37 @@ def _projectile_paths(projectile_token: str, ice_type: str) -> dict[str, Path]:
             f"sigma_ionisation_{projectile_token}_{ice_label}_emfietzoglou_kyriakou.dat"
         ),
     }
+
+
+def _find_geant4_dna_file(filename: str) -> Path | None:
+    for root in (CUSTOM_DATA_ROOT_GEANT4, CUSTOM_DATA_ROOT_PROJECT):
+        dna_dir = root / "G4EMLOW8.6.1" / "dna"
+        path = dna_dir / filename
+        if path.exists():
+            return path
+        if root.exists():
+            for subdir in sorted(root.glob("G4EMLOW*/dna")):
+                path = subdir / filename
+                if path.exists():
+                    return path
+    return None
+
+
+def _water_born_paths(projectile_key: str) -> dict[str, Path] | None:
+    if projectile_key != "proton":
+        return None
+    names = {
+        "exc_total": "sigma_excitation_p_born.dat",
+        "ion_dcs": "sigmadiff_ionisation_p_born.dat",
+        "ion_total": "sigma_ionisation_p_born.dat",
+    }
+    paths: dict[str, Path] = {}
+    for key, name in names.items():
+        path = _find_geant4_dna_file(name)
+        if path is None:
+            return None
+        paths[key] = path
+    return paths
 
 
 def _first_column_bounds(path: Path) -> tuple[float, float]:
@@ -246,9 +281,19 @@ def _load_total_sigma_table(path: Path) -> tuple[np.ndarray, np.ndarray]:
     data = np.loadtxt(path, dtype=float)
     data = np.atleast_2d(data)
     energy = data[:, 0]
-    sigma = np.sum(data[:, 1:], axis=1) * EMFIETZOGLOU_SCALE_1E16 * 1.0e-16
+    sigma = np.sum(data[:, 1:], axis=1) * GEANT4_DNA_SCALE_CM2
     valid = np.isfinite(energy) & np.isfinite(sigma) & (energy > 0.0)
     return energy[valid], sigma[valid]
+
+
+def _load_component_sigma_table(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    _ensure_exists(path)
+    data = np.loadtxt(path, dtype=float)
+    data = np.atleast_2d(data)
+    energy = data[:, 0]
+    sigma_components = data[:, 1:] * GEANT4_DNA_SCALE_CM2
+    valid = np.isfinite(energy) & (energy > 0.0) & np.all(np.isfinite(sigma_components), axis=1)
+    return energy[valid], sigma_components[valid, :]
 
 
 def _energy_loss_xs_with_cutoff(
@@ -287,7 +332,7 @@ def _dcs_moments_table(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return incident energy, sigma_total, and energy-loss cross-section."""
     _ensure_exists(path)
-    scale_cm2 = EMFIETZOGLOU_SCALE_1E16 * 1.0e-16
+    scale_cm2 = GEANT4_DNA_SCALE_CM2
     energies: list[float] = []
     sigma_xs: list[float] = []
     eloss_xs: list[float] = []
@@ -407,6 +452,49 @@ def _build_series(
     }
 
 
+def _build_water_series(
+    projectile_key: str,
+    projectile_mass_au: float,
+    energy_grid: np.ndarray,
+    stopping_cutoff: str,
+) -> dict | None:
+    paths = _water_born_paths(projectile_key)
+    if paths is None:
+        return None
+
+    exc_energy, exc_components = _load_component_sigma_table(paths["exc_total"])
+    exc_n = min(exc_components.shape[1], WATER_EXCITATION_ENERGIES_EV.size)
+    exc_components = exc_components[:, :exc_n]
+    exc_levels = WATER_EXCITATION_ENERGIES_EV[:exc_n]
+    exc_sigma = np.sum(exc_components, axis=1)
+    exc_eloss = np.sum(exc_components * exc_levels[None, :], axis=1)
+
+    ion_energy, ion_sigma, ion_eloss = _dcs_moments_table(
+        paths["ion_dcs"],
+        projectile_mass_au,
+        stopping_cutoff,
+    )
+
+    exc_dedx = _to_dedx_ev_nm(_interp_loglog(exc_energy, exc_eloss, energy_grid), N_CM3_WATER)
+    ion_dedx = _to_dedx_ev_nm(_interp_loglog(ion_energy, ion_eloss, energy_grid), N_CM3_WATER)
+    exc_imfp = _to_inverse_mfp_nm(_interp_loglog(exc_energy, exc_sigma, energy_grid), N_CM3_WATER)
+    ion_imfp = _to_inverse_mfp_nm(_interp_loglog(ion_energy, ion_sigma, energy_grid), N_CM3_WATER)
+
+    return {
+        "label": "Geant4-DNA water",
+        "ice_type": "water",
+        "density_g_cm3": WATER_DENSITY_G_CM3,
+        "emin": max(float(np.min(exc_energy)), float(np.min(ion_energy))),
+        "emax": min(float(np.max(exc_energy)), float(np.max(ion_energy))),
+        "dedx_exc": exc_dedx,
+        "dedx_ion": ion_dedx,
+        "dedx_total": exc_dedx + ion_dedx,
+        "imfp_exc": exc_imfp,
+        "imfp_ion": ion_imfp,
+        "imfp_total": exc_imfp + ion_imfp,
+    }
+
+
 def _plot(
     energy_grid: np.ndarray,
     series: list[dict],
@@ -431,6 +519,7 @@ def _plot(
     styles = {
         "amorphous": {"color": "SlateGray", "ls": "-"},
         "hexagonal": {"color": "0.55", "ls": "--"},
+        "water": {"color": "#0072B2", "ls": "-."},
     }
     xmins = []
     xmaxs = []
@@ -537,6 +626,43 @@ def _config_csv(value: object) -> str:
     return str(value)
 
 
+def _config_bool(value: object, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _print_water_icru_comparison(
+    energy_grid: np.ndarray,
+    water_series: dict | None,
+    projectile_key: str,
+    units: str,
+) -> None:
+    if water_series is None:
+        return
+    icru_curve = _load_icru_stopping_power(projectile_key)
+    if icru_curve is None:
+        return
+    icru_energy, icru_mass_sp = icru_curve
+    icru_y = _icru_mass_stopping_to_units(units, icru_mass_sp)
+    target_e = 1.0e6
+    if not (float(np.min(energy_grid)) <= target_e <= float(np.max(energy_grid))):
+        target_e = float(np.sqrt(float(np.min(energy_grid)) * float(np.max(energy_grid))))
+    water_y = _interp_loglog(energy_grid, water_series["dedx_total"], np.asarray([target_e]))[0]
+    if units != "ev_nm":
+        water_y = _units_and_label(units, WATER_DENSITY_G_CM3, np.asarray([water_y]))[0][0]
+    icru_at_e = _interp_loglog(icru_energy, icru_y, np.asarray([target_e]))[0]
+    if water_y > 0.0 and icru_at_e > 0.0:
+        ratio = water_y / icru_at_e
+        print(
+            "Geant4-DNA water vs ICRU at "
+            f"{target_e / 1.0e6:.6g} MeV: {water_y:.6g} vs {icru_at_e:.6g} "
+            f"({ratio:.4g}x)"
+        )
+
+
 def main(config: dict[str, object] | None = None) -> None:
     config = {} if config is None else config
     parser = argparse.ArgumentParser(
@@ -598,6 +724,12 @@ def main(config: dict[str, object] | None = None) -> None:
             "IMFP/total cross sections are unchanged."
         ),
     )
+    parser.add_argument(
+        "--include-water",
+        action=argparse.BooleanOptionalAction,
+        default=_config_bool(config.get("include_water", True), True),
+        help="Overlay Geant4-DNA water stopping/IMFP where native water tables are available.",
+    )
     args = parser.parse_args()
 
     if args.emin <= 0.0 or args.emax <= 0.0 or args.emin >= args.emax:
@@ -645,6 +777,18 @@ def main(config: dict[str, object] | None = None) -> None:
         )
         for ice_type in ice_types
     ]
+    water_series = None
+    if args.include_water:
+        water_series = _build_water_series(
+            projectile_key,
+            projectile_mass_au,
+            energy,
+            args.stopping_cutoff,
+        )
+        if water_series is not None:
+            series.append(water_series)
+        else:
+            print(f"No Geant4-DNA water Born table overlay is available for {projectile_key}.")
 
     out_path = args.out
     if out_path is None:
@@ -659,13 +803,15 @@ def main(config: dict[str, object] | None = None) -> None:
         projectile_axis_label=projectile_axis_label,
         out_path=out_path,
     )
+    _print_water_icru_comparison(energy, water_series, projectile_key, args.units)
 
 
 if __name__ == "__main__":
     RUN_CONFIG = {
-        "projectile": "alpha",
+        "projectile": "proton",
         "ice_types": ("amorphous", "hexagonal"),
-        "stopping_cutoff": "wmax_nonrel"
+        "stopping_cutoff": "wmax_nonrel",
+        "include_water": True,
     }
 
     main(RUN_CONFIG)
