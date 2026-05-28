@@ -6,7 +6,7 @@ import numpy as np
 
 # --- Paths ---
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent if SCRIPT_DIR.parent.name == "python_scripts" else SCRIPT_DIR.parent
 GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent
 TOP_ROOT = PROJECT_ROOT.parent.parent
 
@@ -112,6 +112,36 @@ EV_TO_HA = 1.0 / EH
 a0 = 5.291e-11
 N = 3.34e28
 mass = 1.0
+
+# Projectile masses in electron-mass atomic units and bare-ion charges.
+# For neutral/partially stripped projectiles, replace charge with an effective
+# charge appropriate to the projectile velocity.
+PROTON_MASS_AU = 1836.152673
+ALPHA_MASS_AU = 7294.299536
+CARBON_12_BARE_MASS_AU = 21868.6618
+PROJECTILE_LIBRARY = {
+    "proton": {
+        "aliases": ("p", "h+", "proton"),
+        "mass_au": PROTON_MASS_AU,
+        "charge": 1.0,
+        "file_token": "proton",
+        "label": "Proton",
+    },
+    "alpha": {
+        "aliases": ("alpha", "he2+", "helium"),
+        "mass_au": ALPHA_MASS_AU,
+        "charge": 2.0,
+        "file_token": "alpha",
+        "label": "Alpha particle He2+",
+    },
+    "carbon": {
+        "aliases": ("carbon", "c6+", "carbon6+", "c"),
+        "mass_au": CARBON_12_BARE_MASS_AU,
+        "charge": 6.0,
+        "file_token": "carbon",
+        "label": "Carbon ion C6+",
+    },
+}
 
 # Molecular-density / mass-density mapping for H2O
 AVOGADRO = 6.02214076e23  # mol^-1
