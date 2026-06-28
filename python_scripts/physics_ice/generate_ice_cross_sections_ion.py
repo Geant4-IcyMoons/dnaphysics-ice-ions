@@ -42,12 +42,27 @@ from constants import (
     rcparams_with_fontsize,
 )
 import emfietzoglou_model_finite_q as model
+import barkas_dcs
 
 PROJECTILE_KEY = "proton"
 PROJECTILE_MASS_AU = PROTON_MASS_AU
 PROJECTILE_CHARGE = 1.0
+PROJECTILE_MASS_NUMBER = 1.0
 PROJECTILE_FILE_TOKEN = "proton"
 PROJECTILE_LABEL = "Proton"
+CHARGE_MODE = "bare"
+EXPLICIT_PROJECTILE_CHARGE = None
+INCLUDE_BARKAS_DCS = False
+INCLUDE_BLOCH_DCS = False
+ENERGY_UNIT = "total"
+BORN_REFERENCE_CHARGE = "bare_Z"
+BORN_REFERENCE_EXPLICIT_CHARGE = None
+DEFAULT_ENERGY_MIN_EV = 1.0e6
+DEFAULT_ENERGY_MAX_EV = 1.0e8
+DEFAULT_ENERGY_POINTS = 1000
+DEFAULT_ENERGY_GRID = "log"
+DEFAULT_DE_POINTS = 300
+DEFAULT_DQ_POINTS = 300
 
 def _projectile_config(key):
     lookup = str(key).strip().lower()
@@ -60,10 +75,11 @@ def _projectile_config(key):
 
 def set_projectile(key):
     global PROJECTILE_KEY, PROJECTILE_MASS_AU, PROJECTILE_CHARGE
-    global PROJECTILE_FILE_TOKEN, PROJECTILE_LABEL
+    global PROJECTILE_MASS_NUMBER, PROJECTILE_FILE_TOKEN, PROJECTILE_LABEL
     name, cfg = _projectile_config(key)
     PROJECTILE_KEY = name
     PROJECTILE_MASS_AU = float(cfg["mass_au"])
+    PROJECTILE_MASS_NUMBER = float(cfg.get("mass_number", 1.0))
     PROJECTILE_CHARGE = float(cfg["charge"])
     PROJECTILE_FILE_TOKEN = str(cfg["file_token"])
     PROJECTILE_LABEL = str(cfg["label"])
@@ -75,6 +91,317 @@ def _projectile_from_argv(default="proton"):
         if arg.startswith("--projectile="):
             return arg.split("=", 1)[1]
     return os.environ.get("ICE_PROJECTILE", default)
+
+def _bool_from_text(value, default=True):
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "on"):
+        return True
+    if text in ("0", "false", "no", "off"):
+        return False
+    return default
+
+def _argv_value(names, default=None):
+    argv = sys.argv[1:]
+    names = tuple(names)
+    value = default
+    for idx, arg in enumerate(argv):
+        if arg in names and idx + 1 < len(argv):
+            value = argv[idx + 1]
+        else:
+            for name in names:
+                prefix = f"{name}="
+                if arg.startswith(prefix):
+                    value = arg.split("=", 1)[1]
+    return value
+
+def _float_cli_value(names, env_names=(), default=None, scale=1.0):
+    value = default
+    value_scale = 1.0
+    for env_name, env_scale in env_names:
+        if env_name in os.environ:
+            value = os.environ[env_name]
+            value_scale = env_scale
+    argv = sys.argv[1:]
+    for idx, arg in enumerate(argv):
+        for name in names:
+            if arg == name and idx + 1 < len(argv):
+                value = argv[idx + 1]
+                value_scale = scale
+            elif arg.startswith(f"{name}="):
+                value = arg.split("=", 1)[1]
+                value_scale = scale
+    return float(value) * value_scale
+
+def _int_cli_value(names, env_name=None, default=None):
+    value = os.environ.get(env_name, default) if env_name else default
+    value = _argv_value(names, default=value)
+    return int(value)
+
+def _energy_range_from_argv():
+    emin = _float_cli_value(
+        ("--energy-min-eV",),
+        env_names=(("ICE_ENERGY_MIN_EV", 1.0), ("ICE_ENERGY_MIN_MEV", 1.0e6)),
+        default=DEFAULT_ENERGY_MIN_EV,
+        scale=1.0,
+    )
+    emax = _float_cli_value(
+        ("--energy-max-eV",),
+        env_names=(("ICE_ENERGY_MAX_EV", 1.0), ("ICE_ENERGY_MAX_MEV", 1.0e6)),
+        default=DEFAULT_ENERGY_MAX_EV,
+        scale=1.0,
+    )
+    # MeV flags are scanned after eV flags so explicit MeV arguments can override env/defaults.
+    emin = _float_cli_value(("--energy-min-MeV",), default=emin, scale=1.0e6)
+    emax = _float_cli_value(("--energy-max-MeV",), default=emax, scale=1.0e6)
+    n_points = _int_cli_value(("--energy-points", "--n-energy"), env_name="ICE_ENERGY_POINTS", default=DEFAULT_ENERGY_POINTS)
+    grid = str(_argv_value(("--energy-grid",), default=os.environ.get("ICE_ENERGY_GRID", DEFAULT_ENERGY_GRID))).strip().lower()
+    if grid not in ("log", "linear"):
+        raise ValueError("--energy-grid must be 'log' or 'linear'.")
+    if not (np.isfinite(emin) and np.isfinite(emax) and emin > 0.0 and emax > emin):
+        raise ValueError("--energy-min/--energy-max must be finite, positive, and increasing.")
+    if n_points < 2:
+        raise ValueError("--energy-points must be at least 2.")
+    return emin, emax, n_points, grid
+
+def _energy_unit_from_argv(default="total"):
+    unit = str(_argv_value(("--energy-unit",), default=os.environ.get("ICE_ENERGY_UNIT", default))).strip().lower()
+    if unit not in ("total", "per_u"):
+        raise ValueError("--energy-unit must be 'total' or 'per_u'.")
+    return unit
+
+def _energy_range_to_total_eV(emin, emax, energy_unit):
+    if str(energy_unit) == "total":
+        return float(emin), float(emax)
+    return float(emin) * PROJECTILE_MASS_NUMBER, float(emax) * PROJECTILE_MASS_NUMBER
+
+def _charge_mode_from_argv(default="bare"):
+    mode = str(_argv_value(("--charge-mode",), default=os.environ.get("ICE_CHARGE_MODE", default))).strip().lower()
+    if mode not in ("bare", "zeff", "explicit"):
+        raise ValueError("--charge-mode must be bare, zeff, or explicit.")
+    return mode
+
+def _explicit_charge_from_argv(default=None):
+    raw = _argv_value(("--explicit-charge", "--charge-state", "--q-charge"), default=os.environ.get("ICE_EXPLICIT_CHARGE", default))
+    if raw is None or str(raw).strip() == "":
+        return None
+    val = float(raw)
+    if not np.isfinite(val) or val <= 0.0:
+        raise ValueError("--explicit-charge must be finite and positive.")
+    return val
+
+def _include_barkas_dcs_from_argv(default=False):
+    include = _bool_from_text(os.environ.get("ICE_INCLUDE_BARKAS_DCS"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--include-barkas-dcs":
+            include = True
+        elif arg == "--no-include-barkas-dcs":
+            include = False
+        elif arg.startswith("--include-barkas-dcs="):
+            include = _bool_from_text(arg.split("=", 1)[1], include)
+    return bool(include)
+
+def _include_bloch_dcs_from_argv(default=False):
+    include = _bool_from_text(os.environ.get("ICE_INCLUDE_BLOCH_DCS"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--include-bloch-dcs":
+            include = True
+        elif arg == "--no-include-bloch-dcs":
+            include = False
+        elif arg.startswith("--include-bloch-dcs="):
+            include = _bool_from_text(arg.split("=", 1)[1], include)
+    if include:
+        raise ValueError("Bloch corrections are not implemented or allowed in the DCS generator.")
+    return False
+
+def _born_reference_charge_from_argv(default="bare_Z"):
+    ref = str(
+        _argv_value(
+            ("--born-reference-charge",),
+            default=os.environ.get("ICE_BORN_REFERENCE_CHARGE", default),
+        )
+    ).strip()
+    if ref not in barkas_dcs.BORN_REFERENCE_CHOICES:
+        choices = "|".join(barkas_dcs.BORN_REFERENCE_CHOICES)
+        raise ValueError(f"--born-reference-charge must be {choices}.")
+    return ref
+
+def _born_reference_explicit_charge_from_argv(default=None):
+    raw = _argv_value(
+        ("--born-reference-explicit-charge", "--born-reference-q"),
+        default=os.environ.get("ICE_BORN_REFERENCE_EXPLICIT_CHARGE", default),
+    )
+    if raw is None or str(raw).strip() == "":
+        return None
+    val = float(raw)
+    if not np.isfinite(val) or val <= 0.0:
+        raise ValueError("--born-reference-explicit-charge must be finite and positive.")
+    return val
+
+def _set_charge_options(
+    charge_mode,
+    explicit_charge,
+    include_barkas_dcs,
+    include_bloch_dcs,
+    energy_unit,
+    born_reference_charge,
+    born_reference_explicit_charge,
+):
+    global CHARGE_MODE, EXPLICIT_PROJECTILE_CHARGE, INCLUDE_BARKAS_DCS
+    global INCLUDE_BLOCH_DCS, ENERGY_UNIT
+    global BORN_REFERENCE_CHARGE, BORN_REFERENCE_EXPLICIT_CHARGE
+    CHARGE_MODE = str(charge_mode)
+    EXPLICIT_PROJECTILE_CHARGE = None if explicit_charge is None else float(explicit_charge)
+    INCLUDE_BARKAS_DCS = bool(include_barkas_dcs)
+    INCLUDE_BLOCH_DCS = bool(include_bloch_dcs)
+    ENERGY_UNIT = str(energy_unit)
+    BORN_REFERENCE_CHARGE = str(born_reference_charge)
+    BORN_REFERENCE_EXPLICIT_CHARGE = (
+        None if born_reference_explicit_charge is None else float(born_reference_explicit_charge)
+    )
+
+def _integration_resolution_from_argv():
+    dE = _int_cli_value(
+        ("--dE", "--NE", "--nE", "--energy-integration-points"),
+        env_name="ICE_DE",
+        default=DEFAULT_DE_POINTS,
+    )
+    dq = _int_cli_value(
+        ("--dq", "--Nq", "--nq", "--q-integration-points"),
+        env_name="ICE_DQ",
+        default=DEFAULT_DQ_POINTS,
+    )
+    if dE < 2:
+        raise ValueError("--dE must be at least 2.")
+    if dq < 2:
+        raise ValueError("--dq must be at least 2.")
+    return dE, dq
+
+def _merge_energy_patches_from_argv(default=True):
+    merge = _bool_from_text(os.environ.get("ICE_MERGE_ENERGY_PATCHES"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--merge-energy-patches":
+            merge = True
+        elif arg == "--no-merge-energy-patches":
+            merge = False
+        elif arg.startswith("--merge-energy-patches="):
+            merge = _bool_from_text(arg.split("=", 1)[1], merge)
+    return merge
+
+def _format_energy_tag_value(value):
+    text = f"{float(value):.6g}"
+    return (
+        text.replace("+", "")
+        .replace("-", "m")
+        .replace(".", "p")
+    )
+
+def _energy_range_tag(emin, emax, n_points, grid):
+    default = (
+        np.isclose(float(emin), DEFAULT_ENERGY_MIN_EV)
+        and np.isclose(float(emax), DEFAULT_ENERGY_MAX_EV)
+        and int(n_points) == DEFAULT_ENERGY_POINTS
+        and str(grid) == DEFAULT_ENERGY_GRID
+    )
+    if default:
+        return ""
+    return (
+        f"_range_{_format_energy_tag_value(emin)}_"
+        f"{_format_energy_tag_value(emax)}eV_{grid}_n{int(n_points)}"
+    )
+
+def _charge_mode_tag(
+    charge_mode,
+    include_barkas_dcs,
+    explicit_charge=None,
+    born_reference_charge="bare_Z",
+    born_reference_explicit_charge=None,
+):
+    tag = ""
+    if str(charge_mode) != "bare":
+        tag += f"_charge_{charge_mode}"
+    if str(charge_mode) == "explicit":
+        tag += f"_q{_format_energy_tag_value(explicit_charge)}"
+    if str(born_reference_charge) != "bare_Z":
+        tag += f"_bornref_{str(born_reference_charge).lower()}"
+    if str(born_reference_charge) == "explicit_q":
+        tag += f"_qref{_format_energy_tag_value(born_reference_explicit_charge)}"
+    if include_barkas_dcs:
+        tag += "_barkas_dcs"
+    return tag
+
+def _print_cli_help_and_exit():
+    supported = ", ".join(PROJECTILE_LIBRARY)
+    print(
+        "Usage: ICE_TYPE=hexagonal python -u python_scripts/physics_ice/generate_ice_cross_sections_ion.py [options]\n"
+        "\n"
+        "Options:\n"
+        f"  --projectile NAME              projectile: {supported} (default: proton)\n"
+        "  --include-kshell               include O K-shell (default)\n"
+        "  --no-kshell                    omit O K-shell\n"
+        "  --kshell-model MODEL           hydrogenic-gos, old-optical, or none\n"
+        "  --energy-min-eV VALUE          incident-energy minimum in eV\n"
+        "  --energy-max-eV VALUE          incident-energy maximum in eV\n"
+        "  --energy-min-MeV VALUE         incident-energy minimum in MeV\n"
+        "  --energy-max-MeV VALUE         incident-energy maximum in MeV\n"
+        "  --energy-unit total|per_u      interpret energy inputs as total ion energy or energy/u (default: total)\n"
+        "  --energy-points N              number of incident-energy grid points (default: 1000)\n"
+        "  --energy-grid log|linear       incident-energy grid type (default: log)\n"
+        "  --dE N                         energy-loss integration points (default: 300)\n"
+        "  --dq N                         q-integration points (default: 300)\n"
+        "  --charge-mode bare|zeff|explicit\n"
+        "                                 interaction charge for Born/Barkas terms (default: bare)\n"
+        "  --explicit-charge Q            charge state for --charge-mode explicit\n"
+        "  --born-reference-charge bare_Z|unit_charge|explicit_q\n"
+        "                                 charge convention already present in input Born DCS (default: bare_Z)\n"
+        "  --born-reference-explicit-charge Q\n"
+        "                                 reference charge for --born-reference-charge explicit_q\n"
+        "  --include-barkas-dcs[=true|false]\n"
+        "                                 add the OOS Barkas Z^3 DCS kernel (default: false)\n"
+        "  --include-bloch-dcs=false      Bloch DCS is intentionally unsupported\n"
+        "  --merge-energy-patches         merge this energy patch into existing DAT tables (default)\n"
+        "  --no-merge-energy-patches      write only this energy patch to DAT tables\n"
+    )
+    sys.exit(0)
+
+if any(arg in ("-h", "--help") for arg in sys.argv[1:]):
+    _print_cli_help_and_exit()
+
+def _include_kshell_from_argv(default=True):
+    include = _bool_from_text(os.environ.get("ICE_INCLUDE_KSHELL"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--include-kshell":
+            include = True
+        elif arg == "--no-kshell":
+            include = False
+        elif arg.startswith("--include-kshell="):
+            include = _bool_from_text(arg.split("=", 1)[1], include)
+    return include
+
+KSHELL_MODEL_CHOICES = ("none", "hydrogenic-gos", "old-optical")
+KSHELL_MODEL = "hydrogenic-gos"
+
+def _kshell_model_from_argv(include_kshell=True):
+    default = "hydrogenic-gos" if include_kshell else "none"
+    selected = os.environ.get("ICE_KSHELL_MODEL", default).strip().lower()
+    for idx, arg in enumerate(sys.argv[1:]):
+        if arg == "--kshell-model" and idx + 2 <= len(sys.argv[1:]):
+            selected = sys.argv[1:][idx + 1].strip().lower()
+        elif arg.startswith("--kshell-model="):
+            selected = arg.split("=", 1)[1].strip().lower()
+    if selected not in KSHELL_MODEL_CHOICES:
+        choices = "|".join(KSHELL_MODEL_CHOICES)
+        raise ValueError(f"Unsupported --kshell-model={selected!r}; choose {choices}.")
+    return selected
+
+def _set_kshell_model(kshell_model):
+    global KSHELL_MODEL
+    kshell_model = str(kshell_model).strip().lower()
+    if kshell_model not in KSHELL_MODEL_CHOICES:
+        choices = "|".join(KSHELL_MODEL_CHOICES)
+        raise ValueError(f"Unsupported K-shell model {kshell_model!r}; choose {choices}.")
+    KSHELL_MODEL = kshell_model
 
 def _projectile_energy_label(math=False):
     if math:
@@ -98,6 +425,11 @@ DCS_T_STEP_EEV = 2.0e5
 
 # Geant4 Emfietzoglou DCS table scale: file values * scale -> m^2
 EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
+
+KSHELL_B_EV = model.OXYGEN_K_B_EV
+KSHELL_ZEFF = model.OXYGEN_K_ZEFF
+KSHELL_FSUM_TARGET = model.OXYGEN_K_FSUM_TARGET
+HYDROGENIC_KSHELL_ROLLOFF_APPLIED = False
 
 # ----------------------------------------------------------------------
 # Constants for integration (from constants.py)
@@ -441,6 +773,28 @@ def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
 def _total_transverse_sigma(s, C, Tj, NE=400, use_density_effect=False):
     raise RuntimeError("Transverse/density electron correction path is disabled for heavy projectiles.")
 
+def _kshell_threshold_eV(s):
+    if KSHELL_MODEL == "hydrogenic-gos":
+        return float(KSHELL_B_EV)
+    if KSHELL_MODEL == "old-optical" and s.kshell is not None:
+        return float(s.kshell.Bth)
+    return None
+
+def _kshell_old_optical_elf(Ei, s):
+    ks_arr = model.oxygen_K_electron_optical_elf(np.array([Ei], float), s, fsum_corrected=False)
+    return float(ks_arr[0])
+
+def _kshell_hydrogenic_gos_elf(Ei, qvals, s):
+    return model.oxygen_K_ion_hydrogenic_gos_elf(
+        Ei,
+        qvals,
+        B_K_eV=KSHELL_B_EV,
+        Zeff=KSHELL_ZEFF,
+        normalize_fsum=True,
+        Ep_eV=float(s.Ep),
+        fsum_target=KSHELL_FSUM_TARGET,
+    )
+
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for K-shell channel
 # ----------------------------------------------------------------------
@@ -450,25 +804,35 @@ def _integrate_kshell_single_E(
     """
     Inner integral over q for K-shell:
     """
-    if not include_kshell or (s.kshell is None):
+    if not include_kshell or (s.kshell is None) or KSHELL_MODEL == "none":
         return 0.0
 
     if use_rel_bounds:
         raise RuntimeError("Relativistic electron q-bounds are disabled for heavy projectiles.")
+    kshell_B = _kshell_threshold_eV(s)
+    if kshell_B is None or Ei <= kshell_B:
+        return 0.0
     if Ei > _projectile_energy_loss_upper_eV(Tj):
         return 0.0
     qlo, qhi = _q_bounds_scalar(Ei, Tj, projectile_mass_au=PROJECTILE_MASS_AU)
     if qhi <= qlo or qlo <= 0.0:
         return 0.0
 
-    ks_arr = model.epsilon2_Kshell_E0(np.array([Ei], float), s)
-    ks_val = float(ks_arr[0])
-    if ks_val == 0.0:
+    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
+    qvals = np.exp(xi)
+
+    if KSHELL_MODEL == "old-optical":
+        ks_val = _kshell_old_optical_elf(Ei, s)
+        if ks_val == 0.0:
+            return 0.0
+        vals = np.full_like(xi, ks_val)
+        vals = vals * _elf_rolloff_factor(Ei)
+    elif KSHELL_MODEL == "hydrogenic-gos":
+        vals = _kshell_hydrogenic_gos_elf(Ei, qvals, s)
+    else:
         return 0.0
 
-    ks_val *= float(_elf_rolloff_factor(Ei))
-    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
-    accum = float(_simpson_integrate(np.full_like(xi, ks_val), xi))
+    accum = float(_simpson_integrate(vals, xi))
 
     # int_cons = 1.0 / (np.pi * a0 * N * Tj)
     T_scaled = Tj / PROJECTILE_MASS_AU
@@ -510,8 +874,8 @@ def integrate_elf_channels_per_channel_q(
     ion_Emin = np.array([osc.Bth for osc in s.ionizations], float)
     ion_Emax = np.array([E_upper for _ in s.ionizations], float)
 
-    if include_kshell and (s.kshell is not None):
-        kshell_Emin = s.kshell.Bth
+    if include_kshell and (s.kshell is not None) and KSHELL_MODEL != "none":
+        kshell_Emin = _kshell_threshold_eV(s)
         kshell_Emax = E_upper
     else:
         kshell_Emin = None
@@ -1455,6 +1819,14 @@ def save_cross_section_corrections_npz(
     density_scale_factor=1.0,
     density_ref_g_cm3=None,
     density_assumed_g_cm3=None,
+    include_kshell=True,
+    energy_unit="total",
+    charge_mode="bare",
+    explicit_charge=None,
+    include_barkas_dcs=False,
+    include_bloch_dcs=False,
+    born_reference_charge="bare_Z",
+    born_reference_explicit_charge=None,
 ):
     """
     Save PWBA, per-stage correction terms, corrected totals, and per-channel
@@ -1570,12 +1942,33 @@ def save_cross_section_corrections_npz(
         projectile_key=PROJECTILE_KEY,
         projectile_mass_au=float(PROJECTILE_MASS_AU),
         projectile_charge=float(PROJECTILE_CHARGE),
+        projectile_mass_number=float(PROJECTILE_MASS_NUMBER),
         projectile_file_token=PROJECTILE_FILE_TOKEN,
         projectile_label=PROJECTILE_LABEL,
+        energy_unit=str(energy_unit),
+        charge_mode=str(charge_mode),
+        explicit_projectile_charge=float(explicit_charge) if explicit_charge is not None else np.nan,
+        include_barkas_dcs=bool(include_barkas_dcs),
+        include_bloch_dcs=bool(include_bloch_dcs),
+        born_reference_charge=str(born_reference_charge),
+        born_reference_explicit_charge=(
+            float(born_reference_explicit_charge)
+            if born_reference_explicit_charge is not None
+            else np.nan
+        ),
+        barkas_arbi_source_sha256=barkas_dcs.ARBI_SOURCE_SHA256,
         heavy_projectile_emax_applied=True,
         dcs_table_variable="energy_loss_eV",
         electron_exchange_correction_applied=False,
         electron_relativistic_q_bounds_applied=False,
+        include_kshell=bool(include_kshell),
+        kshell_model=KSHELL_MODEL,
+        kshell_B_eV=float(KSHELL_B_EV if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
+        kshell_Zeff=float(KSHELL_ZEFF if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
+        kshell_fsum_target=float(KSHELL_FSUM_TARGET if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
+        kshell_q_dependent=bool(KSHELL_MODEL == "hydrogenic-gos"),
+        old_optical_kshell_used=bool(KSHELL_MODEL == "old-optical"),
+        hydrogenic_kshell_rolloff_applied=bool(HYDROGENIC_KSHELL_ROLLOFF_APPLIED),
         density_scale_factor=float(density_scale_factor),
         total_sigma_pwba=pwba_total,
         total_sigma_corrected=corrected_total,
@@ -1624,6 +2017,38 @@ def save_cross_section_corrections_npz(
         np_save_args["dcs_E_line"] = np.asarray(dcs_data.get("E_line", []), float)
         np_save_args["dcs_exc_vals"] = np.asarray(dcs_data.get("exc_vals", []), float)
         np_save_args["dcs_ion_vals"] = np.asarray(dcs_data.get("ion_vals", []), float)
+        diag = dcs_data.get("barkas_diagnostics")
+        if diag is not None:
+            np_save_args["barkas_z_int"] = np.asarray(diag.z_int, float)
+            np_save_args["TCS_T_eV"] = np.asarray(diag.TCS_T_eV, float)
+            np_save_args["DCS_Born_m2_per_eV"] = np.asarray(diag.DCS_Born_m2_per_eV, float)
+            np_save_args["DCS_Barkas_m2_per_eV"] = np.asarray(diag.DCS_Barkas_m2_per_eV, float)
+            np_save_args["DCS_total_m2_per_eV"] = np.asarray(diag.DCS_total_m2_per_eV, float)
+            np_save_args["TCS_Born_m2"] = np.asarray(diag.TCS_Born_m2, float)
+            np_save_args["TCS_Barkas_m2"] = np.asarray(diag.TCS_Barkas_m2, float)
+            np_save_args["TCS_total_m2"] = np.asarray(diag.TCS_total_m2, float)
+            np_save_args["S_Barkas_check_eV_m2"] = np.asarray(diag.S_Barkas_check_eV_m2, float)
+            np_save_args["DCS_total_min_m2_per_eV"] = float(diag.dcs_total_min_m2_per_eV)
+            np_save_args["DCS_total_max_m2_per_eV"] = float(diag.dcs_total_max_m2_per_eV)
+            np_save_args["barkas_negative_or_unstable_T_eV"] = np.asarray(diag.negative_or_unstable_T_eV, float)
+            np_save_args["barkas_negative_channel_T_eV"] = np.asarray(diag.negative_channel_T_eV, float)
+            np_save_args["barkas_nonfinite_T_eV"] = np.asarray(diag.nonfinite_T_eV, float)
+            np_save_args["df_dW_total"] = np.asarray(diag.df_dW_total, float)
+            np_save_args["df_dW_valence"] = np.asarray(diag.df_dW_valence, float)
+            np_save_args["df_dW_OK"] = np.asarray(diag.df_dW_OK, float)
+            np_save_args["df_dW_total_unique"] = np.asarray(diag.df_dW_total_unique, float)
+            np_save_args["df_dW_valence_unique"] = np.asarray(diag.df_dW_valence_unique, float)
+            np_save_args["df_dW_OK_unique"] = np.asarray(diag.df_dW_OK_unique, float)
+            np_save_args["df_dW_integral"] = float(diag.df_dW_integral)
+            np_save_args["df_dW_integral_norm_grid"] = float(diag.df_dW_integral_norm_grid)
+            np_save_args["df_dW_integral_unique_grid"] = float(diag.df_dW_integral_unique_grid)
+            np_save_args["df_dW_valence_raw_integral"] = float(diag.df_dW_valence_raw_integral)
+            np_save_args["df_dW_OK_raw_integral"] = float(diag.df_dW_OK_raw_integral)
+            np_save_args["df_dW_valence_norm"] = float(diag.df_dW_valence_norm)
+            np_save_args["df_dW_OK_norm"] = float(diag.df_dW_OK_norm)
+            np_save_args["barkas_born_reference_charge"] = str(diag.born_reference_charge)
+            np_save_args["barkas_born_reference_q"] = float(diag.born_reference_q)
+            np_save_args["barkas_channel_distribution"] = str(diag.barkas_channel_distribution)
 
     np.savez(
         out_path,
@@ -1662,7 +2087,21 @@ def _npz_str_value(npz_data, key):
     except Exception:
         return None
 
-def _npz_matches_params(npz_data, NE, Nq, T_list=None):
+def _npz_matches_params(
+    npz_data,
+    NE,
+    Nq,
+    T_list=None,
+    include_kshell=True,
+    kshell_model=None,
+    energy_unit="total",
+    charge_mode="bare",
+    explicit_charge=None,
+    include_barkas_dcs=False,
+    include_bloch_dcs=False,
+    born_reference_charge="bare_Z",
+    born_reference_explicit_charge=None,
+):
     ne = _npz_int_value(npz_data, "NE")
     nq = _npz_int_value(npz_data, "Nq")
     if ne is None or nq is None:
@@ -1678,6 +2117,38 @@ def _npz_matches_params(npz_data, NE, Nq, T_list=None):
         return False
     if stored_charge is None or not np.isclose(stored_charge, PROJECTILE_CHARGE):
         return False
+    stored_energy_unit = _npz_str_value(npz_data, "energy_unit")
+    if stored_energy_unit is None:
+        if str(energy_unit) != "total":
+            return False
+    elif stored_energy_unit != str(energy_unit):
+        return False
+    stored_charge_mode = _npz_str_value(npz_data, "charge_mode")
+    if stored_charge_mode is None:
+        if str(charge_mode) != "bare":
+            return False
+    elif stored_charge_mode != str(charge_mode):
+        return False
+    stored_explicit_charge = _npz_float_value(npz_data, "explicit_projectile_charge")
+    if explicit_charge is not None:
+        if stored_explicit_charge is None or not np.isclose(stored_explicit_charge, explicit_charge):
+            return False
+    stored_barkas = bool(np.asarray(npz_data.get("include_barkas_dcs", np.array([False]))).reshape(-1)[0])
+    if stored_barkas != bool(include_barkas_dcs):
+        return False
+    stored_bloch = bool(np.asarray(npz_data.get("include_bloch_dcs", np.array([False]))).reshape(-1)[0])
+    if stored_bloch != bool(include_bloch_dcs):
+        return False
+    stored_born_ref = _npz_str_value(npz_data, "born_reference_charge")
+    if stored_born_ref is None:
+        if str(born_reference_charge) != "bare_Z":
+            return False
+    elif stored_born_ref != str(born_reference_charge):
+        return False
+    stored_born_q = _npz_float_value(npz_data, "born_reference_explicit_charge")
+    if str(born_reference_charge) == "explicit_q":
+        if stored_born_q is None or not np.isclose(stored_born_q, born_reference_explicit_charge):
+            return False
     if "heavy_projectile_emax_applied" not in npz_data:
         return False
     if not bool(np.asarray(npz_data["heavy_projectile_emax_applied"]).reshape(-1)[0]):
@@ -1685,6 +2156,36 @@ def _npz_matches_params(npz_data, NE, Nq, T_list=None):
     table_variable = _npz_str_value(npz_data, "dcs_table_variable")
     if table_variable != "energy_loss_eV":
         return False
+    if "include_kshell" not in npz_data:
+        return False
+    stored_include_kshell = bool(np.asarray(npz_data["include_kshell"]).reshape(-1)[0])
+    if stored_include_kshell != bool(include_kshell):
+        return False
+    if kshell_model is None:
+        kshell_model = KSHELL_MODEL
+    stored_kshell_model = _npz_str_value(npz_data, "kshell_model")
+    if stored_kshell_model != str(kshell_model):
+        return False
+    if str(kshell_model) == "hydrogenic-gos":
+        if "kshell_q_dependent" not in npz_data:
+            return False
+        if not bool(np.asarray(npz_data["kshell_q_dependent"]).reshape(-1)[0]):
+            return False
+        stored_B = _npz_float_value(npz_data, "kshell_B_eV")
+        stored_Zeff = _npz_float_value(npz_data, "kshell_Zeff")
+        stored_fsum = _npz_float_value(npz_data, "kshell_fsum_target")
+        if stored_B is None or not np.isclose(stored_B, KSHELL_B_EV):
+            return False
+        if stored_Zeff is None or not np.isclose(stored_Zeff, KSHELL_ZEFF):
+            return False
+        if stored_fsum is None or not np.isclose(stored_fsum, KSHELL_FSUM_TARGET):
+            return False
+        if bool(np.asarray(npz_data.get("old_optical_kshell_used", np.array([True]))).reshape(-1)[0]):
+            return False
+        if "hydrogenic_kshell_rolloff_applied" not in npz_data:
+            return False
+        if bool(np.asarray(npz_data["hydrogenic_kshell_rolloff_applied"]).reshape(-1)[0]):
+            return False
     if T_list is not None and "T_eV" in npz_data:
         T_arr = np.asarray(npz_data["T_eV"], float)
         if len(T_arr) != len(T_list):
@@ -1724,11 +2225,17 @@ def _dcs_data_from_npz(npz_data):
         )
         if nonzero_over:
             return None
+    charge_mode = _npz_str_value(npz_data, "charge_mode") or "bare"
+    include_barkas_dcs = bool(np.asarray(npz_data.get("include_barkas_dcs", np.array([False]))).reshape(-1)[0])
+    born_reference_charge = _npz_str_value(npz_data, "born_reference_charge") or "bare_Z"
     return {
         "T_line": T_line,
         "E_line": E_line,
         "exc_vals": exc_vals,
         "ion_vals": ion_vals,
+        "barkas_charge_applied": bool(str(charge_mode) != "bare" or include_barkas_dcs),
+        "barkas_charge_mode": str(charge_mode),
+        "born_reference_charge": str(born_reference_charge),
     }
 
 def _sigma_list_from_npz(npz_data, scale_factor=1.0):
@@ -1812,12 +2319,35 @@ def load_cross_section_corrections_npz(
     T_list=None,
     require_dcs=False,
     target_density_scale_factor=None,
+    include_kshell=True,
+    kshell_model=None,
+    energy_unit="total",
+    charge_mode="bare",
+    explicit_charge=None,
+    include_barkas_dcs=False,
+    include_bloch_dcs=False,
+    born_reference_charge="bare_Z",
+    born_reference_explicit_charge=None,
 ):
     if npz_path is None or not os.path.exists(npz_path):
         return None
     try:
         with np.load(npz_path, allow_pickle=False) as npz_data:
-            if not _npz_matches_params(npz_data, NE, Nq, T_list=T_list):
+            if not _npz_matches_params(
+                npz_data,
+                NE,
+                Nq,
+                T_list=T_list,
+                include_kshell=include_kshell,
+                kshell_model=kshell_model,
+                energy_unit=energy_unit,
+                charge_mode=charge_mode,
+                explicit_charge=explicit_charge,
+                include_barkas_dcs=include_barkas_dcs,
+                include_bloch_dcs=include_bloch_dcs,
+                born_reference_charge=born_reference_charge,
+                born_reference_explicit_charge=born_reference_explicit_charge,
+            ):
                 return None
             dcs_data = _dcs_data_from_npz(npz_data)
             if require_dcs and dcs_data is None:
@@ -1951,6 +2481,95 @@ def _write_dcs_tables_from_data(
             if ion_mask[i]:
                 ion_handle.write(_format_dcs_row(T_line[i], E_line[i], ion_vals[i]))
 
+def _normalize_dcs_value_array(vals):
+    vals = np.asarray(vals, float)
+    if vals.ndim == 1:
+        vals = vals.reshape(-1, 1)
+    return vals
+
+def _sort_dcs_data(dcs_data):
+    T_line = np.asarray(dcs_data.get("T_line", []), float)
+    E_line = np.asarray(dcs_data.get("E_line", []), float)
+    exc_vals = _normalize_dcs_value_array(dcs_data.get("exc_vals", []))
+    ion_vals = _normalize_dcs_value_array(dcs_data.get("ion_vals", []))
+    if T_line.size == 0 or E_line.size != T_line.size:
+        raise ValueError("DCS T/E arrays must be nonempty and aligned.")
+    if exc_vals.shape[0] != T_line.size or ion_vals.shape[0] != T_line.size:
+        raise ValueError("DCS value arrays must align with T/E lines.")
+    order = np.lexsort((E_line, T_line))
+    return {
+        "T_line": T_line[order],
+        "E_line": E_line[order],
+        "exc_vals": exc_vals[order],
+        "ion_vals": ion_vals[order],
+    }
+
+def _slice_dcs_data(dcs_data, t_min=None, t_max=None):
+    T_line = np.asarray(dcs_data.get("T_line", []), float)
+    E_line = np.asarray(dcs_data.get("E_line", []), float)
+    exc_vals = _normalize_dcs_value_array(dcs_data.get("exc_vals", []))
+    ion_vals = _normalize_dcs_value_array(dcs_data.get("ion_vals", []))
+    if T_line.size == 0 or E_line.size != T_line.size:
+        raise ValueError("DCS T/E arrays must be nonempty and aligned.")
+    mask = np.isfinite(T_line) & np.isfinite(E_line)
+    if t_min is not None:
+        mask &= T_line >= float(t_min)
+    if t_max is not None:
+        mask &= T_line <= float(t_max)
+    return _sort_dcs_data(
+        {
+            "T_line": T_line[mask],
+            "E_line": E_line[mask],
+            "exc_vals": exc_vals[mask],
+            "ion_vals": ion_vals[mask],
+        }
+    )
+
+def _merge_dcs_energy_patch(existing_data, patch_data):
+    existing_data = _sort_dcs_data(existing_data)
+    patch_data = _sort_dcs_data(patch_data)
+    T_patch = np.asarray(patch_data["T_line"], float)
+    if T_patch.size == 0:
+        return existing_data
+    if existing_data["exc_vals"].shape[1] != patch_data["exc_vals"].shape[1]:
+        raise ValueError("Existing and current excitation DCS tables have different channel counts.")
+    if existing_data["ion_vals"].shape[1] != patch_data["ion_vals"].shape[1]:
+        raise ValueError("Existing and current ionisation DCS tables have different channel counts.")
+
+    replace_min = float(np.min(T_patch))
+    replace_max = float(np.max(T_patch))
+    T_existing = np.asarray(existing_data["T_line"], float)
+    keep_existing = (T_existing < replace_min) | (T_existing > replace_max)
+
+    return _sort_dcs_data(
+        {
+            "T_line": np.concatenate([T_existing[keep_existing], patch_data["T_line"]]),
+            "E_line": np.concatenate([existing_data["E_line"][keep_existing], patch_data["E_line"]]),
+            "exc_vals": np.vstack([existing_data["exc_vals"][keep_existing], patch_data["exc_vals"]]),
+            "ion_vals": np.vstack([existing_data["ion_vals"][keep_existing], patch_data["ion_vals"]]),
+        }
+    )
+
+def _prepare_dcs_data_for_output(dcs_data, exc_out, ion_out, t_min=None, t_max=None, merge_energy_patches=True):
+    patch_data = _slice_dcs_data(dcs_data, t_min=t_min, t_max=t_max)
+    if not merge_energy_patches:
+        return patch_data
+    if not (exc_out.exists() and ion_out.exists()):
+        return patch_data
+    try:
+        existing_data = _load_dcs_pair(exc_out, ion_out)
+        merged = _merge_dcs_energy_patch(existing_data, patch_data)
+    except Exception as exc:
+        print(f"Skipping DCS energy-patch merge for {exc_out.name}/{ion_out.name}: {exc}")
+        return patch_data
+    print(
+        "Merged DCS energy patches: "
+        f"existing rows={len(existing_data['T_line'])}, "
+        f"current rows={len(patch_data['T_line'])}, "
+        f"merged rows={len(merged['T_line'])}."
+    )
+    return merged
+
 def _load_dcs_table(path):
     data = np.loadtxt(path)
     if data.ndim == 1:
@@ -2010,7 +2629,7 @@ def _integrate_dcs_to_totals(T_line, E_line, vals):
             start = i
     return np.asarray(unique_T, float), np.asarray(totals, float)
 
-def _run_projectile_pwba_sanity_checks(s, C, dcs_data=None, Nq=80):
+def _run_projectile_pwba_sanity_checks(s, C, dcs_data=None, Nq=80, include_kshell=True):
     Ei = 100.0
     Tj = 1.0e5
     qp = _q_bounds_scalar(Ei, Tj, projectile_mass_au=PROJECTILE_MASS_AU)
@@ -2071,10 +2690,14 @@ def _run_projectile_pwba_sanity_checks(s, C, dcs_data=None, Nq=80):
     idx_sorted = physical_idx[order]
 
     exc_direct = np.zeros((E_sorted.size, len(s.excitations)), float)
-    ion_direct = np.zeros((E_sorted.size, len(s.ionizations) + 1), float)
+    kshell_B = (
+        _kshell_threshold_eV(s)
+        if include_kshell and s.kshell is not None and KSHELL_MODEL != "none"
+        else None
+    )
+    ion_direct = np.zeros((E_sorted.size, len(s.ionizations) + (1 if kshell_B is not None else 0)), float)
     exc_B = [float(s.Bmin) for _ in s.excitations]
     ion_B = [float(osc.Bth) for osc in s.ionizations]
-    kshell_B = float(s.kshell.Bth) if s.kshell is not None else None
     for j in range(len(s.excitations)):
         exc_direct[:, j] = _compute_dcs_channel_values(
             "excitation", j, s, C, Nq, np.full_like(E_sorted, Tval), E_sorted, exc_B, ion_B, kshell_B
@@ -2148,6 +2771,43 @@ def _write_total_tables_from_dcs(
     T_ion, ion_totals = _integrate_dcs_to_totals(T_ion_line, E_ion_line, ion_vals)
     _write_total_table(T_exc, exc_totals, exc_out)
     _write_total_table(T_ion, ion_totals, ion_out)
+
+def _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data):
+    if sigma_list is None or dcs_data is None:
+        return sigma_list
+    T_line = np.asarray(dcs_data.get("T_line", []), float)
+    E_line = np.asarray(dcs_data.get("E_line", []), float)
+    exc_vals = np.asarray(dcs_data.get("exc_vals", []), float)
+    ion_vals = np.asarray(dcs_data.get("ion_vals", []), float)
+    if T_line.size == 0 or E_line.size == 0:
+        return sigma_list
+    T_exc, exc_totals = _integrate_dcs_to_totals(T_line, E_line, exc_vals * EMFI_DCS_SCALE_M2)
+    T_ion, ion_totals = _integrate_dcs_to_totals(T_line, E_line, ion_vals * EMFI_DCS_SCALE_M2)
+
+    out = []
+    for T, sigma in zip(T_list, sigma_list):
+        sigma_new = dict(sigma)
+        i_exc = int(np.argmin(np.abs(T_exc - float(T)))) if T_exc.size else None
+        i_ion = int(np.argmin(np.abs(T_ion - float(T)))) if T_ion.size else None
+        if i_exc is not None and np.isclose(T_exc[i_exc], float(T)):
+            exc = [float(v) for v in np.asarray(exc_totals[i_exc], float)]
+            sigma_new["excitation_sigma_pwba"] = exc
+            sigma_new["excitation_sigma"] = exc
+        else:
+            exc = sigma_new.get("excitation_sigma", sigma_new.get("excitation_sigma_pwba", [])) or []
+        if i_ion is not None and np.isclose(T_ion[i_ion], float(T)):
+            ion = [float(v) for v in np.asarray(ion_totals[i_ion], float)]
+            sigma_new["ionization_sigma_pwba"] = ion
+            sigma_new["ionization_sigma"] = ion
+        else:
+            ion = sigma_new.get("ionization_sigma", sigma_new.get("ionization_sigma_pwba", [])) or []
+        total = float(np.sum(exc) + np.sum(ion))
+        sigma_new["valence_sigma_pwba"] = total
+        sigma_new["total_sigma_pwba"] = total
+        sigma_new["valence_sigma"] = total
+        sigma_new["total_sigma"] = total
+        out.append(sigma_new)
+    return out
 
 def _export_to_custom_geant4(paths):
     roots = []
@@ -2242,6 +2902,7 @@ def _init_dcs_worker(
     apply_regime_iv,
     ice_type,
     projectile_key,
+    kshell_model,
 ):
     global _DCS_WORKER_S, _DCS_WORKER_C
     global _DCS_WORKER_T_LINE, _DCS_WORKER_E_LINE, _DCS_WORKER_NQ
@@ -2254,6 +2915,7 @@ def _init_dcs_worker(
     )
     _set_mc_correction(apply_mc=apply_mc)
     set_projectile(projectile_key)
+    _set_kshell_model(kshell_model)
 
     _DCS_WORKER_S = model.epsilon_optical(ice_type)
     _DCS_WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
@@ -2263,7 +2925,9 @@ def _init_dcs_worker(
     _DCS_WORKER_EXC_B = [float(_DCS_WORKER_S.Bmin) for _ in _DCS_WORKER_S.excitations]
     _DCS_WORKER_ION_B = [float(osc.Bth) for osc in _DCS_WORKER_S.ionizations]
     _DCS_WORKER_KSHELL_B = (
-        float(_DCS_WORKER_S.kshell.Bth) if _DCS_WORKER_S.kshell is not None else None
+        _kshell_threshold_eV(_DCS_WORKER_S)
+        if _DCS_WORKER_S.kshell is not None and KSHELL_MODEL != "none"
+        else None
     )
 
 def _compute_dcs_channel_worker(args):
@@ -2311,7 +2975,7 @@ def _selected_dsigma_ionization(Ei, Tj, j, s, C, Nq):
     return _integrate_channel_single_E(Ei, Tj, j, "ionization", s, C, Nq=Nq, use_rel_bounds=False)
 
 def _selected_dsigma_kshell(Ei, Tj, s, Nq):
-    if s.kshell is None:
+    if s.kshell is None or KSHELL_MODEL == "none":
         return 0.0
     _, use_rel_long, _, _ = _regime_flags(Tj)
     if use_rel_long:
@@ -2339,6 +3003,13 @@ def write_emfietzoglou_dcs_tables(
     apply_regime_iv=None,
     reuse_existing_tables=False,
     T_list=None,
+    include_kshell=True,
+    merge_energy_patches=True,
+    charge_mode=None,
+    include_barkas_dcs=None,
+    explicit_charge=None,
+    born_reference_charge=None,
+    born_reference_explicit_charge=None,
 ):
     if out_dir is None:
         out_dir = CROSS_SECTIONS_DIR
@@ -2346,10 +3017,27 @@ def write_emfietzoglou_dcs_tables(
 
     if ice_label is None:
         ice_label = ICE_LABEL
-    exc_out = out_dir / f"sigmadiff_excitation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
-    ion_out = out_dir / f"sigmadiff_ionisation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
-    exc_total_out = out_dir / f"sigma_excitation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
-    ion_total_out = out_dir / f"sigma_ionisation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
+    if charge_mode is None:
+        charge_mode = CHARGE_MODE
+    if include_barkas_dcs is None:
+        include_barkas_dcs = INCLUDE_BARKAS_DCS
+    if explicit_charge is None:
+        explicit_charge = EXPLICIT_PROJECTILE_CHARGE
+    if born_reference_charge is None:
+        born_reference_charge = BORN_REFERENCE_CHARGE
+    if born_reference_explicit_charge is None:
+        born_reference_explicit_charge = BORN_REFERENCE_EXPLICIT_CHARGE
+    mode_suffix = _charge_mode_tag(
+        charge_mode,
+        include_barkas_dcs,
+        explicit_charge=explicit_charge,
+        born_reference_charge=born_reference_charge,
+        born_reference_explicit_charge=born_reference_explicit_charge,
+    )
+    exc_out = out_dir / f"sigmadiff_excitation_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}_emfietzoglou_kyriakou.dat"
+    ion_out = out_dir / f"sigmadiff_ionisation_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}_emfietzoglou_kyriakou.dat"
+    exc_total_out = out_dir / f"sigma_excitation_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}_emfietzoglou_kyriakou.dat"
+    ion_total_out = out_dir / f"sigma_ionisation_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}_emfietzoglou_kyriakou.dat"
 
     if reuse_existing_tables and dcs_data is None and exc_out.exists() and ion_out.exists():
         print("Ignoring existing DCS tables; heavy-projectile Emax metadata is not available in DAT files.")
@@ -2364,8 +3052,10 @@ def write_emfietzoglou_dcs_tables(
         if T_arr_for_dcs.size:
             t_list_min = float(np.min(T_arr_for_dcs))
             t_list_max = float(np.max(T_arr_for_dcs))
-    exc_t_min = float(min(exc_B)) if exc_B else None
-    ion_t_min = float(min(ion_B)) if ion_B else None
+    exc_write_t_min = float(min(exc_B)) if exc_B else None
+    ion_write_t_min = float(min(ion_B)) if ion_B else None
+    exc_t_min = exc_write_t_min
+    ion_t_min = ion_write_t_min
     if t_list_min is not None:
         if exc_t_min is not None:
             exc_t_min = max(exc_t_min, t_list_min)
@@ -2426,14 +3116,18 @@ def write_emfietzoglou_dcs_tables(
         T_line = np.asarray(T_line, float)
         E_line = np.asarray(E_line, float)
 
-        kshell_B = float(s.kshell.Bth) if s.kshell is not None else None
+        kshell_B = (
+            _kshell_threshold_eV(s)
+            if include_kshell and s.kshell is not None and KSHELL_MODEL != "none"
+            else None
+        )
 
         n_lines = T_line.size
         n_exc = len(exc_B)
         n_ion = len(ion_B)
 
         exc_vals = np.zeros((n_lines, n_exc), float)
-        ion_vals = np.zeros((n_lines, n_ion + 1), float)
+        ion_vals = np.zeros((n_lines, n_ion + (1 if kshell_B is not None else 0)), float)
 
         if apply_mc is None:
             apply_mc = APPLY_MOTT_COULOMB
@@ -2479,6 +3173,7 @@ def write_emfietzoglou_dcs_tables(
                     apply_regime_iv,
                     ice_type,
                     PROJECTILE_KEY,
+                    KSHELL_MODEL,
                 ),
             ) as ex:
                 futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
@@ -2511,21 +3206,59 @@ def write_emfietzoglou_dcs_tables(
             "ion_vals": ion_vals,
         }
 
-    _write_dcs_tables_from_data(
+    needs_charge_kernel = (str(charge_mode) != "bare") or bool(include_barkas_dcs)
+    if needs_charge_kernel and not bool(dcs_data.get("barkas_charge_applied", False)):
+        dcs_data, barkas_diag = barkas_dcs.apply_barkas_correction_to_dcs_data(
+            dcs_data,
+            s,
+            material=ice_type if ice_type is not None else ICE_TYPE,
+            projectile_mass_me=PROJECTILE_MASS_AU,
+            nuclear_charge=PROJECTILE_CHARGE,
+            charge_mode=charge_mode,
+            include_barkas_dcs=include_barkas_dcs,
+            explicit_charge=explicit_charge,
+            include_kshell=include_kshell,
+            dcs_scale_m2=EMFI_DCS_SCALE_M2,
+            born_reference_charge=born_reference_charge,
+            born_reference_q=born_reference_explicit_charge,
+        )
+        dcs_data["barkas_charge_applied"] = True
+        dcs_data["barkas_charge_mode"] = str(charge_mode)
+        if barkas_diag.negative_or_unstable_T_eV.size:
+            bad = ", ".join(f"{v:.6g}" for v in barkas_diag.negative_or_unstable_T_eV[:10])
+            raise RuntimeError(f"DCS_total is negative or unstable at projectile energies: {bad}")
+        print(
+            "Barkas/charge DCS mode: "
+            f"charge_mode={charge_mode}, include_barkas_dcs={bool(include_barkas_dcs)}, "
+            f"df/dW integral={barkas_diag.df_dW_integral:.6g}, "
+            f"born_reference_charge={born_reference_charge}, "
+            f"DCS_total min/max={barkas_diag.dcs_total_min_m2_per_eV:.6e}/"
+            f"{barkas_diag.dcs_total_max_m2_per_eV:.6e} m^2/eV"
+        )
+
+    dcs_output_data = _prepare_dcs_data_for_output(
         dcs_data,
         exc_out,
         ion_out,
-        exc_t_min=exc_t_min,
-        ion_t_min=ion_t_min,
+        t_min=grid_t_min,
         t_max=grid_t_max,
+        merge_energy_patches=merge_energy_patches,
+    )
+    _write_dcs_tables_from_data(
+        dcs_output_data,
+        exc_out,
+        ion_out,
+        exc_t_min=exc_write_t_min,
+        ion_t_min=ion_write_t_min,
+        t_max=None,
     )
     _write_total_tables_from_dcs(
-        dcs_data,
+        dcs_output_data,
         exc_total_out,
         ion_total_out,
-        exc_t_min=exc_t_min,
-        ion_t_min=ion_t_min,
-        t_max=grid_t_max,
+        exc_t_min=exc_write_t_min,
+        ion_t_min=ion_write_t_min,
+        t_max=None,
     )
     _export_to_custom_geant4([exc_out, ion_out, exc_total_out, ion_total_out])
 
@@ -2614,6 +3347,7 @@ def _init_worker(
     apply_mc,
     ice_type,
     projectile_key,
+    kshell_model,
 ):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
@@ -2628,6 +3362,7 @@ def _init_worker(
     )
     _set_mc_correction(apply_mc=apply_mc)
     set_projectile(projectile_key)
+    _set_kshell_model(kshell_model)
     _WORKER_S = model.epsilon_optical(ice_type)
     _WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
     _WORKER_KW = dict(
@@ -2648,13 +3383,98 @@ def _compute_for_T(T):
 def main():
     if ICE_TYPE not in ("amorphous", "hexagonal"):
         raise ValueError(f"Unsupported ICE_TYPE: {ICE_TYPE}")
+    include_kshell = _include_kshell_from_argv(default=True)
+    kshell_model = _kshell_model_from_argv(include_kshell=include_kshell)
+    if not include_kshell:
+        kshell_model = "none"
+    if kshell_model == "none":
+        include_kshell = False
+    _set_kshell_model(kshell_model)
+    input_energy_min_eV, input_energy_max_eV, energy_points, energy_grid = _energy_range_from_argv()
+    energy_unit = _energy_unit_from_argv(default="total")
+    energy_min_eV, energy_max_eV = _energy_range_to_total_eV(
+        input_energy_min_eV,
+        input_energy_max_eV,
+        energy_unit,
+    )
+    NE, Nq = _integration_resolution_from_argv()
+    merge_energy_patches = _merge_energy_patches_from_argv(default=True)
+    charge_mode = _charge_mode_from_argv(default="bare")
+    explicit_charge = _explicit_charge_from_argv(default=None)
+    include_barkas_dcs = _include_barkas_dcs_from_argv(default=False)
+    include_bloch_dcs = _include_bloch_dcs_from_argv(default=False)
+    born_reference_charge = _born_reference_charge_from_argv(default="bare_Z")
+    born_reference_explicit_charge = _born_reference_explicit_charge_from_argv(default=None)
+    if charge_mode == "explicit" and explicit_charge is None:
+        raise ValueError("--charge-mode explicit requires --explicit-charge.")
+    if born_reference_charge == "explicit_q" and born_reference_explicit_charge is None:
+        raise ValueError("--born-reference-charge explicit_q requires --born-reference-explicit-charge.")
+    _set_charge_options(
+        charge_mode=charge_mode,
+        explicit_charge=explicit_charge,
+        include_barkas_dcs=include_barkas_dcs,
+        include_bloch_dcs=include_bloch_dcs,
+        energy_unit=energy_unit,
+        born_reference_charge=born_reference_charge,
+        born_reference_explicit_charge=born_reference_explicit_charge,
+    )
     run_label = f"{PROJECTILE_FILE_TOKEN}_{ICE_LABEL}"
+    if kshell_model == "none":
+        run_label = f"{run_label}_no_kshell"
+    else:
+        run_label = f"{run_label}_kshell_{kshell_model.replace('-', '_')}"
+    if energy_unit == "per_u":
+        run_label = f"{run_label}_per_u"
+    run_label = (
+        f"{run_label}"
+        f"{_charge_mode_tag(charge_mode, include_barkas_dcs, explicit_charge=explicit_charge, born_reference_charge=born_reference_charge, born_reference_explicit_charge=born_reference_explicit_charge)}"
+        f"{_energy_range_tag(energy_min_eV, energy_max_eV, energy_points, energy_grid)}"
+    )
     print(
         f"Projectile: {PROJECTILE_LABEL} "
         f"(key={PROJECTILE_KEY}, mass={PROJECTILE_MASS_AU:.6g} m_e, charge={PROJECTILE_CHARGE:.6g} e)"
     )
+    print(f"Include K-shell: {include_kshell}")
+    print(f"K-shell model: {KSHELL_MODEL}")
+    print(
+        "Incident-energy grid: "
+        f"{energy_min_eV:.9g} to {energy_max_eV:.9g} eV, "
+        f"N={energy_points}, grid={energy_grid}"
+    )
+    if energy_unit == "per_u":
+        print(
+            "Energy input convention: per_u; "
+            f"input range {input_energy_min_eV:.9g} to {input_energy_max_eV:.9g} eV/u "
+            f"converted using A={PROJECTILE_MASS_NUMBER:.6g}."
+        )
+    else:
+        print("Energy input convention: total projectile kinetic energy.")
+    print(
+        "Charge/Barkas mode: "
+        f"charge_mode={charge_mode}, explicit_charge={explicit_charge}, "
+        f"include_barkas_dcs={include_barkas_dcs}, include_bloch_dcs={include_bloch_dcs}, "
+        f"born_reference_charge={born_reference_charge}"
+    )
+    print(f"Integration resolution: dE={NE}, dq={Nq}")
+    print(f"Merge energy patches into DAT tables: {merge_energy_patches}")
+    if KSHELL_MODEL == "old-optical":
+        print("WARNING: old-optical K-shell is q-independent and invalid for production proton/ion tables.")
     # Optical model / dispersion coefficients
     s = model.epsilon_optical(ICE_TYPE)
+    if KSHELL_MODEL == "hydrogenic-gos":
+        k_fsum = model.oxygen_K_hydrogenic_gos_fsum(
+            B_K_eV=KSHELL_B_EV,
+            Zeff=KSHELL_ZEFF,
+            Ep_eV=float(s.Ep),
+            normalize_fsum=True,
+            fsum_target=KSHELL_FSUM_TARGET,
+        )
+        print(
+            "Hydrogenic O K-shell: "
+            f"B={KSHELL_B_EV:.6g} eV, Zeff={KSHELL_ZEFF:.6g}, "
+            f"optical f-sum={k_fsum:.6g} (target {KSHELL_FSUM_TARGET:.6g}), "
+            f"hydrogenic rolloff applied={HYDROGENIC_KSHELL_ROLLOFF_APPLIED}"
+        )
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
     b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])
     c_vec = np.array([0.098, 0.075, 0.074, 0.765, 0.425])
@@ -2662,14 +3482,15 @@ def main():
     # RR2017 defaults for c_disp, d_disp, b1, b2
     C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
 
-    # Energy grid (eV)
-    #T_list = np.logspace(-1, 7, 1000)
-    T_list = np.logspace(6, 7, 1000)
+    # Incident projectile energy grid (eV)
+    T_list = _energy_grid(
+        energy_min_eV,
+        energy_max_eV,
+        energy_points,
+        use_log=(energy_grid == "log"),
+    )
 
     # Computing Choices
-    NE = 300
-    Nq = 300
-    include_kshell = True
     # use_mott_coulomb = True
     # apply_mc = True
     # apply_regime_ii = True
@@ -2707,6 +3528,15 @@ def main():
         Nq=Nq,
         T_list=T_list,
         target_density_scale_factor=density_scale_factor,
+        include_kshell=include_kshell,
+        kshell_model=KSHELL_MODEL,
+        energy_unit=energy_unit,
+        charge_mode=charge_mode,
+        explicit_charge=explicit_charge,
+        include_barkas_dcs=include_barkas_dcs,
+        include_bloch_dcs=include_bloch_dcs,
+        born_reference_charge=born_reference_charge,
+        born_reference_explicit_charge=born_reference_explicit_charge,
     )
 
     sigma_list = None
@@ -2741,6 +3571,7 @@ def main():
                     apply_mc,
                     ICE_TYPE,
                     PROJECTILE_KEY,
+                    KSHELL_MODEL,
                 ),
         ) as ex:
             futures = [ex.submit(_compute_for_T, T) for T in T_list]
@@ -2768,7 +3599,16 @@ def main():
             apply_regime_iii=apply_regime_iii,
             apply_regime_iv=apply_regime_iv,
             T_list=T_list,
+            include_kshell=include_kshell,
+            merge_energy_patches=merge_energy_patches,
+            charge_mode=charge_mode,
+            include_barkas_dcs=include_barkas_dcs,
+            explicit_charge=explicit_charge,
+            born_reference_charge=born_reference_charge,
+            born_reference_explicit_charge=born_reference_explicit_charge,
         )
+        if charge_mode != "bare" or include_barkas_dcs:
+            sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
         dcs_written = True
         save_cross_section_corrections_npz(
             T_list,
@@ -2781,6 +3621,14 @@ def main():
             density_scale_factor=density_scale_factor,
             density_ref_g_cm3=rho_ref,
             density_assumed_g_cm3=rho_target,
+            include_kshell=include_kshell,
+            energy_unit=energy_unit,
+            charge_mode=charge_mode,
+            explicit_charge=explicit_charge,
+            include_barkas_dcs=include_barkas_dcs,
+            include_bloch_dcs=include_bloch_dcs,
+            born_reference_charge=born_reference_charge,
+            born_reference_explicit_charge=born_reference_explicit_charge,
         )
 
     if not dcs_written:
@@ -2800,7 +3648,16 @@ def main():
                 apply_regime_iii=apply_regime_iii,
                 apply_regime_iv=apply_regime_iv,
                 T_list=T_list,
+                include_kshell=include_kshell,
+                merge_energy_patches=merge_energy_patches,
+                charge_mode=charge_mode,
+                include_barkas_dcs=include_barkas_dcs,
+                explicit_charge=explicit_charge,
+                born_reference_charge=born_reference_charge,
+                born_reference_explicit_charge=born_reference_explicit_charge,
             )
+            if charge_mode != "bare" or include_barkas_dcs:
+                sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
             dcs_written = True
             save_cross_section_corrections_npz(
                 T_list,
@@ -2813,6 +3670,14 @@ def main():
                 density_scale_factor=density_scale_factor,
                 density_ref_g_cm3=rho_ref,
                 density_assumed_g_cm3=rho_target,
+                include_kshell=include_kshell,
+                energy_unit=energy_unit,
+                charge_mode=charge_mode,
+                explicit_charge=explicit_charge,
+                include_barkas_dcs=include_barkas_dcs,
+                include_bloch_dcs=include_bloch_dcs,
+                born_reference_charge=born_reference_charge,
+                born_reference_explicit_charge=born_reference_explicit_charge,
             )
         else:
             write_emfietzoglou_dcs_tables(
@@ -2823,10 +3688,30 @@ def main():
                 ice_label=ICE_LABEL,
                 ice_type=ICE_TYPE,
                 T_list=T_list,
+                include_kshell=include_kshell,
+                merge_energy_patches=merge_energy_patches,
+                charge_mode=charge_mode,
+                include_barkas_dcs=include_barkas_dcs,
+                explicit_charge=explicit_charge,
+                born_reference_charge=born_reference_charge,
+                born_reference_explicit_charge=born_reference_explicit_charge,
             )
+            if charge_mode != "bare" or include_barkas_dcs:
+                sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
             dcs_written = True
 
-    _run_projectile_pwba_sanity_checks(s, C, dcs_data=dcs_data, Nq=Nq)
+    if charge_mode == "bare" and not include_barkas_dcs:
+        _run_projectile_pwba_sanity_checks(s, C, dcs_data=dcs_data, Nq=Nq, include_kshell=include_kshell)
+    else:
+        _run_projectile_pwba_sanity_checks(s, C, dcs_data=None, Nq=Nq, include_kshell=include_kshell)
+        diag = dcs_data.get("barkas_diagnostics") if isinstance(dcs_data, dict) else None
+        if diag is not None:
+            print(
+                "Barkas DCS diagnostics: "
+                f"TCS_total rows={diag.TCS_total_m2.size}, "
+                f"S_Barkas_check rows={diag.S_Barkas_check_eV_m2.size}, "
+                f"unstable energies={diag.negative_or_unstable_T_eV.size}"
+            )
 
     # ----------------- Log corrections per energy -----------------
     plot_total_cross_section_corrections(T_list, sigma_list, ice_label=run_label)

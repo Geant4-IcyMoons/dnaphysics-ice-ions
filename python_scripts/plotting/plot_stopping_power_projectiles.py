@@ -10,6 +10,7 @@ for example sigmadiff_excitation_proton_hexagonal_ice_emfietzoglou_kyriakou.dat.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from constants import (  # noqa: E402
     FONTSIZE_24,
     ICE_AMORPHOUS_DENSITY_G_CM3,
     ICE_HEXAGONAL_DENSITY_G_CM3,
+    MC2_eV,
     N,
     OUTPUT_DIR,
     PROJECTILE_LIBRARY,
@@ -48,7 +50,13 @@ EV_NM_TO_EV_ANG = 0.1
 WATER_DENSITY_G_CM3 = 1.0
 N_CM3_WATER = N / 1.0e6
 GEANT4_DNA_SCALE_CM2 = EMFIETZOGLOU_SCALE_1E16 * 1.0e-16
+GEANT4_SI_M2_TO_CM2 = 1.0e4
 WATER_EXCITATION_ENERGIES_EV = np.array([8.22, 10.00, 11.24, 12.61, 13.77], dtype=float)
+WATER_IONISATION_BINDINGS_EV = np.array([12.60, 14.70, 18.40, 32.20, 540.0], dtype=float)
+RUDD_ALPHA_WMAX_FACTOR = 4.0 * 0.511 / 3728.0
+BOHR_RADIUS_CM = 5.29177210903e-9
+RYDBERG_EV = 13.6
+BARKAS_ZEFF_COEFF = 125.0
 ICE_DENSITY_BY_TYPE = {
     "amorphous": ICE_AMORPHOUS_DENSITY_G_CM3,
     "hexagonal": ICE_HEXAGONAL_DENSITY_G_CM3,
@@ -57,6 +65,7 @@ PROJECTILE_AXIS_LABELS = {
     "proton": "Proton",
     "alpha": "Alpha",
     "carbon": "Carbon",
+    "oxygen": "Oxygen",
 }
 ICRU_DATA_DIR = Path(__file__).resolve().parent / "data"
 ICRU_WATER_DENSITY_G_CM3 = 0.998
@@ -64,7 +73,12 @@ ICRU_STOPPING_POWER_FILES = {
     "proton": ICRU_DATA_DIR / "icru90_stopping_power_liquid_water_proton.csv",
     "alpha": ICRU_DATA_DIR / "icru90_stopping_power_liquid_water_alpha.csv",
     "carbon": ICRU_DATA_DIR / "icru90_stopping_power_liquid_water_carbon.csv",
+    "oxygen": ICRU_DATA_DIR / "icru73_stopping_power_liquid_water_oxygen.csv",
 }
+
+
+def _icru_label(projectile_key: str) -> str:
+    return "ICRU 73 water" if projectile_key == "oxygen" else "ICRU 90 water"
 
 
 def _projectile_config(key: str) -> tuple[str, dict]:
@@ -129,6 +143,10 @@ def _water_born_paths(projectile_key: str) -> dict[str, Path] | None:
             return None
         paths[key] = path
     return paths
+
+
+def _alpha_rudd_ionisation_path() -> Path | None:
+    return _find_geant4_dna_file("sigma_ionisation_alphaplusplus_rudd.dat")
 
 
 def _first_column_bounds(path: Path) -> tuple[float, float]:
@@ -243,6 +261,33 @@ def _projectile_wmax_nonrel_eV(tau_eV: float, projectile_mass_au: float) -> floa
     return 4.0 * float(tau_eV) / float(projectile_mass_au)
 
 
+def _projectile_beta(energy_eV: np.ndarray, projectile_mass_au: float) -> np.ndarray:
+    energy = np.asarray(energy_eV, dtype=float)
+    rest_eV = float(projectile_mass_au) * MC2_eV
+    gamma = 1.0 + np.maximum(energy, 0.0) / rest_eV
+    beta2 = 1.0 - 1.0 / np.square(gamma)
+    return np.sqrt(np.maximum(beta2, 0.0))
+
+
+def _barkas_effective_charge(energy_eV: np.ndarray, projectile_charge: float, projectile_mass_au: float) -> np.ndarray:
+    """Barkas effective-charge formula for a projectile charge prefactor."""
+    z = float(projectile_charge)
+    energy = np.asarray(energy_eV, dtype=float)
+    if z <= 0.0:
+        return np.zeros_like(energy)
+    beta = _projectile_beta(energy, projectile_mass_au)
+    zeff = z * (1.0 - np.exp(-BARKAS_ZEFF_COEFF * beta * z ** (-2.0 / 3.0)))
+    return np.clip(zeff, 0.0, z)
+
+
+def _barkas_zeff_scale(energy_eV: np.ndarray, projectile_charge: float, projectile_mass_au: float) -> np.ndarray:
+    z = float(projectile_charge)
+    if z <= 0.0:
+        return np.ones_like(np.asarray(energy_eV, dtype=float))
+    zeff = _barkas_effective_charge(energy_eV, z, projectile_mass_au)
+    return np.square(zeff / z)
+
+
 def _units_and_label(units: str, density: float, dedx: np.ndarray) -> tuple[np.ndarray, str]:
     if units == "ev_ang":
         return dedx * EV_NM_TO_EV_ANG, r"Stopping Power (eV/$\AA$)"
@@ -276,12 +321,15 @@ def _load_icru_stopping_power(projectile_key: str) -> tuple[np.ndarray, np.ndarr
     return energy_eV[valid], mass_sp[valid]
 
 
-def _load_total_sigma_table(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _load_total_sigma_table(path: Path, drop_kshell: bool = False) -> tuple[np.ndarray, np.ndarray]:
     _ensure_exists(path)
     data = np.loadtxt(path, dtype=float)
     data = np.atleast_2d(data)
     energy = data[:, 0]
-    sigma = np.sum(data[:, 1:], axis=1) * GEANT4_DNA_SCALE_CM2
+    components = data[:, 1:]
+    if drop_kshell and components.shape[1] >= 5:
+        components = components[:, :-1]
+    sigma = np.sum(components, axis=1) * GEANT4_DNA_SCALE_CM2
     valid = np.isfinite(energy) & np.isfinite(sigma) & (energy > 0.0)
     return energy[valid], sigma[valid]
 
@@ -294,6 +342,90 @@ def _load_component_sigma_table(path: Path) -> tuple[np.ndarray, np.ndarray]:
     sigma_components = data[:, 1:] * GEANT4_DNA_SCALE_CM2
     valid = np.isfinite(energy) & (energy > 0.0) & np.all(np.isfinite(sigma_components), axis=1)
     return energy[valid], sigma_components[valid, :]
+
+
+def _load_alpha_rudd_components(path: Path, drop_kshell: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    _ensure_exists(path)
+    data = np.loadtxt(path, dtype=float)
+    data = np.atleast_2d(data)
+    energy = data[:, 0]
+    components = data[:, 1:] * GEANT4_SI_M2_TO_CM2
+    bindings = WATER_IONISATION_BINDINGS_EV[: components.shape[1]]
+    if drop_kshell and components.shape[1] >= 5:
+        components = components[:, :-1]
+        bindings = bindings[:-1]
+    valid = np.isfinite(energy) & (energy > 0.0) & np.all(np.isfinite(components), axis=1)
+    return energy[valid], components[valid, :], bindings
+
+
+def _alpha_rudd_dcs_shape(incident_eV: float, transfer_eV: np.ndarray, shell: int) -> np.ndarray:
+    """Geant4-DNA G4DNARuddIonisationModel alpha++ DCS shape for liquid water."""
+    transfer = np.asarray(transfer_eV, dtype=float)
+    binding = float(WATER_IONISATION_BINDINGS_EV[shell])
+    secondary = transfer - binding
+    out = np.zeros_like(transfer)
+    valid = secondary >= 0.0
+    if not np.any(valid):
+        return out
+
+    if shell == 4:
+        A1, B1, C1, D1, E1 = 1.25, 0.5, 1.00, 1.00, 3.00
+        A2, B2, C2, D2, alpha_const = 1.10, 1.30, 1.00, 0.00, 0.66
+    else:
+        A1, B1, C1, D1, E1 = 1.02, 82.0, 0.45, -0.80, 0.38
+        A2, B2, C2, D2, alpha_const = 1.07, 11.6, 0.60, 0.04, 0.64
+
+    gj = np.array([0.99, 1.11, 1.11, 0.52, 1.0], dtype=float)[shell]
+    tau = (0.511 / 3728.0) * float(incident_eV)
+    v2 = tau / binding
+    if v2 <= 0.0:
+        return out
+    v = np.sqrt(v2)
+    wc = 4.0 * v2 - 2.0 * v - (RYDBERG_EV / (4.0 * binding))
+    s_factor = 4.0 * np.pi * BOHR_RADIUS_CM * BOHR_RADIUS_CM * 2.0 * (RYDBERG_EV / binding) ** 2
+    w = secondary[valid] / binding
+    l1 = (C1 * v**D1) / (1.0 + E1 * v ** (D1 + 4.0))
+    l2 = C2 * v**D2
+    h1 = (A1 * np.log1p(v2)) / (v2 + (B1 / v2))
+    h2 = (A2 / v2) + (B2 / (v2 * v2))
+    f1 = l1 + h1
+    f2 = (l2 * h2) / (l2 + h2)
+    denom = (1.0 + w) ** 3 * (1.0 + np.exp(alpha_const * (w - wc) / v))
+
+    # For alpha++ Geant4 applies z_eff^2 = 4 to the Rudd water DCS.
+    out[valid] = 4.0 * gj * (s_factor / binding) * ((f1 + w * f2) / denom)
+    out[~np.isfinite(out)] = 0.0
+    return out
+
+
+def _alpha_rudd_eloss_xs(
+    energy_grid: np.ndarray,
+    rudd_energy: np.ndarray,
+    rudd_components: np.ndarray,
+    bindings: np.ndarray,
+) -> np.ndarray:
+    """Return energy-loss cross-section from Rudd DCS shape normalized to Geant4 tabulated sigma."""
+    component_interp = [
+        _interp_loglog(rudd_energy, rudd_components[:, i], energy_grid)
+        for i in range(rudd_components.shape[1])
+    ]
+    eloss = np.zeros_like(energy_grid, dtype=float)
+    for ie, incident in enumerate(np.asarray(energy_grid, dtype=float)):
+        for shell, binding in enumerate(bindings):
+            shell_sigma = float(component_interp[shell][ie])
+            wmax = RUDD_ALPHA_WMAX_FACTOR * float(incident)
+            if shell_sigma <= 0.0 or wmax <= 0.0:
+                continue
+            secondary = np.concatenate(([0.0], np.geomspace(1.0e-6, wmax, 280)))
+            transfer = float(binding) + secondary
+            shape = _alpha_rudd_dcs_shape(float(incident), transfer, shell)
+            area = float(np.trapezoid(shape, transfer))
+            if not np.isfinite(area) or area <= 0.0:
+                continue
+            mean_loss = float(np.trapezoid(transfer * shape, transfer) / area)
+            if np.isfinite(mean_loss) and mean_loss > 0.0:
+                eloss[ie] += shell_sigma * mean_loss
+    return eloss
 
 
 def _energy_loss_xs_with_cutoff(
@@ -329,6 +461,7 @@ def _dcs_moments_table(
     path: Path,
     projectile_mass_au: float,
     stopping_cutoff: str,
+    drop_kshell: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return incident energy, sigma_total, and energy-loss cross-section."""
     _ensure_exists(path)
@@ -347,12 +480,14 @@ def _dcs_moments_table(
             return
         omega = np.asarray(transfer_vals, dtype=float)
         sigma = np.asarray(sigma_vals, dtype=float) * scale_cm2
+        if drop_kshell and sigma.shape[0] >= 5:
+            sigma = sigma[:-1, :]
         cutoff_eV = None
         if stopping_cutoff == "wmax_nonrel":
             cutoff_eV = min(float(current_e), _projectile_wmax_nonrel_eV(float(current_e), projectile_mass_au))
         sigma_sum = 0.0
         eloss_sum = 0.0
-        for j in range(n_channels):
+        for j in range(sigma.shape[0]):
             s = sigma[j]
             sigma_sum += _simpson_nonuniform(omega, s)
             eloss_sum += _energy_loss_xs_with_cutoff(omega, s, cutoff_eV)
@@ -405,16 +540,24 @@ def _build_series(
     projectile_token: str,
     projectile_label: str,
     projectile_mass_au: float,
+    projectile_charge: float,
     ice_type: str,
     energy_grid: np.ndarray,
     rho_ice: float | None,
     stopping_cutoff: str,
+    include_kshell: bool,
+    barkas_zeff: bool,
 ) -> dict:
     paths = _projectile_paths(projectile_token, ice_type)
     exc_energy, _, exc_eloss = _dcs_moments_table(paths["exc_dcs"], projectile_mass_au, stopping_cutoff)
-    ion_energy, _, ion_eloss = _dcs_moments_table(paths["ion_dcs"], projectile_mass_au, stopping_cutoff)
+    ion_energy, _, ion_eloss = _dcs_moments_table(
+        paths["ion_dcs"],
+        projectile_mass_au,
+        stopping_cutoff,
+        drop_kshell=not include_kshell,
+    )
     exc_sigma_energy, exc_sigma = _load_total_sigma_table(paths["exc_total"])
-    ion_sigma_energy, ion_sigma = _load_total_sigma_table(paths["ion_total"])
+    ion_sigma_energy, ion_sigma = _load_total_sigma_table(paths["ion_total"], drop_kshell=not include_kshell)
 
     phase_density = ICE_DENSITY_BY_TYPE[ice_type]
     density = float(rho_ice) if rho_ice is not None else float(phase_density)
@@ -424,6 +567,15 @@ def _build_series(
     ion_dedx = _to_dedx_ev_nm(_interp_loglog(ion_energy, ion_eloss, energy_grid), n_cm3)
     exc_imfp = _to_inverse_mfp_nm(_interp_loglog(exc_sigma_energy, exc_sigma, energy_grid), n_cm3)
     ion_imfp = _to_inverse_mfp_nm(_interp_loglog(ion_sigma_energy, ion_sigma, energy_grid), n_cm3)
+    charge_scale = np.ones_like(energy_grid, dtype=float)
+    label_suffix = ""
+    if barkas_zeff:
+        charge_scale = _barkas_zeff_scale(energy_grid, projectile_charge, projectile_mass_au)
+        exc_dedx = exc_dedx * charge_scale
+        ion_dedx = ion_dedx * charge_scale
+        exc_imfp = exc_imfp * charge_scale
+        ion_imfp = ion_imfp * charge_scale
+        label_suffix = " (Barkas Zeff)"
     emin = max(
         float(np.min(exc_energy)),
         float(np.min(ion_energy)),
@@ -438,9 +590,13 @@ def _build_series(
     )
 
     return {
-        "label": f"{ice_type.capitalize()} ice",
+        "label": f"{ice_type.capitalize()} ice{label_suffix}",
         "ice_type": ice_type,
         "density_g_cm3": density,
+        "charge_correction": "barkas_zeff" if barkas_zeff else "bare_charge",
+        "projectile_charge_bare": float(projectile_charge),
+        "zeff_scale_min": float(np.nanmin(charge_scale)),
+        "zeff_scale_max": float(np.nanmax(charge_scale)),
         "emin": emin,
         "emax": emax,
         "dedx_exc": exc_dedx,
@@ -457,7 +613,37 @@ def _build_water_series(
     projectile_mass_au: float,
     energy_grid: np.ndarray,
     stopping_cutoff: str,
+    include_kshell: bool,
 ) -> dict | None:
+    if projectile_key == "alpha":
+        path = _alpha_rudd_ionisation_path()
+        if path is None:
+            return None
+        ion_energy, ion_components, bindings = _load_alpha_rudd_components(
+            path,
+            drop_kshell=not include_kshell,
+        )
+        ion_sigma = np.sum(ion_components, axis=1)
+        ion_sigma_grid = _interp_loglog(ion_energy, ion_sigma, energy_grid)
+        ion_eloss = _alpha_rudd_eloss_xs(energy_grid, ion_energy, ion_components, bindings)
+        ion_dedx = _to_dedx_ev_nm(ion_eloss, N_CM3_WATER)
+        ion_imfp = _to_inverse_mfp_nm(ion_sigma_grid, N_CM3_WATER)
+        zeros = np.zeros_like(energy_grid)
+        return {
+            "label": "Geant4-DNA water (Rudd ion.)",
+            "ice_type": "water",
+            "source_model": "G4DNARuddIonisationModel alpha++ ionisation",
+            "density_g_cm3": WATER_DENSITY_G_CM3,
+            "emin": float(np.min(ion_energy)),
+            "emax": float(np.max(ion_energy)),
+            "dedx_exc": zeros,
+            "dedx_ion": ion_dedx,
+            "dedx_total": ion_dedx,
+            "imfp_exc": zeros,
+            "imfp_ion": ion_imfp,
+            "imfp_total": ion_imfp,
+        }
+
     paths = _water_born_paths(projectile_key)
     if paths is None:
         return None
@@ -473,6 +659,7 @@ def _build_water_series(
         paths["ion_dcs"],
         projectile_mass_au,
         stopping_cutoff,
+        drop_kshell=not include_kshell,
     )
 
     exc_dedx = _to_dedx_ev_nm(_interp_loglog(exc_energy, exc_eloss, energy_grid), N_CM3_WATER)
@@ -541,7 +728,9 @@ def _plot(
         if np.any(valid_any):
             xmins.append(float(np.min(energy_grid[valid_any])))
             xmaxs.append(float(np.max(energy_grid[valid_any])))
-        style = styles.get(item["ice_type"], {"color": "0.5", "ls": "-"})
+        style = dict(styles.get(item["ice_type"], {"color": "0.5", "ls": "-"}))
+        if item.get("charge_correction") == "barkas_zeff":
+            style["color"] = "#D55E00"
         ax_sp.loglog(
             energy_grid[valid_sp],
             y_sp[valid_sp],
@@ -577,7 +766,7 @@ def _plot(
                 color="black",
                 ls=":",
                 linewidth=3,
-                label="ICRU 90 water",
+                label=_icru_label(projectile_key),
                 zorder=4,
             )
 
@@ -616,6 +805,169 @@ def _plot(
     fig.savefig(out_path, bbox_inches="tight", pad_inches=0.35)
     fig.show()
     print(f"Saved plot to: {out_path}")
+
+
+def _json_array(values: np.ndarray) -> list[float | None]:
+    arr = np.asarray(values, dtype=float)
+    return [float(v) if np.isfinite(v) else None for v in arr]
+
+
+def _series_to_json(item: dict, energy_grid: np.ndarray, units: str) -> dict:
+    density = float(item["density_g_cm3"])
+    sp_total, sp_label = _units_and_label(units, density, item["dedx_total"])
+    sp_exc, _ = _units_and_label(units, density, item["dedx_exc"])
+    sp_ion, _ = _units_and_label(units, density, item["dedx_ion"])
+    payload = {
+        "label": item["label"],
+        "material": item["ice_type"],
+        "density_g_cm3": density,
+        "valid_energy_eV": {
+            "min": float(item["emin"]),
+            "max": float(item["emax"]),
+        },
+        "stopping_power": {
+            "units": sp_label,
+            "total": _json_array(sp_total),
+            "excitation": _json_array(sp_exc),
+            "ionisation": _json_array(sp_ion),
+        },
+        "dedx_ev_nm": {
+            "total": _json_array(item["dedx_total"]),
+            "excitation": _json_array(item["dedx_exc"]),
+            "ionisation": _json_array(item["dedx_ion"]),
+        },
+        "imfp_nm_inv": {
+            "total": _json_array(item["imfp_total"]),
+            "excitation": _json_array(item["imfp_exc"]),
+            "ionisation": _json_array(item["imfp_ion"]),
+        },
+    }
+    if item.get("source_model"):
+        payload["source_model"] = str(item["source_model"])
+    if item.get("charge_correction"):
+        payload["charge_correction"] = str(item["charge_correction"])
+        payload["projectile_charge_bare"] = float(item.get("projectile_charge_bare", np.nan))
+        payload["zeff_scale_min"] = float(item.get("zeff_scale_min", np.nan))
+        payload["zeff_scale_max"] = float(item.get("zeff_scale_max", np.nan))
+    return payload
+
+
+def _ratios_at_energies(
+    energy_grid: np.ndarray,
+    series: list[dict],
+    units: str,
+    projectile_key: str,
+) -> list[dict]:
+    points_eV = np.asarray([1.0e6, 3.0e6, 1.0e7], dtype=float)
+    water = next((item for item in series if item.get("ice_type") == "water"), None)
+    icru_curve = _load_icru_stopping_power(projectile_key)
+    icru_y = None
+    icru_energy = None
+    if icru_curve is not None:
+        icru_energy, icru_mass_sp = icru_curve
+        icru_y = _icru_mass_stopping_to_units(units, icru_mass_sp)
+
+    water_sp = None
+    water_imfp = None
+    if water is not None:
+        water_sp = _units_and_label(units, float(water["density_g_cm3"]), water["dedx_total"])[0]
+        water_imfp = np.asarray(water["imfp_total"], dtype=float)
+    material_counts = {
+        str(item.get("ice_type")): sum(str(other.get("ice_type")) == str(item.get("ice_type")) for other in series)
+        for item in series
+    }
+    icru_ratio_key = "stopping_power_over_icru73_water" if projectile_key == "oxygen" else "stopping_power_over_icru90_water"
+
+    rows = []
+    for point in points_eV:
+        row = {"energy_eV": float(point), "energy_MeV": float(point / 1.0e6), "materials": {}}
+        water_sp_point = None
+        water_imfp_point = None
+        if water_sp is not None:
+            water_sp_point = float(_interp_loglog(energy_grid, water_sp, np.asarray([point]))[0])
+            water_imfp_point = float(_interp_loglog(energy_grid, water_imfp, np.asarray([point]))[0])
+        icru_point = None
+        if icru_energy is not None and icru_y is not None:
+            icru_point = float(_interp_loglog(icru_energy, icru_y, np.asarray([point]))[0])
+
+        for item in series:
+            sp = _units_and_label(units, float(item["density_g_cm3"]), item["dedx_total"])[0]
+            imfp = np.asarray(item["imfp_total"], dtype=float)
+            sp_point = float(_interp_loglog(energy_grid, sp, np.asarray([point]))[0])
+            imfp_point = float(_interp_loglog(energy_grid, imfp, np.asarray([point]))[0])
+            entry = {
+                "label": str(item.get("label", item["ice_type"])),
+                "stopping_power": sp_point if sp_point > 0.0 else None,
+                "imfp_nm_inv": imfp_point if imfp_point > 0.0 else None,
+            }
+            if item.get("charge_correction"):
+                entry["charge_correction"] = str(item["charge_correction"])
+            if water_sp_point is not None and water_sp_point > 0.0:
+                entry["stopping_power_over_geant4dna_water"] = sp_point / water_sp_point
+            if icru_point is not None and icru_point > 0.0:
+                entry[icru_ratio_key] = sp_point / icru_point
+            if water_imfp_point is not None and water_imfp_point > 0.0:
+                entry["imfp_over_geant4dna_water"] = imfp_point / water_imfp_point
+            material_key = str(item["ice_type"])
+            if material_counts.get(material_key, 0) > 1:
+                material_key = f"{material_key}_{entry.get('charge_correction', 'reference')}"
+            row["materials"][material_key] = entry
+        rows.append(row)
+    return rows
+
+
+def _write_json_output(
+    json_path: Path,
+    energy_grid: np.ndarray,
+    series: list[dict],
+    units: str,
+    projectile_key: str,
+    projectile_axis_label: str,
+    stopping_cutoff: str,
+    include_kshell: bool,
+    include_water: bool,
+    barkas_zeff: bool,
+) -> None:
+    icru = None
+    icru_curve = _load_icru_stopping_power(projectile_key)
+    if icru_curve is not None:
+        icru_energy, icru_mass_sp = icru_curve
+        icru_y = _icru_mass_stopping_to_units(units, icru_mass_sp)
+        valid = (
+            np.isfinite(icru_energy)
+            & np.isfinite(icru_y)
+            & (icru_energy >= float(np.min(energy_grid)))
+            & (icru_energy <= float(np.max(energy_grid)))
+            & (icru_y > 0.0)
+        )
+        icru = {
+            "label": _icru_label(projectile_key),
+            "energy_eV": _json_array(icru_energy[valid]),
+            "mass_stopping_power_MeV_cm2_g": _json_array(icru_mass_sp[valid]),
+            "stopping_power_selected_units": _json_array(icru_y[valid]),
+        }
+
+    payload = {
+        "metadata": {
+            "projectile": projectile_key,
+            "projectile_axis_label": projectile_axis_label,
+            "units": units,
+            "stopping_cutoff": stopping_cutoff,
+            "include_kshell": bool(include_kshell),
+            "include_water": bool(include_water),
+            "barkas_zeff": bool(barkas_zeff),
+            "barkas_zeff_formula": "Zeff = Z * (1 - exp(-125 * beta * Z^(-2/3)))",
+            "energy_grid_count": int(np.asarray(energy_grid).size),
+        },
+        "energy_eV": _json_array(energy_grid),
+        "series": [_series_to_json(item, energy_grid, units) for item in series],
+        "icru90_water": icru,
+        "ratios_at_1_3_10_MeV": _ratios_at_energies(energy_grid, series, units, projectile_key),
+    }
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(json_path, "w") as handle:
+        json.dump(payload, handle, indent=2)
+    print(f"Saved JSON data to: {json_path}")
 
 
 def _config_csv(value: object) -> str:
@@ -671,7 +1023,7 @@ def main(config: dict[str, object] | None = None) -> None:
     parser.add_argument(
         "--projectile",
         default=str(config.get("projectile", "proton")),
-        help="proton, alpha, or carbon",
+        help="proton, alpha, carbon, or oxygen",
     )
     parser.add_argument(
         "--emin",
@@ -715,6 +1067,12 @@ def main(config: dict[str, object] | None = None) -> None:
         help="Output plot path.",
     )
     parser.add_argument(
+        "--json-out",
+        type=Path,
+        default=config.get("json_out", None),
+        help="Output JSON path. Defaults to the plot path with .json suffix.",
+    )
+    parser.add_argument(
         "--stopping-cutoff",
         default=str(config.get("stopping_cutoff", "none")),
         choices=("none", "wmax_nonrel"),
@@ -730,6 +1088,23 @@ def main(config: dict[str, object] | None = None) -> None:
         default=_config_bool(config.get("include_water", True), True),
         help="Overlay Geant4-DNA water stopping/IMFP where native water tables are available.",
     )
+    parser.add_argument(
+        "--include-kshell",
+        action=argparse.BooleanOptionalAction,
+        default=_config_bool(config.get("include_kshell", True), True),
+        help="Include the last ionisation-table channel as the O K-shell contribution.",
+    )
+    parser.add_argument(
+        "--barkas-zeff",
+        "--Barkas_Zeff",
+        dest="barkas_zeff",
+        action=argparse.BooleanOptionalAction,
+        default=_config_bool(config.get("barkas_zeff", config.get("Barkas_Zeff", False)), False),
+        help=(
+            "Overlay Barkas effective-charge scaling, using "
+            "Zeff = Z * (1 - exp(-125 * beta * Z^(-2/3)))."
+        ),
+    )
     args = parser.parse_args()
 
     if args.emin <= 0.0 or args.emax <= 0.0 or args.emin >= args.emax:
@@ -738,6 +1113,7 @@ def main(config: dict[str, object] | None = None) -> None:
     projectile_token = str(projectile["file_token"])
     projectile_label = str(projectile["label"])
     projectile_mass_au = float(projectile["mass_au"])
+    projectile_charge = float(projectile["charge"])
     projectile_axis_label = PROJECTILE_AXIS_LABELS.get(projectile_key, projectile_key.capitalize())
     ice_types = [v.strip().lower() for v in args.ice_types.split(",") if v.strip()]
     ice_types = [v for v in ice_types if v in ICE_DENSITY_BY_TYPE]
@@ -765,18 +1141,38 @@ def main(config: dict[str, object] | None = None) -> None:
         )
 
     energy = np.logspace(np.log10(plot_emin), np.log10(plot_emax), args.nbins)
-    series = [
-        _build_series(
+    series = []
+    for ice_type in ice_types:
+        bare_series = _build_series(
             projectile_token,
             projectile_label,
             projectile_mass_au,
+            projectile_charge,
             ice_type,
             energy,
             args.rho_ice,
             args.stopping_cutoff,
+            args.include_kshell,
+            False,
         )
-        for ice_type in ice_types
-    ]
+        if args.barkas_zeff:
+            bare_series["label"] = f"{bare_series['label']} (bare Z)"
+        series.append(bare_series)
+        if args.barkas_zeff:
+            series.append(
+                _build_series(
+                    projectile_token,
+                    projectile_label,
+                    projectile_mass_au,
+                    projectile_charge,
+                    ice_type,
+                    energy,
+                    args.rho_ice,
+                    args.stopping_cutoff,
+                    args.include_kshell,
+                    True,
+                )
+            )
     water_series = None
     if args.include_water:
         water_series = _build_water_series(
@@ -784,6 +1180,7 @@ def main(config: dict[str, object] | None = None) -> None:
             projectile_mass_au,
             energy,
             args.stopping_cutoff,
+            args.include_kshell,
         )
         if water_series is not None:
             series.append(water_series)
@@ -793,7 +1190,12 @@ def main(config: dict[str, object] | None = None) -> None:
     out_path = args.out
     if out_path is None:
         ice_suffix = "_".join(ice_types)
-        out_path = OUTPUT_DIR / f"stopping_power_imfp_{projectile_key}_{ice_suffix}_ice.png"
+        kshell_suffix = "" if args.include_kshell else "_no_kshell"
+        zeff_suffix = "_barkas_zeff_compare" if args.barkas_zeff else ""
+        out_path = (
+            OUTPUT_DIR
+            / f"stopping_power_imfp_{projectile_key}_{ice_suffix}_ice{kshell_suffix}{zeff_suffix}.png"
+        )
 
     _plot(
         energy_grid=energy,
@@ -803,15 +1205,30 @@ def main(config: dict[str, object] | None = None) -> None:
         projectile_axis_label=projectile_axis_label,
         out_path=out_path,
     )
+    json_path = args.json_out if args.json_out is not None else out_path.with_suffix(".json")
+    _write_json_output(
+        json_path=json_path,
+        energy_grid=energy,
+        series=series,
+        units=args.units,
+        projectile_key=projectile_key,
+        projectile_axis_label=projectile_axis_label,
+        stopping_cutoff=args.stopping_cutoff,
+        include_kshell=args.include_kshell,
+        include_water=args.include_water,
+        barkas_zeff=args.barkas_zeff,
+    )
     _print_water_icru_comparison(energy, water_series, projectile_key, args.units)
 
 
 if __name__ == "__main__":
     RUN_CONFIG = {
-        "projectile": "proton",
+        "projectile": "alpha",
         "ice_types": ("amorphous", "hexagonal"),
         "stopping_cutoff": "wmax_nonrel",
         "include_water": True,
+        "include_kshell": True,
+        "Barkas_Zeff": True,
     }
 
     main(RUN_CONFIG)

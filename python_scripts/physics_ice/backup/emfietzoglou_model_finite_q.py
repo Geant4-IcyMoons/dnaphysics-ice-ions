@@ -4,8 +4,7 @@ Dielectric model for water ice (amorphous, hexagonal) with q-dispersion.
 What this implements
 - 5 excitation bands with per-band dispersion parameters (a_j, b_j, c_j) applied to f_j(q)
 - 4 ionization shells with global dispersion for E_i(q) and gamma_i(q)
-- Electron/table-model O K-shell kept optical
-- Ion/projectile O K-shell available as a separate hydrogenic GOS helper
+- Optional O K-shell kept optical
 - Returns \epsilon_1(E,q), \epsilon_2(E,q), and ELF(E,q) = Im[-1/\epsilon(E,q)]
 
 Units
@@ -42,14 +41,6 @@ plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
 
 Material = Literal["amorphous", "hexagonal"]
 ArrayLike = Union[float, np.ndarray]
-
-OXYGEN_K_B_EV = 543.4
-OXYGEN_K_ZEFF = 7.7
-OXYGEN_K_OCCUPANCY = 2.0
-OXYGEN_K_FSUM_TARGET = 0.179
-WATER_TOTAL_OSCILLATOR_STRENGTH = 10.0
-RYD_ELECTRON_VOLT = 13.605693122994
-_OXYGEN_K_ELF_NORM_CACHE = {}
 
 # ---- partitioning helpers (Kyriakou et al.) ----
 def _Theta(x):
@@ -383,197 +374,6 @@ def epsilon2_Kshell_E0(E: np.ndarray, s: IceOpticalSet) -> np.ndarray:
     y = (s.Ep**2) * _drude_e2(E, o.f, o.E0, o.gamma)
     return np.where(E >= o.Bth, y, 0.0)
 
-def oxygen_K_electron_optical_elf(E_eV, s, fsum_corrected=True):
-    """
-    Electron/dielectric-model O K-shell optical ELF.
-
-    This preserves the historical q-independent K-shell path used by the
-    electron finite-q ELF helpers. Heavy-projectile generators should use
-    oxygen_K_ion_hydrogenic_gos_elf instead.
-    """
-    if fsum_corrected:
-        return epsilon2_Kshell_E0_fsum_corrected(E_eV, s)
-    return epsilon2_Kshell_E0(E_eV, s)
-
-def oxygen_K_hydrogenic_gos_df_dE(E_eV, q_au, B_K_eV=OXYGEN_K_B_EV, Zeff=OXYGEN_K_ZEFF):
-    """
-    Threshold-shifted hydrogenic 1s GOS approximation for the O K shell.
-    Returns df_K(q,E)/dE in 1/eV for a complete 1s shell.
-
-    This is the ion/projectile K-shell model, not the old q-independent
-    optical K-shell. It uses the Heredia-Avalos O K-shell parameters
-    B_K_eV = 543.4 and Zeff = 7.7, while forcing the physical O K edge to
-    the experimental threshold through a threshold-shifted continuum
-    convention:
-        Qbar = q_au^2 / Zeff^2
-        Wbar = 1.0 + (E_eV - B_K_eV) / (Zeff^2 R_eV)
-        kappa^2 = Wbar - 1.0
-
-    This pragmatic reduced-energy convention is not the literal reduced-energy
-    form in the Heredia-Avalos Appendix; it preserves the hydrogenic 1s
-    continuum shape while placing the onset at the experimental O K edge.
-    The 1s factors are then:
-        C_1s = Qbar + Wbar / 3
-        A_1s = Qbar - kappa^2 + 1
-        B_1s = 2 kappa
-    """
-    E, q = np.broadcast_arrays(np.asarray(E_eV, float), np.asarray(q_au, float))
-    out = np.zeros_like(E, dtype=float)
-    mask = E > float(B_K_eV)
-    if not np.any(mask):
-        return out
-
-    E_m = E[mask]
-    q_m = np.abs(q[mask])
-    z2 = float(Zeff) ** 2
-    Qbar = q_m * q_m / z2
-    kinetic_eV = E_m - float(B_K_eV)
-    # Threshold-shifted continuum convention; see docstring.
-    Wbar = 1.0 + kinetic_eV / (z2 * RYD_ELECTRON_VOLT)
-    kappa2 = np.maximum(Wbar - 1.0, 0.0)
-    kappa = np.sqrt(kappa2)
-
-    C_1s = Qbar + Wbar / 3.0
-    A_1s = Qbar - kappa2 + 1.0
-    B_1s = 2.0 * kappa
-    den = (A_1s * A_1s + B_1s * B_1s) ** 3
-    den = np.where(den > 0.0, den, np.finfo(float).tiny)
-
-    theta = np.arctan2(B_1s, A_1s)
-    small = kappa < 1.0e-10
-    theta_over_kappa = np.empty_like(kappa)
-    theta_over_kappa[~small] = theta[~small] / kappa[~small]
-    # Near threshold theta = atan2(2*kappa, Qbar + 1) + O(kappa^3).
-    theta_over_kappa[small] = 2.0 / (Qbar[small] + 1.0)
-
-    coulomb_exp = np.exp(-2.0 * theta_over_kappa)
-    sommerfeld = np.ones_like(kappa)
-    not_small = ~small
-    sommerfeld[not_small] = 1.0 / (
-        -np.expm1(-2.0 * np.pi / np.maximum(kappa[not_small], np.finfo(float).tiny))
-    )
-
-    df_dW_per_electron = 128.0 * Wbar * C_1s * coulomb_exp * sommerfeld / den
-    out[mask] = OXYGEN_K_OCCUPANCY * df_dW_per_electron / (z2 * RYD_ELECTRON_VOLT)
-    return out
-
-def _oxygen_K_hydrogenic_elf_norm(
-    B_K_eV=OXYGEN_K_B_EV,
-    Zeff=OXYGEN_K_ZEFF,
-    Ep_eV=20.82,
-    total_oscillator_strength=WATER_TOTAL_OSCILLATOR_STRENGTH,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
-):
-    key = (
-        round(float(B_K_eV), 12),
-        round(float(Zeff), 12),
-        round(float(Ep_eV), 12),
-        round(float(total_oscillator_strength), 12),
-        round(float(fsum_target), 12),
-    )
-    cached = _OXYGEN_K_ELF_NORM_CACHE.get(key)
-    if cached is not None:
-        return cached
-
-    x = np.geomspace(1.0e-8, 1.0e8, 12000)
-    E = float(B_K_eV) + x
-    df = oxygen_K_hydrogenic_gos_df_dE(E, 0.0, B_K_eV=B_K_eV, Zeff=Zeff)
-    shape = (
-        0.5
-        * np.pi
-        * float(Ep_eV) ** 2
-        / float(total_oscillator_strength)
-        * np.where(E > 0.0, df / E, 0.0)
-    )
-    area = float(np.trapezoid(E * shape, E))
-    target = 0.5 * np.pi * float(Ep_eV) ** 2 * float(fsum_target)
-    norm = target / area if np.isfinite(area) and area > 0.0 else 0.0
-    _OXYGEN_K_ELF_NORM_CACHE[key] = norm
-    return norm
-
-def oxygen_K_hydrogenic_gos_elf(
-    E_eV,
-    q_au,
-    B_K_eV=OXYGEN_K_B_EV,
-    Zeff=OXYGEN_K_ZEFF,
-    normalize_fsum=True,
-    Ep_eV=20.82,
-    total_oscillator_strength=WATER_TOTAL_OSCILLATOR_STRENGTH,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
-):
-    """
-    Return Im[-1/epsilon_K(E,q)] for the O K shell from the threshold-shifted
-    hydrogenic GOS approximation.
-
-    The GOS-to-ELF conversion uses the same Ep/Z convention as the dielectric
-    model:
-        Im[-1/epsilon_K] ~= (pi/2) * Ep^2 / Z * (1/E) * df_K(q,E)/dE
-    and, by default, rescales the optical-limit f-sum to f_K = 0.179.
-    """
-    E, q = np.broadcast_arrays(np.asarray(E_eV, float), np.asarray(q_au, float))
-    df = oxygen_K_hydrogenic_gos_df_dE(E, q, B_K_eV=B_K_eV, Zeff=Zeff)
-    elf = (
-        0.5
-        * np.pi
-        * float(Ep_eV) ** 2
-        / float(total_oscillator_strength)
-        * np.where(E > 0.0, df / E, 0.0)
-    )
-    elf = np.where(E > float(B_K_eV), elf, 0.0)
-    if normalize_fsum:
-        elf = elf * _oxygen_K_hydrogenic_elf_norm(
-            B_K_eV=B_K_eV,
-            Zeff=Zeff,
-            Ep_eV=Ep_eV,
-            total_oscillator_strength=total_oscillator_strength,
-            fsum_target=fsum_target,
-        )
-    return elf
-
-def oxygen_K_ion_hydrogenic_gos_elf(
-    E_eV,
-    q_au,
-    B_K_eV=OXYGEN_K_B_EV,
-    Zeff=OXYGEN_K_ZEFF,
-    normalize_fsum=True,
-    Ep_eV=20.82,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
-):
-    """
-    Ion/projectile O K-shell ELF from the q-dependent hydrogenic 1s GOS.
-    """
-    return oxygen_K_hydrogenic_gos_elf(
-        E_eV,
-        q_au,
-        B_K_eV=B_K_eV,
-        Zeff=Zeff,
-        normalize_fsum=normalize_fsum,
-        Ep_eV=Ep_eV,
-        fsum_target=fsum_target,
-    )
-
-def oxygen_K_hydrogenic_gos_fsum(
-    B_K_eV=OXYGEN_K_B_EV,
-    Zeff=OXYGEN_K_ZEFF,
-    Ep_eV=20.82,
-    normalize_fsum=True,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
-):
-    """Return the optical-limit K-shell f-sum fraction implied by the GOS ELF."""
-    x = np.geomspace(1.0e-8, 1.0e8, 12000)
-    E = float(B_K_eV) + x
-    elf = oxygen_K_hydrogenic_gos_elf(
-        E,
-        0.0,
-        B_K_eV=B_K_eV,
-        Zeff=Zeff,
-        normalize_fsum=normalize_fsum,
-        Ep_eV=Ep_eV,
-        fsum_target=fsum_target,
-    )
-    area = float(np.trapezoid(E * elf, E))
-    return area / (0.5 * np.pi * float(Ep_eV) ** 2)
-
 def epsilon2_Kshell_E0_fsum_corrected(E, s):
     r"""
     Oxygen K-shell ε2^(K)(E, q=0) normalized by the f-sum so that
@@ -821,8 +621,7 @@ def epsilon1_valence_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: Disper
 def elf_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs, include_kshell: bool = True, partitioned: bool = True) -> np.ndarray:
     """
     ELF(E,q) = ε2^(m)/(ε1^(m)^2 + ε2^(m)^2)  +  ε2^(K)(E,0).
-    Returns array (nq, nE). This electron/table-model K-shell is optical
-    and hard-gated at its edge; ion generators use oxygen_K_ion_hydrogenic_gos_elf.
+    Returns array (nq, nE). K-shell is optical and hard-gated at its edge.
 
     If partitioned=True, the Kyriakou optical partition is used to define
     energy-dependent correction factors that are applied to the finite-q
@@ -836,7 +635,7 @@ def elf_Eq(E: np.ndarray, q: ArrayLike, s: IceOpticalSet, C: DispersionCoeffs, i
     denom = np.where(denom == 0.0, np.finfo(float).tiny, denom)
     elf = e2 / denom
     if include_kshell:
-        ks = oxygen_K_electron_optical_elf(E, s, fsum_corrected=True)  # (nE,)
+        ks = epsilon2_Kshell_E0_fsum_corrected(E, s)             # (nE,)
         elf = elf + ks[None, :]
     return elf
 
@@ -926,7 +725,7 @@ def plot_ELF_channel_resolved_Eq(
     elf = elf_Eq(E, np.array([q], float), s, C, include_kshell=include_kshell, partitioned=partitioned)[0]
     ax.plot(E, elf, color="k", lw=2.2, alpha=alpha, label=fr"ELF (q={q:.2f})")
     if include_kshell:
-        ks = oxygen_K_electron_optical_elf(E, s, fsum_corrected=False)
+        ks = epsilon2_Kshell_E0(E, s)
         m = E >= s.kshell.Bth
         if np.any(m):
             ax.plot(E[m], ks[m], color="0.3", ls="--", lw=linewidth, alpha=alpha, label="O K-shell")
@@ -1002,7 +801,7 @@ def elf_channels_Eq(E, s, C, q, include_kshell=True):
     exc_elf = [y[0] / denom for y in e2["excitations"]]
     ion_elf = [y[0] / denom for y in e2["ionizations"]]
     val_total = e2t / denom
-    ks = oxygen_K_electron_optical_elf(E, s, fsum_corrected=False) if include_kshell else None
+    ks = epsilon2_Kshell_E0(E, s) if include_kshell else None
     total = val_total + (ks if ks is not None else 0.0)
     return {"excitations": exc_elf, "ionizations": ion_elf, "valence_total": val_total, "kshell": ks, "total": total}
 

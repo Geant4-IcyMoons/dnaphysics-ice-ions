@@ -119,10 +119,12 @@ mass = 1.0
 PROTON_MASS_AU = 1836.152673
 ALPHA_MASS_AU = 7294.299536
 CARBON_12_BARE_MASS_AU = 21868.6618
+OXYGEN_16_BARE_MASS_AU = 29156.9469
 PROJECTILE_LIBRARY = {
     "proton": {
         "aliases": ("p", "h+", "proton"),
         "mass_au": PROTON_MASS_AU,
+        "mass_number": 1.0,
         "charge": 1.0,
         "file_token": "proton",
         "label": "Proton",
@@ -130,6 +132,7 @@ PROJECTILE_LIBRARY = {
     "alpha": {
         "aliases": ("alpha", "he2+", "helium"),
         "mass_au": ALPHA_MASS_AU,
+        "mass_number": 4.0,
         "charge": 2.0,
         "file_token": "alpha",
         "label": "Alpha particle He2+",
@@ -137,9 +140,18 @@ PROJECTILE_LIBRARY = {
     "carbon": {
         "aliases": ("carbon", "c6+", "carbon6+", "c"),
         "mass_au": CARBON_12_BARE_MASS_AU,
+        "mass_number": 12.0,
         "charge": 6.0,
         "file_token": "carbon",
         "label": "Carbon ion C6+",
+    },
+    "oxygen": {
+        "aliases": ("oxygen", "o", "o8+", "oxygen8+"),
+        "mass_au": OXYGEN_16_BARE_MASS_AU,
+        "mass_number": 16.0,
+        "charge": 8.0,
+        "file_token": "oxygen",
+        "label": "Oxygen ion O8+ constant-charge approximation",
     },
 }
 

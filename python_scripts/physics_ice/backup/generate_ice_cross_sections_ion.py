@@ -31,21 +31,81 @@ from constants import (
     ICE_AMORPHOUS_DENSITY_G_CM3,
     ICE_HEXAGONAL_DENSITY_G_CM3,
     OUTPUT_DIR,
+    PROJECTILE_LIBRARY,
+    PROTON_MASS_AU,
     RC_BASE_ELASTIC,
     REGIME_I_MAX_eV,
     REGIME_II_MAX_eV,
     REGIME_III_MAX_eV,
     REGIME_IV_MAX_eV,
     a0,
-    mass,
     rcparams_with_fontsize,
 )
 import emfietzoglou_model_finite_q as model
 
-PROTON_MASS_AU = 1836.152673
+PROJECTILE_KEY = "proton"
+PROJECTILE_MASS_AU = PROTON_MASS_AU
+PROJECTILE_CHARGE = 1.0
+PROJECTILE_FILE_TOKEN = "proton"
+PROJECTILE_LABEL = "Proton"
+
+def _projectile_config(key):
+    lookup = str(key).strip().lower()
+    for name, cfg in PROJECTILE_LIBRARY.items():
+        aliases = cfg.get("aliases", ())
+        if lookup == name or lookup in aliases:
+            return name, cfg
+    supported = ", ".join(PROJECTILE_LIBRARY)
+    raise ValueError(f"Unsupported projectile {key!r}; choose one of: {supported}")
+
+def set_projectile(key):
+    global PROJECTILE_KEY, PROJECTILE_MASS_AU, PROJECTILE_CHARGE
+    global PROJECTILE_FILE_TOKEN, PROJECTILE_LABEL
+    name, cfg = _projectile_config(key)
+    PROJECTILE_KEY = name
+    PROJECTILE_MASS_AU = float(cfg["mass_au"])
+    PROJECTILE_CHARGE = float(cfg["charge"])
+    PROJECTILE_FILE_TOKEN = str(cfg["file_token"])
+    PROJECTILE_LABEL = str(cfg["label"])
+
+def _projectile_from_argv(default="proton"):
+    for idx, arg in enumerate(sys.argv[1:]):
+        if arg == "--projectile" and idx + 2 <= len(sys.argv[1:]):
+            return sys.argv[1:][idx + 1]
+        if arg.startswith("--projectile="):
+            return arg.split("=", 1)[1]
+    return os.environ.get("ICE_PROJECTILE", default)
+
+def _bool_from_text(value, default=True):
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "on"):
+        return True
+    if text in ("0", "false", "no", "off"):
+        return False
+    return default
+
+def _include_kshell_from_argv(default=True):
+    include = _bool_from_text(os.environ.get("ICE_INCLUDE_KSHELL"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--include-kshell":
+            include = True
+        elif arg == "--no-kshell":
+            include = False
+        elif arg.startswith("--include-kshell="):
+            include = _bool_from_text(arg.split("=", 1)[1], include)
+    return include
+
+def _projectile_energy_label(math=False):
+    if math:
+        return f"{PROJECTILE_LABEL} kinetic energy $s$ (eV)"
+    return f"{PROJECTILE_LABEL} kinetic energy s (eV)"
+
+set_projectile(_projectile_from_argv())
 
 # Select ice structure: "amorphous" or "hexagonal"
-ICE_TYPE = "hexagonal"
+ICE_TYPE = os.environ.get("ICE_TYPE", "hexagonal").strip().lower()
 ICE_LABEL = f"{ICE_TYPE}_ice"
 
 # Density used for rel_mc cross-section scaling in this script.
@@ -160,8 +220,7 @@ def _set_regime_corrections(apply_regime_ii=None, apply_regime_iii=None, apply_r
 
 def _set_mc_correction(apply_mc=None):
     global APPLY_MOTT_COULOMB
-    if apply_mc is not None:
-        APPLY_MOTT_COULOMB = bool(apply_mc)
+    APPLY_MOTT_COULOMB = False
 
 def _simpson_integrate(y, x):
     y = np.asarray(y, dtype=float)
@@ -207,29 +266,10 @@ def _energy_grid(Emin, Emax, N, use_log=True):
     return np.exp(np.linspace(log_min, log_max, N))
 
 def _regime_flags(Tj):
-    Tj = float(Tj)
-    if Tj <= REGIME_I_MAX_eV:
-        use_mc, use_rel_long, use_rel_trans, use_density_effect = True, False, False, False
-        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
-    if Tj <= REGIME_II_MAX_eV:
-        if not APPLY_CORRECTIONS_REGIME_II:
-            return False, False, False, False
-        use_mc, use_rel_long, use_rel_trans, use_density_effect = True, True, False, False
-        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
-    if Tj < REGIME_III_MAX_eV:
-        if not APPLY_CORRECTIONS_REGIME_III:
-            return False, False, False, False
-        use_mc, use_rel_long, use_rel_trans, use_density_effect = False, True, True, False
-        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
-    if Tj <= REGIME_IV_MAX_eV:
-        if not APPLY_CORRECTIONS_REGIME_IV:
-            return False, False, False, False
-        use_mc, use_rel_long, use_rel_trans, use_density_effect = False, True, True, True
-        return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
-    if not APPLY_CORRECTIONS_REGIME_IV:
-        return False, False, False, False
-    use_mc, use_rel_long, use_rel_trans, use_density_effect = False, True, True, True
-    return (use_mc and APPLY_MOTT_COULOMB), use_rel_long, use_rel_trans, use_density_effect
+    # Heavy projectiles use the Born dielectric projectile kernel below. Electron
+    # exchange/Mott and electron-rest-mass relativistic q-bound corrections are
+    # intentionally not part of the proton/projectile generator path.
+    return False, False, False, False
 
 def _elf_rolloff_factor(Ei):
     Ei = np.asarray(Ei, dtype=float)
@@ -239,9 +279,34 @@ def _elf_rolloff_factor(Ei):
         factor[mask] = 1.0 - ELF_ROLLOFF_COEF * np.log10(Ei[mask] / ELF_ROLLOFF_E0_eV)
     return factor
 
+def projectile_rest_energy_eV(projectile_mass_au=None):
+    if projectile_mass_au is None:
+        projectile_mass_au = PROJECTILE_MASS_AU
+    return float(projectile_mass_au) * MC2_eV
+
+
+def projectile_beta2(Tp_eV, projectile_mass_au=None):
+    Tp_eV = float(Tp_eV)
+    if Tp_eV <= 0.0:
+        return 0.0
+    gamma = 1.0 + Tp_eV / projectile_rest_energy_eV(projectile_mass_au)
+    beta2 = 1.0 - 1.0 / (gamma * gamma)
+    return float(np.clip(beta2, 0.0, 1.0 - np.finfo(float).eps))
+
+
+def heavy_projectile_Emax(Tp_eV, projectile_mass_au=None):
+    beta2 = projectile_beta2(Tp_eV, projectile_mass_au)
+    if beta2 <= 0.0:
+        return 0.0
+    return float(2.0 * MC2_eV * beta2 / max(1.0 - beta2, np.finfo(float).tiny))
+
+
+def _projectile_energy_loss_upper_eV(Tp_eV):
+    return float(min(float(Tp_eV), heavy_projectile_Emax(Tp_eV)))
+
+
 def beta2_rel(Tj):
-    # Use exactly the form you specified:
-    return 1.0 - 1.0 / (Tj / MC2_eV + 1.0)**2
+    return projectile_beta2(Tj)
 
 def delta_fermi(T):
     """
@@ -276,8 +341,10 @@ def Q_q(q_au):
 # ----------------------------------------------------------------------
 # Helper: q-bounds for scalar Ei, Tj (eV)
 # ----------------------------------------------------------------------
-def _q_bounds_scalar(Ei, Tj, mass=PROTON_MASS_AU):
+def _q_bounds_scalar(Ei, Tj, projectile_mass_au=None):
     """Return (q_lo, q_hi) for scalar Ei, Tj (both in eV)."""
+    if projectile_mass_au is None:
+        projectile_mass_au = PROJECTILE_MASS_AU
     Ei_H = Ei * EV_TO_HA
     T_H = Tj * EV_TO_HA
     if Ei_H >= T_H:
@@ -289,34 +356,15 @@ def _q_bounds_scalar(Ei, Tj, mass=PROTON_MASS_AU):
 
     sqrtT = np.sqrt(T_H)
     sqrt_d = np.sqrt(d)
-    qlo = np.sqrt(2.0 * mass) * (sqrtT - sqrt_d)
-    qhi = np.sqrt(2.0 * mass) * (sqrtT + sqrt_d)
+    qlo = np.sqrt(2.0 * projectile_mass_au) * (sqrtT - sqrt_d)
+    qhi = np.sqrt(2.0 * projectile_mass_au) * (sqrtT + sqrt_d)
 
     if not np.isfinite(qlo) or not np.isfinite(qhi) or qhi <= qlo:
         return 0.0, 0.0
     return float(qlo), float(qhi)
 
 def _q_bounds_scalar_rel(Ei, Tj):
-    if Ei >= Tj:
-        return 0.0, 0.0
-
-    Ei_H = Ei * EV_TO_HA
-    T_H  = Tj * EV_TO_HA
-    d = T_H - Ei_H
-    if d <= 0.0:
-        return 0.0, 0.0
-
-    term1 = np.sqrt(T_H * (T_H + 2.0 * MC2_HA))
-    term2 = np.sqrt(d   * (d   + 2.0 * MC2_HA))
-    s12 = term1 + term2
-    if (not np.isfinite(s12)) or (s12 <= 0.0):
-        return 0.0, 0.0
-    num = Ei_H * (2.0 * T_H - Ei_H + 2.0 * MC2_HA)
-    qlo = (num / s12) / C_AU
-    qhi = s12 / C_AU
-    if (not np.isfinite(qlo)) or (not np.isfinite(qhi)) or (qhi <= qlo) or (qlo <= 0.0):
-        return 0.0, 0.0
-    return float(qlo), float(qhi)
+    raise RuntimeError("Relativistic electron q-bounds are disabled for heavy projectiles.")
 
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for channels (excitation / ionization)
@@ -332,9 +380,10 @@ def _integrate_channel_single_E(
     for one excitation or ionization channel, at fixed Ei, Tj.
     """
     if use_rel_bounds:
-        qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
-    else:
-        qlo, qhi = _q_bounds_scalar(Ei, Tj, mass)
+        raise RuntimeError("Relativistic electron q-bounds are disabled for heavy projectiles.")
+    if Ei > _projectile_energy_loss_upper_eV(Tj):
+        return 0.0
+    qlo, qhi = _q_bounds_scalar(Ei, Tj, projectile_mass_au=PROJECTILE_MASS_AU)
     if qhi <= qlo or qlo <= 0.0:
         return 0.0
 
@@ -363,85 +412,18 @@ def _integrate_channel_single_E(
     accum = float(_simpson_integrate(vals, xi))
 
     # int_cons = 1.0 / (np.pi * a0 * N * Tj)
-    T_scaled = Tj / PROTON_MASS_AU
-    int_cons = 1.0 / (np.pi * a0 * N * T_scaled)
+    T_scaled = Tj / PROJECTILE_MASS_AU
+    int_cons = PROJECTILE_CHARGE**2 / (np.pi * a0 * N * T_scaled)
 
     return float(int_cons * accum)
 
 def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
-    qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
-    if qhi <= qlo or qlo <= 0.0:
-        return 0.0
-
-    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
-    qvals = np.exp(xi)
-    E_arr = np.array([Ei], float)
-
-    e1 = model.epsilon1_valence_Eq(E_arr, qvals, s, C)
-    e2 = model.epsilon2_valence_Eq(E_arr, qvals, s, C)
-
-    e1t = e1["total"][:, 0]
-    e2t = e2["total"][:, 0]
-    denom = e1t**2 + e2t**2
-    denom = np.where(denom == 0.0, np.finfo(float).tiny, denom)
-
-    if channel_type == "excitation":
-        vals = e2["excitations"][idx][:, 0] / denom
-    else:
-        vals = e2["ionizations"][idx][:, 0] / denom
-
-    vals = vals * _elf_rolloff_factor(Ei)
-    # Q(q) in eV
-    Q_eV = Q_q(qvals)
-    Q_eV = np.where(Q_eV == 0.0, np.finfo(float).tiny, Q_eV)
-
-    factor1 = (C_AU**2 * qvals) / np.sqrt((C_AU * qvals)**2 + (MC2_HA**2))
-    factor1 *= EH  # dQ/dq in eV per a0^-1
-    factor2 = (1.0 + Q_eV / MC2_eV) / (1.0 + Q_eV / (2.0 * MC2_eV))
-    factor3 = 1 / Q_eV
-    kernel = factor1 * factor2 * factor3
-
-    integrand = vals * kernel
-    accum = float(_simpson_integrate(integrand * qvals, xi))
-
-    b2 = beta2_rel(Tj)
-    b2 = max(b2, np.finfo(float).tiny)
-
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
-    return float(int_cons * accum)
+    raise RuntimeError("Relativistic electron q-bound path is disabled for heavy projectiles.")
 
 def _integrate_channel_single_E_trans(
     Ei, Tj, idx, channel_type, s, C, Nq=0, use_density_effect=False
 ):
-    """ Transverse RPWBA term (Fano approximation at q=0)"""
-    # beta^2 and transverse bracket
-    b2 = beta2_rel(Tj)
-    b2 = max(b2, np.finfo(float).tiny)
-    bracket = np.log(1.0 / max(1.0 - b2, np.finfo(float).tiny)) - b2
-    if use_density_effect:
-        bracket = max(bracket - 0.5 * delta_fermi(Tj), 0.0)
-
-    # Optical (q=0) channel-resolved ELF via epsilon2_channel / (epsilon1_total^2 + epsilon2_total^2)
-    E_arr = np.array([Ei], float)
-    e1 = model.epsilon1_valence_E0(E_arr, s)
-    e2 = model.epsilon2_valence_E0(E_arr, s)
-
-    e1t = e1["total"]
-    e2t = e2["total"]
-    denom = e1t**2 + e2t**2
-    denom = np.where(denom == 0.0, np.finfo(float).tiny, denom)
-
-    if channel_type == "excitation":
-        elf0 = e2["excitations"][idx] / denom
-    elif channel_type == "ionization":
-        elf0 = e2["ionizations"][idx] / denom
-    else:
-        raise ValueError("channel_type must be 'excitation' or 'ionization'")
-
-    elf0 = float(np.asarray(elf0).ravel()[0] * _elf_rolloff_factor(Ei))
-
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
-    return float(int_cons * elf0 * bracket)
+    raise RuntimeError("Transverse/density electron correction path is disabled for heavy projectiles.")
 
 # ----------------------------------------------------------------------
 # Low-energy Mott–Coulomb (MC) corrections using PWBA kernel evaluations
@@ -457,27 +439,12 @@ def _dsigma_pwba_dE(Ei, Tj, idx, channel_type, s, C, Nq=400, use_rel=False):
     return _integrate_channel_single_E(Ei, Tj, idx, channel_type, s, C, Nq=Nq)
 
 def _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=400, use_rel=False):
-    """Mott–Coulomb exchange-style correction for *ionization* shells. """
-    osc = s.ionizations[j]
-    B = float(getattr(osc, "Bth"))
-    U = float(getattr(osc, "U"))
-
-    Tprime = float(Tj + B + U)
-    E2 = float(Tj + 2.0*B + U - Ei)
-
-    a = _dsigma_pwba_dE(Ei, Tprime, j, "ionization", s, C, Nq=Nq, use_rel=use_rel)
-    b = _dsigma_pwba_dE(E2, Tprime, j, "ionization", s, C, Nq=Nq, use_rel=use_rel)
-
-    # Guard against tiny negative numerical noise
-    a = max(a, 0.0)
-    b = max(b, 0.0)
-
-    return float(a + b - np.sqrt(a*b))
+    raise RuntimeError("Mott-Coulomb/exchange correction is disabled for heavy projectiles.")
 
 def _sigma_pwba_excitation_shifted_T(s, C, Tshift, Tj, k, NE=400, Nq=400, use_rel=False):
     """sigma_PWBA for excitation k, with shifted kernel but kinematic E-window from Tj."""
-    Emin = float(s.excitations[k].Bth)
-    Emax = float(Tj)
+    Emin = float(s.Bmin)
+    Emax = _projectile_energy_loss_upper_eV(Tj)
     if Emin >= Emax:
         return 0.0
 
@@ -490,58 +457,10 @@ def _sigma_pwba_excitation_shifted_T(s, C, Tshift, Tj, k, NE=400, Nq=400, use_re
     return float(_simpson_integrate(vals, Egrid))
 
 def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
-    """sigma_MC(T) for ionization shell j: integrate d sigma_MC/dE over E."""
-    osc = s.ionizations[j]
-    B = float(getattr(osc, "Bth"))
-    U = float(getattr(osc, "U"))
-
-    Emin = B
-    Emax = 0.5 * (Tj + B)
-    if Emin >= Emax:
-        return 0.0
-
-    Egrid = _energy_grid(Emin, Emax, NE)
-    vals = np.empty_like(Egrid)
-    for i, Ei in enumerate(Egrid):
-        vals[i] = _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=Nq, use_rel=use_rel)
-
-    vals = np.where(vals < 0.0, 0.0, vals)
-    return float(_simpson_integrate(vals, Egrid))
+    raise RuntimeError("Mott-Coulomb/exchange correction is disabled for heavy projectiles.")
 
 def _total_transverse_sigma(s, C, Tj, NE=400, use_density_effect=False):
-    """Total transverse (valence-only) sigma via the optical-limit kernel."""
-    Tj = float(Tj)
-    exc_total = 0.0
-    ion_total = 0.0
-
-    for k in range(len(s.excitations)):
-        Emin = float(s.excitations[k].Bth)
-        Emax = Tj
-        if Emin >= Emax:
-            continue
-        Egrid = _energy_grid(Emin, Emax, NE)
-        vals = np.empty_like(Egrid)
-        for i, Ei in enumerate(Egrid):
-            vals[i] = _integrate_channel_single_E_trans(
-                Ei, Tj, k, "excitation", s, C, use_density_effect=use_density_effect
-            )
-        exc_total += float(_simpson_integrate(vals, Egrid))
-
-    for j in range(len(s.ionizations)):
-        B = float(getattr(s.ionizations[j], "Bth"))
-        Emin = B
-        Emax = 0.5 * (Tj + B)
-        if Emin >= Emax:
-            continue
-        Egrid = _energy_grid(Emin, Emax, NE)
-        vals = np.empty_like(Egrid)
-        for i, Ei in enumerate(Egrid):
-            vals[i] = _integrate_channel_single_E_trans(
-                Ei, Tj, j, "ionization", s, C, use_density_effect=use_density_effect
-            )
-        ion_total += float(_simpson_integrate(vals, Egrid))
-
-    return float(exc_total + ion_total)
+    raise RuntimeError("Transverse/density electron correction path is disabled for heavy projectiles.")
 
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for K-shell channel
@@ -556,9 +475,10 @@ def _integrate_kshell_single_E(
         return 0.0
 
     if use_rel_bounds:
-        qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
-    else:
-        qlo, qhi = _q_bounds_scalar(Ei, Tj, mass)
+        raise RuntimeError("Relativistic electron q-bounds are disabled for heavy projectiles.")
+    if Ei > _projectile_energy_loss_upper_eV(Tj):
+        return 0.0
+    qlo, qhi = _q_bounds_scalar(Ei, Tj, projectile_mass_au=PROJECTILE_MASS_AU)
     if qhi <= qlo or qlo <= 0.0:
         return 0.0
 
@@ -572,50 +492,13 @@ def _integrate_kshell_single_E(
     accum = float(_simpson_integrate(np.full_like(xi, ks_val), xi))
 
     # int_cons = 1.0 / (np.pi * a0 * N * Tj)
-    T_scaled = Tj / PROTON_MASS_AU
-    int_cons = 1.0 / (np.pi * a0 * N * T_scaled)
+    T_scaled = Tj / PROJECTILE_MASS_AU
+    int_cons = PROJECTILE_CHARGE**2 / (np.pi * a0 * N * T_scaled)
 
     return float(int_cons * accum)
 
 def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
-    """
-    Inner integral over q for K-shell:
-    """
-    if not include_kshell or (s.kshell is None):
-        return 0.0
-
-    qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
-    if qhi <= qlo or qlo <= 0.0:
-        return 0.0
-
-    # K-shell imaginary part at optical limit, with threshold gating
-    ks_arr = model.epsilon2_Kshell_E0(np.array([Ei], float), s)
-    ks_val = float(ks_arr[0])
-    if ks_val == 0.0:
-        return 0.0
-
-    ks_val *= float(_elf_rolloff_factor(Ei))
-    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
-    qvals = np.exp(xi)
-
-    # Q(q) in eV
-    Q_eV = Q_q(qvals)
-    Q_eV = np.where(Q_eV == 0.0, np.finfo(float).tiny, Q_eV)
-
-    factor1 = (C_AU**2 * qvals) / np.sqrt((C_AU * qvals) ** 2 + (MC2_HA ** 2))
-    factor1 *= EH  # dQ/dq in eV per a0^-1
-    factor2 = (1.0 + Q_eV / MC2_eV) / (1.0 + Q_eV / (2.0 * MC2_eV))
-    factor3 = 1 / Q_eV
-    kernel = factor1 * factor2 * factor3
-
-    integrand = ks_val * kernel
-    accum = float(_simpson_integrate(integrand * qvals, xi))
-
-    b2 = beta2_rel(Tj)
-    b2 = max(b2, np.finfo(float).tiny)
-
-    int_cons = 1.0 / (np.pi * a0 * N * MC2_eV * b2)
-    return float(int_cons * accum)
+    raise RuntimeError("Relativistic electron q-bound path is disabled for heavy projectiles.")
 
 # ----------------------------------------------------------------------
 # Q-integrated ELF per channel, on its own E-grid
@@ -641,16 +524,16 @@ def integrate_elf_channels_per_channel_q(
     """
 
     # --- Channel energy windows ---
-    exc_Emin = np.array([osc.Bth for osc in s.excitations], float)
-    exc_Emax = np.array([T for _ in s.excitations], float)
+    E_upper = _projectile_energy_loss_upper_eV(T)
+    exc_Emin = np.full(len(s.excitations), float(s.Bmin), dtype=float)
+    exc_Emax = np.array([E_upper for _ in s.excitations], float)
 
     ion_Emin = np.array([osc.Bth for osc in s.ionizations], float)
-    #ion_Emax = np.array([(T + osc.Bth) / 2.0 for osc in s.ionizations], float)
-    ion_Emax = np.array([T for osc in s.ionizations], float)
+    ion_Emax = np.array([E_upper for _ in s.ionizations], float)
 
     if include_kshell and (s.kshell is not None):
         kshell_Emin = s.kshell.Bth
-        kshell_Emax = T
+        kshell_Emax = E_upper
     else:
         kshell_Emin = None
         kshell_Emax = None
@@ -878,7 +761,7 @@ def integrate_elf_double_integral(
         use_rel_in_mc = use_rel_long
         exc_sigma_mc = []
         for k in range(len(s.excitations)):
-            Bk = float(s.excitations[k].Bth)
+            Bk = float(s.Bmin)
             Tshift = float(T + 2.0 * Bk)
             exc_sigma_mc.append(
                 _sigma_pwba_excitation_shifted_T(
@@ -1042,7 +925,7 @@ def plot_full_cross_sections_per_channel(
             label=f"Ion. {j+1} Default model",
         )
 
-    ax_ion.set_xlabel("Electron Energy (T; eV)")
+    ax_ion.set_xlabel(_projectile_energy_label())
     ax_ion.set_ylabel("Cross section sigma(T)")
     ax_ion.set_title("Ionizations: PWBA baseline vs Default model")
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
@@ -1090,7 +973,7 @@ def plot_full_cross_sections_per_channel(
             label=f"Exc. {k+1} Default model",
         )
 
-    ax_exc.set_xlabel("Electron Energy (T; eV)")
+    ax_exc.set_xlabel(_projectile_energy_label())
     ax_exc.set_ylabel("Cross section sigma(T)")
     ax_exc.set_title("Excitations: PWBA baseline vs Default model")
     ax_exc.grid(True, which="both", ls="--", alpha=0.3)
@@ -1163,7 +1046,7 @@ def plot_relativistic_component_per_channel(
             label=f"Ion. {j+1} Trans",
         )
 
-    ax_ion.set_xlabel("Electron energy (T; eV)")
+    ax_ion.set_xlabel(_projectile_energy_label())
     ax_ion.set_ylabel("Relativistic component sigma_rel(T)")
     ax_ion.legend(loc="best", fontsize=8)
     ax_ion.grid(True, which="both", ls="--", alpha=0.3)
@@ -1192,7 +1075,7 @@ def plot_relativistic_component_per_channel(
             label=f"Exc. {k+1} Trans",
         )
 
-    ax_exc.set_xlabel("Electron energy (T; eV)")
+    ax_exc.set_xlabel(_projectile_energy_label())
     ax_exc.set_ylabel("Relativistic component sigma_rel(T)")
     ax_exc.legend(loc="best", fontsize=8)
     ax_exc.grid(True, which="both", ls="--", alpha=0.3)
@@ -1239,7 +1122,7 @@ def plot_total_cross_section(
     ax.loglog(T_arr, y_pwba, lw=linewidth, alpha=alpha, ls=":", label="Total PWBA")
     ax.loglog(T_arr, y_corr, lw=linewidth+1, alpha=alpha, ls="-", label="Total (all corrections)")
 
-    ax.set_xlabel("Electron energy (T; eV)")
+    ax.set_xlabel(_projectile_energy_label())
     ax.set_ylabel("Total cross section sigma(T)")
     ax.set_title("Total cross section: PWBA vs all corrections")
     ax.legend(loc="best", fontsize=9)
@@ -1285,13 +1168,13 @@ def plot_total_cross_section_two_panel(
 
     ln1 = ax_a.loglog(T_a, pwba_a, "k:", linewidth=2, label="Total PWBA")[0]
     ln2 = ax_a.loglog(T_a, corr_a, "k-", linewidth=2.5, label="Total (all corrections)")[0]
-    ax_a.set_xlabel("Electron energy ($T$; eV)")
+    ax_a.set_xlabel(_projectile_energy_label(math=True))
     ax_a.set_ylabel("Total cross section sigma(T)")
     ax_a.set_title("Amorphous ice")
 
     ax_h.loglog(T_h, pwba_h, "k:", linewidth=2, label="Total PWBA")
     ax_h.loglog(T_h, corr_h, "k-", linewidth=2.5, label="Total (all corrections)")
-    ax_h.set_xlabel("Electron energy ($T$; eV)")
+    ax_h.set_xlabel(_projectile_energy_label(math=True))
     ax_h.set_ylabel("")
     ax_h.set_title("Hexagonal ice")
 
@@ -1357,8 +1240,8 @@ def plot_channel_cross_sections_two_panel(
     plot_corrected_exc_ion_scaled(T_h, sigma_h, ax=ax_h)
     ax_a.set_title("Amorphous ice")
     ax_h.set_title("Hexagonal ice")
-    ax_a.set_xlabel("Electron energy ($T$; eV)")
-    ax_h.set_xlabel("Electron energy ($T$; eV)")
+    ax_a.set_xlabel(_projectile_energy_label(math=True))
+    ax_h.set_xlabel(_projectile_energy_label(math=True))
     ax_a.set_ylabel(r"Total cross-section (cm$^2$)")
     ax_h.set_ylabel("")
 
@@ -1535,7 +1418,7 @@ def plot_corrected_exc_ion_scaled(
             color="purple",
             label="K-shell",
         )
-    ax.set_xlabel("Electron Energy ($T$; eV)", labelpad=1)
+    ax.set_xlabel(_projectile_energy_label(math=True), labelpad=1)
     ax.set_ylabel(r"Cross-Section (cm$^2$)")
     ax.set_xlim(1.0, np.max(T_arr))
     from matplotlib.ticker import LogFormatterMathtext, LogLocator, NullLocator
@@ -1593,6 +1476,7 @@ def save_cross_section_corrections_npz(
     density_scale_factor=1.0,
     density_ref_g_cm3=None,
     density_assumed_g_cm3=None,
+    include_kshell=True,
 ):
     """
     Save PWBA, per-stage correction terms, corrected totals, and per-channel
@@ -1705,6 +1589,16 @@ def save_cross_section_corrections_npz(
 
     np_save_args = dict(
         T_eV=T_arr,
+        projectile_key=PROJECTILE_KEY,
+        projectile_mass_au=float(PROJECTILE_MASS_AU),
+        projectile_charge=float(PROJECTILE_CHARGE),
+        projectile_file_token=PROJECTILE_FILE_TOKEN,
+        projectile_label=PROJECTILE_LABEL,
+        heavy_projectile_emax_applied=True,
+        dcs_table_variable="energy_loss_eV",
+        electron_exchange_correction_applied=False,
+        electron_relativistic_q_bounds_applied=False,
+        include_kshell=bool(include_kshell),
         density_scale_factor=float(density_scale_factor),
         total_sigma_pwba=pwba_total,
         total_sigma_corrected=corrected_total,
@@ -1773,12 +1667,51 @@ def _npz_int_value(npz_data, key):
     except (TypeError, ValueError):
         return None
 
-def _npz_matches_params(npz_data, NE, Nq, T_list=None):
+def _npz_float_value(npz_data, key):
+    if key not in npz_data:
+        return None
+    try:
+        val = np.asarray(npz_data[key]).reshape(-1)[0]
+        return float(val)
+    except Exception:
+        return None
+
+def _npz_str_value(npz_data, key):
+    if key not in npz_data:
+        return None
+    try:
+        val = np.asarray(npz_data[key]).reshape(-1)[0]
+        return str(val)
+    except Exception:
+        return None
+
+def _npz_matches_params(npz_data, NE, Nq, T_list=None, include_kshell=True):
     ne = _npz_int_value(npz_data, "NE")
     nq = _npz_int_value(npz_data, "Nq")
     if ne is None or nq is None:
         return False
     if int(ne) != int(NE) or int(nq) != int(Nq):
+        return False
+    stored_projectile = _npz_str_value(npz_data, "projectile_key")
+    stored_mass = _npz_float_value(npz_data, "projectile_mass_au")
+    stored_charge = _npz_float_value(npz_data, "projectile_charge")
+    if stored_projectile != PROJECTILE_KEY:
+        return False
+    if stored_mass is None or not np.isclose(stored_mass, PROJECTILE_MASS_AU):
+        return False
+    if stored_charge is None or not np.isclose(stored_charge, PROJECTILE_CHARGE):
+        return False
+    if "heavy_projectile_emax_applied" not in npz_data:
+        return False
+    if not bool(np.asarray(npz_data["heavy_projectile_emax_applied"]).reshape(-1)[0]):
+        return False
+    table_variable = _npz_str_value(npz_data, "dcs_table_variable")
+    if table_variable != "energy_loss_eV":
+        return False
+    if "include_kshell" not in npz_data:
+        return False
+    stored_include_kshell = bool(np.asarray(npz_data["include_kshell"]).reshape(-1)[0])
+    if stored_include_kshell != bool(include_kshell):
         return False
     if T_list is not None and "T_eV" in npz_data:
         T_arr = np.asarray(npz_data["T_eV"], float)
@@ -1796,11 +1729,34 @@ def _dcs_data_from_npz(npz_data):
     E_line = np.asarray(npz_data["dcs_E_line"], float)
     if T_line.size == 0 or E_line.size == 0:
         return None
+    if "T_eV" in npz_data:
+        T_arr = np.asarray(npz_data["T_eV"], float)
+        T_arr = T_arr[np.isfinite(T_arr) & (T_arr > 0.0)]
+        if T_arr.size:
+            target_min = float(np.min(T_arr))
+            target_max = float(np.max(T_arr))
+            dcs_min = float(np.min(T_line))
+            dcs_max = float(np.max(T_line))
+            if target_min > dcs_min and not np.isclose(target_min, dcs_min):
+                return None
+            if target_max > dcs_max and not np.isclose(target_max, dcs_max):
+                return None
+    exc_vals = np.asarray(npz_data["dcs_exc_vals"], float)
+    ion_vals = np.asarray(npz_data["dcs_ion_vals"], float)
+    E_upper = np.array([_projectile_energy_loss_upper_eV(T) for T in T_line], float)
+    over_cutoff = E_line > (E_upper * (1.0 + 1.0e-12) + 1.0e-12)
+    if np.any(over_cutoff):
+        nonzero_over = (
+            np.any(np.abs(exc_vals[over_cutoff]) > 0.0)
+            or np.any(np.abs(ion_vals[over_cutoff]) > 0.0)
+        )
+        if nonzero_over:
+            return None
     return {
         "T_line": T_line,
         "E_line": E_line,
-        "exc_vals": np.asarray(npz_data["dcs_exc_vals"], float),
-        "ion_vals": np.asarray(npz_data["dcs_ion_vals"], float),
+        "exc_vals": exc_vals,
+        "ion_vals": ion_vals,
     }
 
 def _sigma_list_from_npz(npz_data, scale_factor=1.0):
@@ -1884,12 +1840,13 @@ def load_cross_section_corrections_npz(
     T_list=None,
     require_dcs=False,
     target_density_scale_factor=None,
+    include_kshell=True,
 ):
     if npz_path is None or not os.path.exists(npz_path):
         return None
     try:
         with np.load(npz_path, allow_pickle=False) as npz_data:
-            if not _npz_matches_params(npz_data, NE, Nq, T_list=T_list):
+            if not _npz_matches_params(npz_data, NE, Nq, T_list=T_list, include_kshell=include_kshell):
                 return None
             dcs_data = _dcs_data_from_npz(npz_data)
             if require_dcs and dcs_data is None:
@@ -1981,7 +1938,14 @@ def _format_dcs_row(T, E, vals):
     fields.extend(f"{val:.9E}" for val in vals)
     return " ".join(fields) + "\n"
 
-def _write_dcs_tables_from_data(dcs_data, exc_out, ion_out):
+def _write_dcs_tables_from_data(
+    dcs_data,
+    exc_out,
+    ion_out,
+    exc_t_min=None,
+    ion_t_min=None,
+    t_max=None,
+):
     T_line = np.asarray(dcs_data.get("T_line", []), float)
     E_line = np.asarray(dcs_data.get("E_line", []), float)
     exc_vals = np.asarray(dcs_data.get("exc_vals", []), float)
@@ -1998,10 +1962,23 @@ def _write_dcs_tables_from_data(dcs_data, exc_out, ion_out):
     if exc_vals.shape[0] != T_line.size or ion_vals.shape[0] != T_line.size:
         raise ValueError("DCS value arrays must align with T/E lines.")
 
+    exc_mask = np.ones(T_line.size, dtype=bool)
+    ion_mask = np.ones(T_line.size, dtype=bool)
+    if exc_t_min is not None:
+        exc_mask &= T_line >= float(exc_t_min)
+    if ion_t_min is not None:
+        ion_mask &= T_line >= float(ion_t_min)
+    if t_max is not None:
+        tmax = float(t_max)
+        exc_mask &= T_line <= tmax
+        ion_mask &= T_line <= tmax
+
     with open(exc_out, "w") as exc_handle, open(ion_out, "w") as ion_handle:
         for i in range(T_line.size):
-            exc_handle.write(_format_dcs_row(T_line[i], E_line[i], exc_vals[i]))
-            ion_handle.write(_format_dcs_row(T_line[i], E_line[i], ion_vals[i]))
+            if exc_mask[i]:
+                exc_handle.write(_format_dcs_row(T_line[i], E_line[i], exc_vals[i]))
+            if ion_mask[i]:
+                ion_handle.write(_format_dcs_row(T_line[i], E_line[i], ion_vals[i]))
 
 def _load_dcs_table(path):
     data = np.loadtxt(path)
@@ -2046,6 +2023,10 @@ def _integrate_dcs_to_totals(T_line, E_line, vals):
             Tval = float(T_line[start])
             E_seg = np.asarray(E_line[start:i], float)
             V_seg = np.asarray(vals[start:i], float)
+            E_upper = _projectile_energy_loss_upper_eV(Tval)
+            physical = np.isfinite(E_seg) & (E_seg <= E_upper)
+            E_seg = E_seg[physical]
+            V_seg = V_seg[physical]
             if E_seg.size == 0:
                 start = i
                 continue
@@ -2058,6 +2039,100 @@ def _integrate_dcs_to_totals(T_line, E_line, vals):
             start = i
     return np.asarray(unique_T, float), np.asarray(totals, float)
 
+def _run_projectile_pwba_sanity_checks(s, C, dcs_data=None, Nq=80, include_kshell=True):
+    Ei = 100.0
+    Tj = 1.0e5
+    qp = _q_bounds_scalar(Ei, Tj, projectile_mass_au=PROJECTILE_MASS_AU)
+    qe = _q_bounds_scalar(Ei, Tj, projectile_mass_au=1.0)
+    ratio = qp[1] / qe[1] if qe[1] > 0.0 else np.nan
+    expected = np.sqrt(PROJECTILE_MASS_AU)
+    print(
+        "PWBA q-limit sanity: "
+        f"projectile={PROJECTILE_KEY}, projectile_mass_au={PROJECTILE_MASS_AU:.6f}, "
+        f"charge={PROJECTILE_CHARGE:.6g}, "
+        f"qhi(projectile)/qhi(electron)={ratio:.6g}, sqrt(M)={expected:.6g}"
+    )
+    print(
+        "Heavy-projectile Emax sanity: "
+        f"Emax(1 MeV {PROJECTILE_KEY})={heavy_projectile_Emax(1.0e6):.6g} eV"
+    )
+
+    if dcs_data is None:
+        return
+
+    T_line = np.asarray(dcs_data.get("T_line", []), float)
+    E_line = np.asarray(dcs_data.get("E_line", []), float)
+    exc_vals = np.asarray(dcs_data.get("exc_vals", []), float)
+    ion_vals = np.asarray(dcs_data.get("ion_vals", []), float)
+    if T_line.size == 0 or E_line.size != T_line.size:
+        return
+
+    E_upper = np.array([_projectile_energy_loss_upper_eV(T) for T in T_line], float)
+    over_cutoff = E_line > (E_upper * (1.0 + 1.0e-12) + 1.0e-12)
+    if np.any(over_cutoff):
+        if np.any(np.abs(exc_vals[over_cutoff]) > 0.0) or np.any(np.abs(ion_vals[over_cutoff]) > 0.0):
+            raise RuntimeError("DCS has nonzero values above heavy-projectile Emax.")
+    valid_q = np.isfinite(E_line) & np.isfinite(T_line) & (E_line > 0.0) & (E_line < T_line) & (E_line <= E_upper)
+    if np.any(valid_q):
+        for Ei_check, T_check in zip(E_line[valid_q], T_line[valid_q]):
+            qlo, qhi = _q_bounds_scalar(Ei_check, T_check, projectile_mass_au=PROJECTILE_MASS_AU)
+            if not (np.isfinite(qlo) and np.isfinite(qhi) and 0.0 < qlo < qhi):
+                raise RuntimeError(
+                    f"Invalid projectile q bounds at T={T_check:.6g} eV, E={Ei_check:.6g} eV."
+                )
+    print(
+        "DCS kinematic sanity: "
+        f"{int(np.count_nonzero(over_cutoff))} template rows above Emax forced to zero; "
+        f"{int(np.count_nonzero(valid_q))} rows have ordered projectile q-bounds."
+    )
+
+    for Tval in np.unique(T_line):
+        idx = np.flatnonzero(T_line == Tval)
+        physical_idx = idx[E_line[idx] <= _projectile_energy_loss_upper_eV(Tval)]
+        if physical_idx.size >= 3:
+            break
+    else:
+        return
+
+    E_seg = E_line[physical_idx]
+    order = np.argsort(E_seg)
+    E_sorted = E_seg[order]
+    idx_sorted = physical_idx[order]
+
+    exc_direct = np.zeros((E_sorted.size, len(s.excitations)), float)
+    kshell_B = float(s.kshell.Bth) if include_kshell and s.kshell is not None else None
+    ion_direct = np.zeros((E_sorted.size, len(s.ionizations) + (1 if kshell_B is not None else 0)), float)
+    exc_B = [float(s.Bmin) for _ in s.excitations]
+    ion_B = [float(osc.Bth) for osc in s.ionizations]
+    for j in range(len(s.excitations)):
+        exc_direct[:, j] = _compute_dcs_channel_values(
+            "excitation", j, s, C, Nq, np.full_like(E_sorted, Tval), E_sorted, exc_B, ion_B, kshell_B
+        )
+    for j in range(len(s.ionizations)):
+        ion_direct[:, j] = _compute_dcs_channel_values(
+            "ionization", j, s, C, Nq, np.full_like(E_sorted, Tval), E_sorted, exc_B, ion_B, kshell_B
+        )
+    if kshell_B is not None:
+        ion_direct[:, -1] = _compute_dcs_channel_values(
+            "kshell", 0, s, C, Nq, np.full_like(E_sorted, Tval), E_sorted, exc_B, ion_B, kshell_B
+        )
+
+    exc_from_dcs = np.asarray(exc_vals[idx_sorted], float)
+    ion_from_dcs = np.asarray(ion_vals[idx_sorted], float)
+    exc_total_dcs = float(np.sum([_simpson_integrate(exc_from_dcs[:, j], E_sorted) for j in range(exc_from_dcs.shape[1])]))
+    ion_total_dcs = float(np.sum([_simpson_integrate(ion_from_dcs[:, j], E_sorted) for j in range(ion_from_dcs.shape[1])]))
+    exc_total_direct = float(np.sum([_simpson_integrate(exc_direct[:, j], E_sorted) for j in range(exc_direct.shape[1])]))
+    ion_total_direct = float(np.sum([_simpson_integrate(ion_direct[:, j], E_sorted) for j in range(ion_direct.shape[1])]))
+    exc_ok = np.isclose(exc_total_dcs, exc_total_direct, rtol=1.0e-10, atol=1.0e-12)
+    ion_ok = np.isclose(ion_total_dcs, ion_total_direct, rtol=1.0e-10, atol=1.0e-12)
+    print(
+        "DCS/direct same-grid sanity: "
+        f"T={Tval:.6g} eV, excitation relerr={abs(exc_total_dcs - exc_total_direct) / max(abs(exc_total_direct), 1.0e-300):.3e}, "
+        f"ionization relerr={abs(ion_total_dcs - ion_total_direct) / max(abs(ion_total_direct), 1.0e-300):.3e}"
+    )
+    if not (exc_ok and ion_ok):
+        raise RuntimeError("DCS-integrated totals differ from direct same-grid totals.")
+
 def _write_total_table(T_vals, totals, out_path):
     with open(out_path, "w") as handle:
         for Tval, row in zip(T_vals, totals):
@@ -2065,17 +2140,41 @@ def _write_total_table(T_vals, totals, out_path):
             fields.extend(f"{val:.9E}" for val in row)
             handle.write(" ".join(fields) + "\n")
 
-def _write_total_tables_from_dcs(dcs_data, exc_out, ion_out):
+def _filter_dcs_lines(T_line, E_line, vals, t_min=None, t_max=None):
+    mask = np.ones(np.asarray(T_line).size, dtype=bool)
+    if t_min is not None:
+        mask &= np.asarray(T_line, float) >= float(t_min)
+    if t_max is not None:
+        mask &= np.asarray(T_line, float) <= float(t_max)
+    return (
+        np.asarray(T_line, float)[mask],
+        np.asarray(E_line, float)[mask],
+        np.asarray(vals, float)[mask],
+    )
+
+
+def _write_total_tables_from_dcs(
+    dcs_data,
+    exc_out,
+    ion_out,
+    exc_t_min=None,
+    ion_t_min=None,
+    t_max=None,
+):
     T_line = np.asarray(dcs_data.get("T_line", []), float)
     E_line = np.asarray(dcs_data.get("E_line", []), float)
     exc_vals = np.asarray(dcs_data.get("exc_vals", []), float)
     ion_vals = np.asarray(dcs_data.get("ion_vals", []), float)
     if T_line.size == 0 or E_line.size == 0:
         raise ValueError("DCS data is empty; cannot compute totals.")
-    T_exc, exc_totals = _integrate_dcs_to_totals(T_line, E_line, exc_vals)
-    T_ion, ion_totals = _integrate_dcs_to_totals(T_line, E_line, ion_vals)
-    if not np.allclose(T_exc, T_ion):
-        raise ValueError("Excitation and ionization totals have mismatched T grids.")
+    T_exc_line, E_exc_line, exc_vals = _filter_dcs_lines(
+        T_line, E_line, exc_vals, t_min=exc_t_min, t_max=t_max
+    )
+    T_ion_line, E_ion_line, ion_vals = _filter_dcs_lines(
+        T_line, E_line, ion_vals, t_min=ion_t_min, t_max=t_max
+    )
+    T_exc, exc_totals = _integrate_dcs_to_totals(T_exc_line, E_exc_line, exc_vals)
+    T_ion, ion_totals = _integrate_dcs_to_totals(T_ion_line, E_ion_line, ion_vals)
     _write_total_table(T_exc, exc_totals, exc_out)
     _write_total_table(T_ion, ion_totals, ion_out)
 
@@ -2129,23 +2228,24 @@ def _compute_dcs_channel_values(
     for i in range(n_lines):
         Tj = float(T_line[i])
         Ei = float(E_line[i])
+        E_upper = _projectile_energy_loss_upper_eV(Tj)
 
         if channel_type == "excitation":
             Bk = exc_B[idx]
-            if Ei < Bk or Ei > Tj:
+            if Ei < Bk or Ei > E_upper:
                 val = 0.0
             else:
                 val = _selected_dsigma_excitation(Ei, Tj, idx, s, C, Nq)
         elif channel_type == "ionization":
             Bj = ion_B[idx]
-            if Ei < Bj or Ei > 0.5 * (Tj + Bj):
+            if Ei < Bj or Ei > E_upper:
                 val = 0.0
             else:
                 val = _selected_dsigma_ionization(Ei, Tj, idx, s, C, Nq)
         elif channel_type == "kshell":
             if kshell_B is None:
                 val = 0.0
-            elif Ei < kshell_B or Ei > 0.5 * (Tj + kshell_B):
+            elif Ei < kshell_B or Ei > E_upper:
                 val = 0.0
             else:
                 val = _selected_dsigma_kshell(Ei, Tj, s, Nq)
@@ -2170,6 +2270,7 @@ def _init_dcs_worker(
     apply_regime_iii,
     apply_regime_iv,
     ice_type,
+    projectile_key,
 ):
     global _DCS_WORKER_S, _DCS_WORKER_C
     global _DCS_WORKER_T_LINE, _DCS_WORKER_E_LINE, _DCS_WORKER_NQ
@@ -2181,13 +2282,14 @@ def _init_dcs_worker(
         apply_regime_iv=apply_regime_iv,
     )
     _set_mc_correction(apply_mc=apply_mc)
+    set_projectile(projectile_key)
 
     _DCS_WORKER_S = model.epsilon_optical(ice_type)
     _DCS_WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
     _DCS_WORKER_T_LINE = np.asarray(T_line, float)
     _DCS_WORKER_E_LINE = np.asarray(E_line, float)
     _DCS_WORKER_NQ = int(Nq)
-    _DCS_WORKER_EXC_B = [float(osc.Bth) for osc in _DCS_WORKER_S.excitations]
+    _DCS_WORKER_EXC_B = [float(_DCS_WORKER_S.Bmin) for _ in _DCS_WORKER_S.excitations]
     _DCS_WORKER_ION_B = [float(osc.Bth) for osc in _DCS_WORKER_S.ionizations]
     _DCS_WORKER_KSHELL_B = (
         float(_DCS_WORKER_S.kshell.Bth) if _DCS_WORKER_S.kshell is not None else None
@@ -2212,7 +2314,7 @@ def _compute_dcs_channel_worker(args):
 def _selected_dsigma_excitation(Ei, Tj, k, s, C, Nq):
     use_mc, use_rel_long, use_rel_trans, use_density_effect = _regime_flags(Tj)
     if use_mc:
-        Bk = float(s.excitations[k].Bth)
+        Bk = float(s.Bmin)
         Tshift = float(Tj + 2.0 * Bk)
         return _dsigma_pwba_dE(Ei, Tshift, k, "excitation", s, C, Nq=Nq, use_rel=use_rel_long)
     if use_rel_long:
@@ -2264,6 +2366,9 @@ def write_emfietzoglou_dcs_tables(
     apply_regime_ii=None,
     apply_regime_iii=None,
     apply_regime_iv=None,
+    reuse_existing_tables=False,
+    T_list=None,
+    include_kshell=True,
 ):
     if out_dir is None:
         out_dir = CROSS_SECTIONS_DIR
@@ -2271,18 +2376,33 @@ def write_emfietzoglou_dcs_tables(
 
     if ice_label is None:
         ice_label = ICE_LABEL
-    exc_out = out_dir / f"sigmadiff_excitation_e_{ice_label}_emfietzoglou_kyriakou.dat"
-    ion_out = out_dir / f"sigmadiff_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat"
-    exc_total_out = out_dir / f"sigma_excitation_e_{ice_label}_emfietzoglou_kyriakou.dat"
-    ion_total_out = out_dir / f"sigma_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat"
+    exc_out = out_dir / f"sigmadiff_excitation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
+    ion_out = out_dir / f"sigmadiff_ionisation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
+    exc_total_out = out_dir / f"sigma_excitation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
+    ion_total_out = out_dir / f"sigma_ionisation_{PROJECTILE_FILE_TOKEN}_{ice_label}_emfietzoglou_kyriakou.dat"
 
-    if dcs_data is None and exc_out.exists() and ion_out.exists():
-        try:
-            dcs_data = _load_dcs_pair(exc_out, ion_out)
-            print(f"Loaded existing DCS from {exc_out} and {ion_out}")
-        except Exception as exc:
-            print(f"Failed to load existing DCS tables: {exc}")
-            dcs_data = None
+    if reuse_existing_tables and dcs_data is None and exc_out.exists() and ion_out.exists():
+        print("Ignoring existing DCS tables; heavy-projectile Emax metadata is not available in DAT files.")
+
+    exc_B = [float(s.Bmin) for _ in s.excitations]
+    ion_B = [float(osc.Bth) for osc in s.ionizations]
+    t_list_min = None
+    t_list_max = None
+    if T_list is not None:
+        T_arr_for_dcs = np.asarray(T_list, float)
+        T_arr_for_dcs = T_arr_for_dcs[np.isfinite(T_arr_for_dcs) & (T_arr_for_dcs > 0.0)]
+        if T_arr_for_dcs.size:
+            t_list_min = float(np.min(T_arr_for_dcs))
+            t_list_max = float(np.max(T_arr_for_dcs))
+    exc_t_min = float(min(exc_B)) if exc_B else None
+    ion_t_min = float(min(ion_B)) if ion_B else None
+    if t_list_min is not None:
+        if exc_t_min is not None:
+            exc_t_min = max(exc_t_min, t_list_min)
+        if ion_t_min is not None:
+            ion_t_min = max(ion_t_min, t_list_min)
+    grid_t_min = min(v for v in (exc_t_min, ion_t_min) if v is not None)
+    grid_t_max = t_list_max if t_list_max is not None else DCS_T_MAX_EEV
 
     if dcs_data is None:
         if template_path is None:
@@ -2292,23 +2412,38 @@ def write_emfietzoglou_dcs_tables(
             emfi_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
             if not os.path.exists(emfi_path):
                 raise FileNotFoundError(f"Missing DCS template file: {emfi_path}")
-            grid_low = _load_dcs_template_grid(emfi_path)
+            grid_low = _load_dcs_template_grid(
+                emfi_path, t_min=grid_t_min, t_max=grid_t_max
+            )
 
             grid = grid_low
             born_path = dna_dir / "sigmadiff_ionisation_e_born.dat"
-            if os.path.exists(born_path) and grid_low:
-                t_switch = max(grid_low.keys())
+            if os.path.exists(born_path):
+                t_switch = max(grid_low.keys()) if grid_low else grid_t_min
                 grid_high = _load_dcs_template_grid(
-                    born_path, t_min=t_switch, include_min=False
+                    born_path,
+                    t_min=t_switch,
+                    t_max=grid_t_max,
+                    include_min=not bool(grid_low),
                 )
                 if grid_high:
                     grid = _merge_dcs_template_grids(grid_low, grid_high)
-            if DCS_T_MAX_EEV > max(grid.keys()):
-                grid = _extend_dcs_grid(grid, DCS_T_MAX_EEV, DCS_T_STEP_EEV)
+            if not grid:
+                raise ValueError(
+                    f"No template DCS incident-energy grid at or above {grid_t_min:.6g} eV."
+                )
+            if grid_t_max > max(grid.keys()):
+                grid = _extend_dcs_grid(grid, grid_t_max, DCS_T_STEP_EEV)
         else:
             if not os.path.exists(template_path):
                 raise FileNotFoundError(f"Missing DCS template file: {template_path}")
-            grid = _load_dcs_template_grid(template_path)
+            grid = _load_dcs_template_grid(
+                template_path, t_min=grid_t_min, t_max=grid_t_max
+            )
+            if not grid:
+                raise ValueError(
+                    f"No template DCS incident-energy grid at or above {grid_t_min:.6g} eV."
+                )
 
         T_line = []
         E_line = []
@@ -2321,16 +2456,14 @@ def write_emfietzoglou_dcs_tables(
         T_line = np.asarray(T_line, float)
         E_line = np.asarray(E_line, float)
 
-        exc_B = [float(osc.Bth) for osc in s.excitations]
-        ion_B = [float(osc.Bth) for osc in s.ionizations]
-        kshell_B = float(s.kshell.Bth) if s.kshell is not None else None
+        kshell_B = float(s.kshell.Bth) if include_kshell and s.kshell is not None else None
 
         n_lines = T_line.size
         n_exc = len(exc_B)
         n_ion = len(ion_B)
 
         exc_vals = np.zeros((n_lines, n_exc), float)
-        ion_vals = np.zeros((n_lines, n_ion + 1), float)
+        ion_vals = np.zeros((n_lines, n_ion + (1 if kshell_B is not None else 0)), float)
 
         if apply_mc is None:
             apply_mc = APPLY_MOTT_COULOMB
@@ -2375,6 +2508,7 @@ def write_emfietzoglou_dcs_tables(
                     apply_regime_iii,
                     apply_regime_iv,
                     ice_type,
+                    PROJECTILE_KEY,
                 ),
             ) as ex:
                 futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
@@ -2407,10 +2541,30 @@ def write_emfietzoglou_dcs_tables(
             "ion_vals": ion_vals,
         }
 
-    _write_dcs_tables_from_data(dcs_data, exc_out, ion_out)
-    _write_total_tables_from_dcs(dcs_data, exc_total_out, ion_total_out)
+    _write_dcs_tables_from_data(
+        dcs_data,
+        exc_out,
+        ion_out,
+        exc_t_min=exc_t_min,
+        ion_t_min=ion_t_min,
+        t_max=grid_t_max,
+    )
+    _write_total_tables_from_dcs(
+        dcs_data,
+        exc_total_out,
+        ion_total_out,
+        exc_t_min=exc_t_min,
+        ion_t_min=ion_t_min,
+        t_max=grid_t_max,
+    )
     _export_to_custom_geant4([exc_out, ion_out, exc_total_out, ion_total_out])
 
+    print(
+        "DCS/table energy bounds: "
+        f"excitation >= {exc_t_min:.6g} eV, "
+        f"ionisation >= {ion_t_min:.6g} eV, "
+        f"max <= {grid_t_max:.6g} eV."
+    )
     print(f"Saved excitation DCS to {exc_out}")
     print(f"Saved ionization DCS to {ion_out}")
     print(f"Saved excitation total to {exc_total_out}")
@@ -2458,7 +2612,7 @@ def plot_total_cross_section_corrections(T_list, sigma_list, out_path=None, ice_
     ax_corr.plot(T_arr, corr_rel_long, lw=1.8, label="Stage 2: Rel long")
     ax_corr.plot(T_arr, corr_rel_trans, lw=1.8, label="Stage 3: Rel trans")
     ax_corr.plot(T_arr, corr_density, lw=1.8, label="Stage 4: Density effect")
-    ax_corr.set_xlabel("Electron energy (T; eV)")
+    ax_corr.set_xlabel(_projectile_energy_label())
     ax_corr.set_ylabel("Correction term")
     ax_corr.grid(True, which="both", ls="--", alpha=0.3)
     ax_corr.legend(loc="best", fontsize=9)
@@ -2489,6 +2643,7 @@ def _init_worker(
     apply_regime_iv,
     apply_mc,
     ice_type,
+    projectile_key,
 ):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
@@ -2502,6 +2657,7 @@ def _init_worker(
         apply_regime_iv=apply_regime_iv,
     )
     _set_mc_correction(apply_mc=apply_mc)
+    set_projectile(projectile_key)
     _WORKER_S = model.epsilon_optical(ice_type)
     _WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
     _WORKER_KW = dict(
@@ -2522,6 +2678,15 @@ def _compute_for_T(T):
 def main():
     if ICE_TYPE not in ("amorphous", "hexagonal"):
         raise ValueError(f"Unsupported ICE_TYPE: {ICE_TYPE}")
+    include_kshell = _include_kshell_from_argv(default=True)
+    run_label = f"{PROJECTILE_FILE_TOKEN}_{ICE_LABEL}"
+    if not include_kshell:
+        run_label = f"{run_label}_no_kshell"
+    print(
+        f"Projectile: {PROJECTILE_LABEL} "
+        f"(key={PROJECTILE_KEY}, mass={PROJECTILE_MASS_AU:.6g} m_e, charge={PROJECTILE_CHARGE:.6g} e)"
+    )
+    print(f"Include K-shell: {include_kshell}")
     # Optical model / dispersion coefficients
     s = model.epsilon_optical(ICE_TYPE)
     a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
@@ -2533,12 +2698,11 @@ def main():
 
     # Energy grid (eV)
     #T_list = np.logspace(-1, 7, 1000)
-    T_list = np.logspace(4, 7, 10)
+    T_list = np.logspace(6, 8, 1000)
 
     # Computing Choices
-    NE = 80
-    Nq = 80
-    include_kshell = True
+    NE = 300
+    Nq = 300
     # use_mott_coulomb = True
     # apply_mc = True
     # apply_regime_ii = True
@@ -2569,13 +2733,14 @@ def main():
     )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    cache_path = OUTPUT_DIR / f"cross_section_corrections_{ICE_LABEL}.npz"
+    cache_path = OUTPUT_DIR / f"cross_section_corrections_pwba_{run_label}.npz"
     cached = load_cross_section_corrections_npz(
         cache_path,
         NE=NE,
         Nq=Nq,
         T_list=T_list,
         target_density_scale_factor=density_scale_factor,
+        include_kshell=include_kshell,
     )
 
     sigma_list = None
@@ -2588,7 +2753,7 @@ def main():
     else:
         print("Computing double-integrated cross sections (parallel over T)...")
         # Use ~ (CPU cores) workers;
-        max_workers = 2
+        max_workers = 12
         print("Using %i workers" %(max_workers))
 
         results_by_T = {}
@@ -2609,6 +2774,7 @@ def main():
                     apply_regime_iv,
                     apply_mc,
                     ICE_TYPE,
+                    PROJECTILE_KEY,
                 ),
         ) as ex:
             futures = [ex.submit(_compute_for_T, T) for T in T_list]
@@ -2635,6 +2801,8 @@ def main():
             apply_regime_ii=apply_regime_ii,
             apply_regime_iii=apply_regime_iii,
             apply_regime_iv=apply_regime_iv,
+            T_list=T_list,
+            include_kshell=include_kshell,
         )
         dcs_written = True
         save_cross_section_corrections_npz(
@@ -2644,10 +2812,11 @@ def main():
             NE=NE,
             Nq=Nq,
             dcs_data=dcs_data,
-            ice_label=ICE_LABEL,
+            ice_label=run_label,
             density_scale_factor=density_scale_factor,
             density_ref_g_cm3=rho_ref,
             density_assumed_g_cm3=rho_target,
+            include_kshell=include_kshell,
         )
 
     if not dcs_written:
@@ -2666,6 +2835,8 @@ def main():
                 apply_regime_ii=apply_regime_ii,
                 apply_regime_iii=apply_regime_iii,
                 apply_regime_iv=apply_regime_iv,
+                T_list=T_list,
+                include_kshell=include_kshell,
             )
             dcs_written = True
             save_cross_section_corrections_npz(
@@ -2675,10 +2846,11 @@ def main():
                 NE=NE,
                 Nq=Nq,
                 dcs_data=dcs_data,
-                ice_label=ICE_LABEL,
+                ice_label=run_label,
                 density_scale_factor=density_scale_factor,
                 density_ref_g_cm3=rho_ref,
                 density_assumed_g_cm3=rho_target,
+                include_kshell=include_kshell,
             )
         else:
             write_emfietzoglou_dcs_tables(
@@ -2688,11 +2860,15 @@ def main():
                 dcs_data=dcs_data,
                 ice_label=ICE_LABEL,
                 ice_type=ICE_TYPE,
+                T_list=T_list,
+                include_kshell=include_kshell,
             )
             dcs_written = True
 
+    _run_projectile_pwba_sanity_checks(s, C, dcs_data=dcs_data, Nq=Nq, include_kshell=include_kshell)
+
     # ----------------- Log corrections per energy -----------------
-    plot_total_cross_section_corrections(T_list, sigma_list, ice_label=ICE_LABEL)
+    plot_total_cross_section_corrections(T_list, sigma_list, ice_label=run_label)
 
     # ----------------- Plot 0: corrected excitation/ionization (scaled) -----------------
     style = rcparams_with_fontsize(
@@ -2753,7 +2929,7 @@ def main():
                 )
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / f"corrected_excitation_ionization_scaled_{ICE_LABEL}.png"
+        out_path = OUTPUT_DIR / f"corrected_excitation_ionization_scaled_{run_label}.png"
         fig.subplots_adjust(left=0.14, right=0.98, top=0.96, bottom=0.06)
         fig.savefig(out_path, dpi=300)
         plt.close(fig)
@@ -2767,15 +2943,15 @@ def main():
     )
 
     ax_ion.figure.tight_layout()
-    ax_ion.figure.savefig(f"comparison_ionizations_pwba_vs_model_{ICE_LABEL}.png", dpi=300)
+    ax_ion.figure.savefig(f"comparison_ionizations_pwba_vs_model_{run_label}.png", dpi=300)
     plt.close(ax_ion.figure)
 
     ax_exc.figure.tight_layout()
-    ax_exc.figure.savefig(f"comparison_excitations_pwba_vs_model_{ICE_LABEL}.png", dpi=300)
+    ax_exc.figure.savefig(f"comparison_excitations_pwba_vs_model_{run_label}.png", dpi=300)
     plt.close(ax_exc.figure)
     print(
-        f"Saved comparison plots to comparison_ionizations_pwba_vs_model_{ICE_LABEL}.png "
-        f"and comparison_excitations_pwba_vs_model_{ICE_LABEL}.png"
+        f"Saved comparison plots to comparison_ionizations_pwba_vs_model_{run_label}.png "
+        f"and comparison_excitations_pwba_vs_model_{run_label}.png"
     )
 
 
@@ -2785,28 +2961,28 @@ def main():
     plot_relativistic_component_per_channel(T_list, sigma_list, s, ax=(ax_ion, ax_exc))
     fig_ion.tight_layout()
     fig_exc.tight_layout()
-    fig_ion.savefig(f"rel_cross_sections_ionizations_LT_{ICE_LABEL}.png", dpi=300)
-    fig_exc.savefig(f"rel_cross_sections_excitations_LT_{ICE_LABEL}.png", dpi=300)
+    fig_ion.savefig(f"rel_cross_sections_ionizations_LT_{run_label}.png", dpi=300)
+    fig_exc.savefig(f"rel_cross_sections_excitations_LT_{run_label}.png", dpi=300)
     plt.close(fig_ion)
     plt.close(fig_exc)
     print(
-        f"Saved REL component plots to rel_cross_sections_ionizations_LT_{ICE_LABEL}.png "
-        f"and rel_cross_sections_excitations_LT_{ICE_LABEL}.png"
+        f"Saved REL component plots to rel_cross_sections_ionizations_LT_{run_label}.png "
+        f"and rel_cross_sections_excitations_LT_{run_label}.png"
     )
 
     # ----------------- Plot 3: TOTAL cross section with all corrections -----------------
     fig, ax = plt.subplots()
     plot_total_cross_section(T_list, sigma_list, s, ax=ax)
     fig.tight_layout()
-    fig.savefig(f"total_cross_section_all_corrections_{ICE_LABEL}.png", dpi=300)
+    fig.savefig(f"total_cross_section_all_corrections_{run_label}.png", dpi=300)
     plt.close(fig)
-    print(f"Saved total plot to total_cross_section_all_corrections_{ICE_LABEL}.png")
+    print(f"Saved total plot to total_cross_section_all_corrections_{run_label}.png")
 
     # ----------------- Plot 4: two-panel amorphous vs hexagonal totals -----------------
-    amorphous_npz = OUTPUT_DIR / "cross_section_corrections_amorphous_ice.npz"
-    hexagonal_npz = OUTPUT_DIR / "cross_section_corrections_hexagonal_ice.npz"
+    amorphous_npz = OUTPUT_DIR / f"cross_section_corrections_pwba_{PROJECTILE_FILE_TOKEN}_amorphous_ice.npz"
+    hexagonal_npz = OUTPUT_DIR / f"cross_section_corrections_pwba_{PROJECTILE_FILE_TOKEN}_hexagonal_ice.npz"
     if amorphous_npz.exists() and hexagonal_npz.exists():
-        out_path = OUTPUT_DIR / "channel_cross_section_two_panel_amorphous_hexagonal.png"
+        out_path = OUTPUT_DIR / f"channel_cross_section_two_panel_{PROJECTILE_FILE_TOKEN}_amorphous_hexagonal.png"
         plot_channel_cross_sections_two_panel(amorphous_npz, hexagonal_npz, out_path=out_path)
     else:
         missing = []
