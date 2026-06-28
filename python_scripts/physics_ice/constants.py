@@ -11,6 +11,11 @@ GEANT4_PROJECTS_ROOT = PROJECT_ROOT.parent
 TOP_ROOT = PROJECT_ROOT.parent.parent
 
 OUTPUT_DIR = SCRIPT_DIR / "output"
+PLOTS_DIR = PROJECT_ROOT / "plots"
+CROSS_SECTION_PLOTS_DIR = PLOTS_DIR / "cross_sections"
+DIAGNOSTIC_PLOTS_DIR = PLOTS_DIR / "diagnostics"
+DIELECTRIC_PLOTS_DIR = PLOTS_DIR / "dielectric"
+EXAMPLE_PLOTS_DIR = PLOTS_DIR / "examples"
 CROSS_SECTIONS_DIR = PROJECT_ROOT / "cross_sections"
 TABULAR_DIR = PROJECT_ROOT / "tabular"
 BACKUP_TABULAR_DIR = TOP_ROOT / "backup" / "geant4_icyMoons" / "tabular"

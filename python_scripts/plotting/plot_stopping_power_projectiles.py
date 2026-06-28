@@ -24,6 +24,7 @@ if str(PHYSICS_ICE_DIR) not in sys.path:
 
 from constants import (  # noqa: E402
     CROSS_SECTIONS_DIR,
+    CROSS_SECTION_PLOTS_DIR,
     CUSTOM_DATA_ROOT_GEANT4,
     CUSTOM_DATA_ROOT_PROJECT,
     EMFIETZOGLOU_SCALE_1E16,
@@ -1193,7 +1194,7 @@ def main(config: dict[str, object] | None = None) -> None:
         kshell_suffix = "" if args.include_kshell else "_no_kshell"
         zeff_suffix = "_barkas_zeff_compare" if args.barkas_zeff else ""
         out_path = (
-            OUTPUT_DIR
+            CROSS_SECTION_PLOTS_DIR
             / f"stopping_power_imfp_{projectile_key}_{ice_suffix}_ice{kshell_suffix}{zeff_suffix}.png"
         )
 

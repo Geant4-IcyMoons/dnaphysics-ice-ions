@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 from constants import (
+    DIELECTRIC_PLOTS_DIR,
     EH,
     FONT_COURIER,
     FONTSIZE_16,
@@ -39,6 +40,7 @@ plt.rcParams['mathtext.fontset'] = 'custom'
 
 FONTSIZE = FONTSIZE_16
 plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
+DIELECTRIC_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 Material = Literal["amorphous", "hexagonal"]
 ArrayLike = Union[float, np.ndarray]
@@ -1157,7 +1159,7 @@ def plot_model_vs_experiment_multiq(
     ice: str,
     use_partitioning: bool = True,
     overlay_optical_q0: bool = False,
-    savepath: str | Path | None = "output/Model_vs_Experiment_multiq.pdf",
+    savepath: str | Path | None = DIELECTRIC_PLOTS_DIR / "Model_vs_Experiment_multiq.pdf",
 ) -> Path | None:
     """
     Multi-panel comparison of model ELF vs. q-resolved tabular data for
@@ -1330,7 +1332,7 @@ if __name__ == "__main__":
         C,
         ice="amorphous",
         use_partitioning=use_partitioning,
-        savepath=f"output/Model_vs_Experiment_multiq_amorphous.pdf",
+        savepath=DIELECTRIC_PLOTS_DIR / "Model_vs_Experiment_multiq_amorphous.pdf",
     )
     exit()
 
@@ -1339,36 +1341,36 @@ if __name__ == "__main__":
     figA, axA = plt.subplots()
     plot_Im_epsilon_channel_resolved_Eq(E, s, C, q=q_sel, legend=True, ax=axA, partitioned=use_partitioning)
     axA.set_title(f"Channel-resolved Im($\\epsilon$) at q = {q_sel:.2f}; {ice} ice")
-    plt.savefig(f"output/Channel_resolved_Im_finiteq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Channel_resolved_Im_finiteq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
     plt.show()
 
     figB, axB = plt.subplots()
     plot_Re_epsilon_channel_resolved_Eq(E, s, C, q=q_sel, legend=True, include_baseline_one=True, ax=axB)
     axB.set_title(f"Channel-resolved Re($\\epsilon$) at q = {q_sel:.2f}; {ice} ice")
-    plt.savefig(f"output/Channel_resolved_Re_finiteq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Channel_resolved_Re_finiteq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
     plt.show()
 
     # ELF multi-panel: channel-resolved per q
     figC = plot_ELF_channel_resolved_multiq(E, qvals, s, C, include_kshell=True, ncols=2)
     figC.suptitle(f"Channel-resolved ELF across q; {ice} ice", y=0.99)
-    plt.savefig(f"output/ELF_channel_resolved_multipanel_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"ELF_channel_resolved_multipanel_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
     # Im(epsilon) multi-panel: channel-resolved per q
     figE = plot_Im_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2)
     figE.suptitle(rf"Channel-resolved Im($\epsilon$) across q; {ice} ice", y=0.99)
-    plt.savefig(f"output/Im_epsilon_channel_resolved_multipanel_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Im_epsilon_channel_resolved_multipanel_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
     # Re(epsilon) multi-panel: channel-resolved per q
     figF = plot_Re_epsilon_channel_resolved_multiq(E, qvals, s, C, ncols=2, include_baseline_one=True)
     figF.suptitle(rf"Channel-resolved Re($\epsilon$) across q; {ice} ice", y=0.99)
-    plt.savefig(f"output/Re_epsilon_channel_resolved_multipanel_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Re_epsilon_channel_resolved_multipanel_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
     # Single-q ELF (with K-shell overlay)
     figD, axD = plt.subplots()
     plot_ELF_channel_resolved_Eq(E, s, C, q=q_sel, include_kshell=True, legend=True, ax=axD, partitioned=use_partitioning)
     axD.set_title(f"ELF at q = {q_sel:.2f} with O K-shell; {ice} ice")
-    plt.savefig(f"output/ELF_singleq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"ELF_singleq_{ice}_q{q_sel:.2f}.pdf", bbox_inches="tight")
     plt.show()

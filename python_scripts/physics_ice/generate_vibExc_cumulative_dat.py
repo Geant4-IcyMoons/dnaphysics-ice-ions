@@ -28,6 +28,7 @@ from typing import Dict, Tuple
 from constants import (
     BACKUP_MICHAUD_TABLE2_PATH,
     BACKUP_MICHAUD_TABLE3_PATH,
+    CROSS_SECTION_PLOTS_DIR,
     FMT_C,
     FMT_E,
     FMT_T,
@@ -53,8 +54,9 @@ plt.rcParams['font.family'] = font
 plt.rcParams['mathtext.rm'] = font
 plt.rcParams['mathtext.fontset'] = 'custom'
 
-# Resolve paths; always write outputs under python_scripts/output
+# Resolve paths; numerical table outputs stay under python_scripts/physics_ice/output.
 OUTPUT_DIR_PATH.mkdir(parents=True, exist_ok=True)
+CROSS_SECTION_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 TABLE2_PATH = str(BACKUP_MICHAUD_TABLE2_PATH)
 TABLE3_PATH = str(BACKUP_MICHAUD_TABLE3_PATH)
 OUTPUT_DIR  = str(OUTPUT_DIR_PATH)
@@ -502,7 +504,7 @@ def main():
     print("  sigmadiff_cumulated_excitationvib_e_michaud_hp.dat")
     
     # Plot anisotropy and angular distributions
-    plot_anisotropy_and_angles(out_dir, Egrid, th_deg, ch, TARGETS, dsdO_dict)
+    plot_anisotropy_and_angles(CROSS_SECTION_PLOTS_DIR, Egrid, th_deg, ch, TARGETS, dsdO_dict)
     
     print("\nDone. Place outputs under $G4LEDATA/dna/")
 

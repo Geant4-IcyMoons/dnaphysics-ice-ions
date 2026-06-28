@@ -20,6 +20,7 @@ import pandas as pd
 from pathlib import Path
 
 from constants import (
+    DIELECTRIC_PLOTS_DIR,
     EH,
     FONT_COURIER,
     FONTSIZE_18,
@@ -38,6 +39,7 @@ plt.rcParams['mathtext.fontset'] = 'custom'
 
 FONTSIZE = FONTSIZE_18
 plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
+DIELECTRIC_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 Material = Literal["amorphous", "hexagonal"]
 ArrayLike = Union[float, np.ndarray]
@@ -869,7 +871,10 @@ def plot_neff_and_I(E_min=0.1, E_max=1.0e6, npts=50000, savepath=None, partition
 
     return results
 
-def plot_model_vs_experiment_two_panel(use_partitioning: bool = True, savepath: str | Path | None = "output/Model_vs_Experiment_both.pdf") -> Path:
+def plot_model_vs_experiment_two_panel(
+    use_partitioning: bool = True,
+    savepath: str | Path | None = DIELECTRIC_PLOTS_DIR / "Model_vs_Experiment_both.pdf",
+) -> Path:
     """
     Create a two-panel horizontal comparison (amorphous, hexagonal) of model vs
     experimental dielectric properties (Im eps, Re eps, ELF) at q=0. Legend is
@@ -1028,7 +1033,7 @@ if __name__ == "__main__":
     ax3_leg.axis('off')
     handles3, labels3 = ax3.get_legend_handles_labels()
     ax3_leg.legend(handles3, labels3, loc='center', ncol=3, frameon=False)
-    plt.savefig(f"output/Channel_resolved_Im_optical_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Channel_resolved_Im_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
     # Separate figure: channel-resolved Re(epsilon) at desired q, with legend bar underneath
@@ -1048,7 +1053,7 @@ if __name__ == "__main__":
     ax4_leg.axis('off')
     handles4, labels4 = ax4.get_legend_handles_labels()
     ax4_leg.legend(handles4, labels4, loc='center', ncol=3, frameon=False)
-    plt.savefig(f"output/Channel_resolved_Re_optical_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Channel_resolved_Re_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
     # Separate figure: channel-resolved ELF at desired q (optical limit), with legend bar underneath
@@ -1066,7 +1071,7 @@ if __name__ == "__main__":
     ax5_leg.axis('off')
     handles5, labels5 = ax5.get_legend_handles_labels()
     ax5_leg.legend(handles5, labels5, loc='center', ncol=3, frameon=False)
-    plt.savefig(f"output/Channel_resolved_ELF_optical_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Channel_resolved_ELF_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
     # K-shell only, same look-and-feel; window 400–600 eV
@@ -1075,7 +1080,7 @@ if __name__ == "__main__":
     plot_Kshell_channel_resolved(E_k, s, include_kshell=True,
                                  legend=True, also_plot_composite=False, ax=axK)
     axK.set_title(f"O K-shell $\\epsilon_2$ (optical, gated) 400–600 eV; {ice} ice")
-    plt.savefig(f"output/Kshell_channel_resolved_optical_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Kshell_channel_resolved_optical_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
     # New figure: Model vs Experimental comparison (single panel, all three quantities)
@@ -1116,9 +1121,9 @@ if __name__ == "__main__":
     ax_comp.set_xlim(0, 30)
 
     fig_comp.tight_layout()
-    plt.savefig(f"output/Model_vs_Experiment_{ice}.pdf", bbox_inches="tight")
+    plt.savefig(DIELECTRIC_PLOTS_DIR / f"Model_vs_Experiment_{ice}.pdf", bbox_inches="tight")
     plt.show()
 
-    plot_neff_and_I(savepath="output/Neff_I_Fig3_like.pdf", partitioned=use_partitioning)
+    plot_neff_and_I(savepath=DIELECTRIC_PLOTS_DIR / "Neff_I_Fig3_like.pdf", partitioned=use_partitioning)
 
-    plot_model_vs_experiment_two_panel(savepath="output/dielectric_both.pdf", use_partitioning=use_partitioning)
+    plot_model_vs_experiment_two_panel(savepath=DIELECTRIC_PLOTS_DIR / "dielectric_both.pdf", use_partitioning=use_partitioning)

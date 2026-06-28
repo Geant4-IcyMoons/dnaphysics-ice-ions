@@ -107,7 +107,7 @@ or explicitly:
 ```bash
 python3 examples/example_6/plot_example_6_wvalue.py \
   --txt "examples/example_6/outputs/example_6_wvalue.txt" \
-  --out "examples/example_6/outputs/example_6_wvalue.png"
+  --out "plots/examples/example_6/example_6_wvalue.png"
 ```
 
 The plot shows:

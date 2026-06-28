@@ -15,6 +15,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from constants import (
     C_AU,
+    CROSS_SECTION_PLOTS_DIR,
     CUSTOM_DATA_ROOT_GEANT4,
     CUSTOM_DATA_ROOT_PROJECT,
     CROSS_SECTIONS_DIR,
@@ -3283,8 +3284,8 @@ def plot_total_cross_section_corrections(T_list, sigma_list, out_path=None, ice_
     if out_path is None:
         if ice_label is None:
             ice_label = ICE_LABEL
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / f"cross_section_corrections_{ice_label}.png"
+        CROSS_SECTION_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = CROSS_SECTION_PLOTS_DIR / f"cross_section_corrections_{ice_label}.png"
 
     rows = [_compute_correction_row(T, sigma) for T, sigma in zip(T_list, sigma_list)]
     T_arr = np.array([row["T_eV"] for row in rows], float)
@@ -3774,8 +3775,8 @@ def main():
                     borderaxespad=0.0,
                 )
 
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / f"corrected_excitation_ionization_scaled_{run_label}.png"
+        CROSS_SECTION_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = CROSS_SECTION_PLOTS_DIR / f"corrected_excitation_ionization_scaled_{run_label}.png"
         fig.subplots_adjust(left=0.14, right=0.98, top=0.96, bottom=0.06)
         fig.savefig(out_path, dpi=300)
         plt.close(fig)
@@ -3788,16 +3789,19 @@ def main():
         T_list, sigma_list, s
     )
 
+    CROSS_SECTION_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+    ion_compare_path = CROSS_SECTION_PLOTS_DIR / f"comparison_ionizations_pwba_vs_model_{run_label}.png"
+    exc_compare_path = CROSS_SECTION_PLOTS_DIR / f"comparison_excitations_pwba_vs_model_{run_label}.png"
     ax_ion.figure.tight_layout()
-    ax_ion.figure.savefig(f"comparison_ionizations_pwba_vs_model_{run_label}.png", dpi=300)
+    ax_ion.figure.savefig(ion_compare_path, dpi=300)
     plt.close(ax_ion.figure)
 
     ax_exc.figure.tight_layout()
-    ax_exc.figure.savefig(f"comparison_excitations_pwba_vs_model_{run_label}.png", dpi=300)
+    ax_exc.figure.savefig(exc_compare_path, dpi=300)
     plt.close(ax_exc.figure)
     print(
-        f"Saved comparison plots to comparison_ionizations_pwba_vs_model_{run_label}.png "
-        f"and comparison_excitations_pwba_vs_model_{run_label}.png"
+        f"Saved comparison plots to {ion_compare_path} "
+        f"and {exc_compare_path}"
     )
 
 
@@ -3807,28 +3811,31 @@ def main():
     plot_relativistic_component_per_channel(T_list, sigma_list, s, ax=(ax_ion, ax_exc))
     fig_ion.tight_layout()
     fig_exc.tight_layout()
-    fig_ion.savefig(f"rel_cross_sections_ionizations_LT_{run_label}.png", dpi=300)
-    fig_exc.savefig(f"rel_cross_sections_excitations_LT_{run_label}.png", dpi=300)
+    rel_ion_path = CROSS_SECTION_PLOTS_DIR / f"rel_cross_sections_ionizations_LT_{run_label}.png"
+    rel_exc_path = CROSS_SECTION_PLOTS_DIR / f"rel_cross_sections_excitations_LT_{run_label}.png"
+    fig_ion.savefig(rel_ion_path, dpi=300)
+    fig_exc.savefig(rel_exc_path, dpi=300)
     plt.close(fig_ion)
     plt.close(fig_exc)
     print(
-        f"Saved REL component plots to rel_cross_sections_ionizations_LT_{run_label}.png "
-        f"and rel_cross_sections_excitations_LT_{run_label}.png"
+        f"Saved REL component plots to {rel_ion_path} "
+        f"and {rel_exc_path}"
     )
 
     # ----------------- Plot 3: TOTAL cross section with all corrections -----------------
     fig, ax = plt.subplots()
     plot_total_cross_section(T_list, sigma_list, s, ax=ax)
     fig.tight_layout()
-    fig.savefig(f"total_cross_section_all_corrections_{run_label}.png", dpi=300)
+    total_plot_path = CROSS_SECTION_PLOTS_DIR / f"total_cross_section_all_corrections_{run_label}.png"
+    fig.savefig(total_plot_path, dpi=300)
     plt.close(fig)
-    print(f"Saved total plot to total_cross_section_all_corrections_{run_label}.png")
+    print(f"Saved total plot to {total_plot_path}")
 
     # ----------------- Plot 4: two-panel amorphous vs hexagonal totals -----------------
     amorphous_npz = OUTPUT_DIR / f"cross_section_corrections_pwba_{PROJECTILE_FILE_TOKEN}_amorphous_ice.npz"
     hexagonal_npz = OUTPUT_DIR / f"cross_section_corrections_pwba_{PROJECTILE_FILE_TOKEN}_hexagonal_ice.npz"
     if amorphous_npz.exists() and hexagonal_npz.exists():
-        out_path = OUTPUT_DIR / f"channel_cross_section_two_panel_{PROJECTILE_FILE_TOKEN}_amorphous_hexagonal.png"
+        out_path = CROSS_SECTION_PLOTS_DIR / f"channel_cross_section_two_panel_{PROJECTILE_FILE_TOKEN}_amorphous_hexagonal.png"
         plot_channel_cross_sections_two_panel(amorphous_npz, hexagonal_npz, out_path=out_path)
     else:
         missing = []

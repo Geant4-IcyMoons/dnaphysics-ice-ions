@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from constants import (
+    CROSS_SECTION_PLOTS_DIR,
     FONT_COURIER,
     FONTSIZE_24,
     OUTPUT_DIR,
@@ -279,8 +280,8 @@ def plot_total_cross_section_corrections(T_list, sigma_list, compute_correction_
     if out_path is None:
         if ice_label is None:
             ice_label = 'ice'
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / f"cross_section_corrections_{ice_label}.png"
+        CROSS_SECTION_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = CROSS_SECTION_PLOTS_DIR / f"cross_section_corrections_{ice_label}.png"
 
     rows = [compute_correction_row_func(T, sigma) for T, sigma in zip(T_list, sigma_list)]
     T_arr = np.array([row["T_eV"] for row in rows], float)
@@ -484,6 +485,8 @@ def generate_all_plots(
     regime_ii_max_eV,
 ):
     output_dir = Path(output_dir)
+    plot_output_dir = CROSS_SECTION_PLOTS_DIR
+    plot_output_dir.mkdir(parents=True, exist_ok=True)
 
     plot_total_cross_section_corrections(T_list, sigma_list, compute_correction_row_func=compute_correction_row_func, ice_label=ice_label)
 
@@ -520,39 +523,43 @@ def generate_all_plots(
             if ion_handles:
                 ax_leg_ion.legend(ion_handles, [str(i + 1) for i in range(n_ion)], loc='center left', bbox_to_anchor=(0.0, 0.5), ncol=max(1, n_ion), frameon=False, columnspacing=0.9, handlelength=2.2, handletextpad=0.6, borderaxespad=0.0)
 
-        output_dir.mkdir(parents=True, exist_ok=True)
-        out_path = output_dir / f'corrected_excitation_ionization_scaled_{ice_label}.png'
+        out_path = plot_output_dir / f'corrected_excitation_ionization_scaled_{ice_label}.png'
         fig.subplots_adjust(left=0.14, right=0.98, top=0.96, bottom=0.06)
         fig.savefig(out_path, dpi=300)
         plt.close(fig)
         print(f"Saved corrected excitation/ionization plot to {out_path}")
 
     ax_ion, ax_exc = plot_full_cross_sections_per_channel(T_list, sigma_list, s, regime_flags_func=regime_flags_func)
+    ion_compare_path = plot_output_dir / f'comparison_ionizations_pwba_vs_model_{ice_label}.png'
+    exc_compare_path = plot_output_dir / f'comparison_excitations_pwba_vs_model_{ice_label}.png'
     ax_ion.figure.tight_layout()
-    ax_ion.figure.savefig(f'comparison_ionizations_pwba_vs_model_{ice_label}.png', dpi=300)
+    ax_ion.figure.savefig(ion_compare_path, dpi=300)
     plt.close(ax_ion.figure)
     ax_exc.figure.tight_layout()
-    ax_exc.figure.savefig(f'comparison_excitations_pwba_vs_model_{ice_label}.png', dpi=300)
+    ax_exc.figure.savefig(exc_compare_path, dpi=300)
     plt.close(ax_exc.figure)
-    print(f"Saved comparison plots to comparison_ionizations_pwba_vs_model_{ice_label}.png and comparison_excitations_pwba_vs_model_{ice_label}.png")
+    print(f"Saved comparison plots to {ion_compare_path} and {exc_compare_path}")
 
     fig_ion, ax_ion = plt.subplots(figsize=(14, 9))
     fig_exc, ax_exc = plt.subplots(figsize=(14, 9))
     plot_relativistic_component_per_channel(T_list, sigma_list, s, regime_ii_max_eV=regime_ii_max_eV, ax=(ax_ion, ax_exc))
     fig_ion.tight_layout()
     fig_exc.tight_layout()
-    fig_ion.savefig(f'rel_cross_sections_ionizations_LT_{ice_label}.png', dpi=300)
-    fig_exc.savefig(f'rel_cross_sections_excitations_LT_{ice_label}.png', dpi=300)
+    rel_ion_path = plot_output_dir / f'rel_cross_sections_ionizations_LT_{ice_label}.png'
+    rel_exc_path = plot_output_dir / f'rel_cross_sections_excitations_LT_{ice_label}.png'
+    fig_ion.savefig(rel_ion_path, dpi=300)
+    fig_exc.savefig(rel_exc_path, dpi=300)
     plt.close(fig_ion)
     plt.close(fig_exc)
-    print(f"Saved REL component plots to rel_cross_sections_ionizations_LT_{ice_label}.png and rel_cross_sections_excitations_LT_{ice_label}.png")
+    print(f"Saved REL component plots to {rel_ion_path} and {rel_exc_path}")
 
     fig, ax = plt.subplots()
     plot_total_cross_section(T_list, sigma_list, regime_flags_func=regime_flags_func, ax=ax)
     fig.tight_layout()
-    fig.savefig(f'total_cross_section_all_corrections_{ice_label}.png', dpi=300)
+    total_plot_path = plot_output_dir / f'total_cross_section_all_corrections_{ice_label}.png'
+    fig.savefig(total_plot_path, dpi=300)
     plt.close(fig)
-    print(f"Saved total plot to total_cross_section_all_corrections_{ice_label}.png")
+    print(f"Saved total plot to {total_plot_path}")
 
     amorphous_npz = output_dir / 'cross_section_corrections_amorphous_ice.npz'
     hexagonal_npz = output_dir / 'cross_section_corrections_hexagonal_ice.npz'
@@ -564,7 +571,7 @@ def generate_all_plots(
             density_scale_factor_from_npz_func=density_scale_factor_from_npz_func,
             density_scale_factor_for_ice_func=density_scale_factor_for_ice_func,
             regime_flags_func=regime_flags_func,
-            out_path=output_dir / 'channel_cross_section_two_panel_amorphous_hexagonal.png',
+            out_path=plot_output_dir / 'channel_cross_section_two_panel_amorphous_hexagonal.png',
         )
         plot_total_cross_section_two_panel(
             amorphous_npz,
@@ -572,7 +579,7 @@ def generate_all_plots(
             density_scale_factor_from_npz_func=density_scale_factor_from_npz_func,
             infer_ice_type_from_path_func=infer_ice_type_from_path_func,
             density_scale_factor_for_ice_func=density_scale_factor_for_ice_func,
-            out_path=output_dir / 'total_cross_section_two_panel_amorphous_hexagonal.png',
+            out_path=plot_output_dir / 'total_cross_section_two_panel_amorphous_hexagonal.png',
         )
     else:
         missing = []

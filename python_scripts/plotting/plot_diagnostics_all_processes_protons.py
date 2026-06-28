@@ -59,7 +59,7 @@ from physics_ice.constants import (
     HFONT_COURIER,
     MICHAUD_TABLE2_PATH,
     MICHAUD_TABLE3_PATH,
-    OUTPUT_DIR,
+    DIAGNOSTIC_PLOTS_DIR as OUTPUT_DIR,
     PROJECT_ROOT,
     RC_BASE_STANDARD,
     SR_ALPHA_1,

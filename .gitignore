@@ -9,3 +9,18 @@ __pycache__/
 
 # OS files
 .DS_Store
+
+# Generated plots and diagnostics
+plots/
+python_scripts/physics_ice/output/*.png
+python_scripts/physics_ice/output/*.pdf
+python_scripts/physics_ice/*.png
+examples/**/outputs/*.png
+examples/**/outputs/*.pdf
+comparison_*.png
+rel_cross_sections_*.png
+total_cross_section_*.png
+cross_section_*.png
+corrected_*.png
+channel_cross_section_*.png
+stopping_power_*.png

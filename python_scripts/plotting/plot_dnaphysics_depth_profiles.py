@@ -25,7 +25,7 @@ from root_utils import resolve_root_paths
 from constants import (
     FONT_COURIER,
     FONTSIZE_24,
-    OUTPUT_DIR,
+    DIAGNOSTIC_PLOTS_DIR,
     RC_BASE_ELASTIC,
     rcparams_with_fontsize,
 )
@@ -132,7 +132,7 @@ def main() -> None:
     ap.add_argument("--depth-origin-mm", type=float, default=0.0, help="Depth origin in mm (z=0 by default).")
     ap.add_argument("--max-entries", type=int, default=None, help="Limit number of rows for quick tests.")
     ap.add_argument("--print", action="store_true", help="Print depth profile table to stdout.")
-    ap.add_argument("--out", type=Path, default=OUTPUT_DIR / "depth_profiles.png",
+    ap.add_argument("--out", type=Path, default=DIAGNOSTIC_PLOTS_DIR / "depth_profiles.png",
                     help="Output plot path.")
     args = ap.parse_args()
 
@@ -236,6 +236,7 @@ def main() -> None:
         ax.grid(alpha=0.2)
 
     fig.tight_layout()
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, dpi=300)
     print(f"Saved plot to {args.out}")
 

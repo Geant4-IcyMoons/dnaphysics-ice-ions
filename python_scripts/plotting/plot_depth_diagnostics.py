@@ -22,6 +22,7 @@ from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import uproot
 
 from constants import (
+    DIAGNOSTIC_PLOTS_DIR,
     FONT_COURIER,
     FONTSIZE_24,
     RC_BASE_ELASTIC,
@@ -296,20 +297,20 @@ def main() -> None:
     ap.add_argument("--zmin", type=float, default=None, help="Minimum z (in selected units)")
     ap.add_argument("--zmax", type=float, default=None, help="Maximum z (in selected units)")
     ap.add_argument("--z-unit", default="cm", choices=["nm", "um", "mm", "cm"], help="z-axis unit")
-    ap.add_argument("--out", default="depth_diagnostics.png", help="Output plot")
+    ap.add_argument("--out", default=DIAGNOSTIC_PLOTS_DIR / "depth_diagnostics.png", help="Output plot")
     ap.add_argument(
         "--out-cumulative",
-        default="depth_cumulative_deposited_percent.png",
+        default=DIAGNOSTIC_PLOTS_DIR / "depth_cumulative_deposited_percent.png",
         help="Output cumulative deposited-energy fraction plot",
     )
     ap.add_argument(
         "--out-fractions",
-        default="depth_energy_budget_fractions.png",
+        default=DIAGNOSTIC_PLOTS_DIR / "depth_energy_budget_fractions.png",
         help="Output deposited/escaped fractions bar plot",
     )
     ap.add_argument(
         "--out-initial-angles",
-        default="depth_initial_angles.png",
+        default=DIAGNOSTIC_PLOTS_DIR / "depth_initial_angles.png",
         help="Output initial-angle diagnostics plot",
     )
     ap.add_argument(
@@ -320,7 +321,7 @@ def main() -> None:
     )
     ap.add_argument(
         "--out-3d",
-        default="depth_deposition_3d.png",
+        default=DIAGNOSTIC_PLOTS_DIR / "depth_deposition_3d.png",
         help="Output 3D deposited-energy voxel map",
     )
     ap.add_argument(
@@ -452,6 +453,7 @@ def main() -> None:
     axes[2].set_xlabel(f"Depth ({args.z_unit})")
     # constrained_layout handles spacing
     out_path = resolve_path(args.out)
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, bbox_inches="tight")
     print(f"Wrote {out_path}")
 
@@ -493,6 +495,7 @@ def main() -> None:
     ax2.set_xlabel(f"Depth ({args.z_unit})")
     # ax2.grid(True, alpha=0.25)
     out_cum = resolve_path(args.out_cumulative)
+    Path(out_cum).parent.mkdir(parents=True, exist_ok=True)
     fig2.savefig(out_cum, bbox_inches="tight")
     print(f"Wrote {out_cum}")
 
@@ -521,6 +524,7 @@ def main() -> None:
     ax3.yaxis.set_major_formatter(label_every_step(label_step))
     # ax3.grid(True, axis="y", alpha=0.25)
     out_frac = resolve_path(args.out_fractions)
+    Path(out_frac).parent.mkdir(parents=True, exist_ok=True)
     fig3.savefig(out_frac, bbox_inches="tight")
     print(f"Wrote {out_frac}")
 
@@ -615,6 +619,7 @@ def main() -> None:
                 cbar = fig5.colorbar(sm, ax=ax6, pad=0.08, shrink=0.78)
                 cbar.set_label("Deposited energy per voxel (eV)")
                 out_3d = resolve_path(args.out_3d)
+                Path(out_3d).parent.mkdir(parents=True, exist_ok=True)
                 fig5.savefig(out_3d, bbox_inches="tight")
                 print(f"Wrote {out_3d}")
 
@@ -641,6 +646,7 @@ def main() -> None:
         )
 
         out_angles = resolve_path(args.out_initial_angles)
+        Path(out_angles).parent.mkdir(parents=True, exist_ok=True)
         fig4.savefig(out_angles, bbox_inches="tight")
         print(f"Wrote {out_angles}")
     else:

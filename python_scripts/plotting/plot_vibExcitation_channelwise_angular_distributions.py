@@ -37,7 +37,7 @@ from physics_ice.constants import (
     FONTSIZE_12,
     MICHAUD_TABLE2_PATH,
     MICHAUD_TABLE3_PATH,
-    OUTPUT_DIR,
+    DIAGNOSTIC_PLOTS_DIR,
     PROJECT_ROOT,
     RC_BASE_MINIMAL,
     VIB_CHANNEL_MAPPING,
@@ -49,7 +49,7 @@ from root_utils import resolve_root_paths, resolve_first_root
 # Absolute paths used elsewhere in this repo
 # Resolve paths relative to project root (dnaphysics-ice)
 # This script will live under dnaphysics-ice/python_scripts
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+DIAGNOSTIC_PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 CUSTOM_DATA_ROOT = CUSTOM_DATA_ROOT_PROJECT
 
 TABLE2_PATH = str(MICHAUD_TABLE2_PATH)
@@ -419,7 +419,7 @@ if __name__ == "__main__":
     # Example usage: save default plot to output folder
     try:
         fig = plot_hg_for_channel_with_gamma(1, [3., 10., 30.])
-        out = OUTPUT_DIR / "hg_vib_channel_1.png"
+        out = DIAGNOSTIC_PLOTS_DIR / "hg_vib_channel_1.png"
         plt.show()
         fig.savefig(out, bbox_inches='tight')
         print(f"Wrote {out}")

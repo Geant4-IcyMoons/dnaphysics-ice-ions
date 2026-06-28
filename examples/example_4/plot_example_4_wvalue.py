@@ -15,8 +15,9 @@ import numpy as np
 
 def main() -> None:
     script_dir = Path(__file__).resolve().parent
+    plot_dir = script_dir.parents[1] / "plots" / "examples" / script_dir.name
     default_txt = script_dir / "outputs" / "example_4_wvalue.txt"
-    default_out = script_dir / "outputs" / "example_4_wvalue.png"
+    default_out = plot_dir / "example_4_wvalue.png"
 
     parser = argparse.ArgumentParser(description="Plot W-value output for example_4")
     parser.add_argument("--txt", default=str(default_txt), help="Path to example_4 W-value text file")

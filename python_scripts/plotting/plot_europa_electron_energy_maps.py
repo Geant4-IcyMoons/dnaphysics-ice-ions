@@ -21,7 +21,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from constants import (
     FONT_COURIER,
     FONTSIZE_24,
-    OUTPUT_DIR,
+    DIAGNOSTIC_PLOTS_DIR,
     RC_BASE_ELASTIC,
     TOP_ROOT,
     rcparams_with_fontsize,
@@ -143,7 +143,7 @@ def main() -> None:
     parser.add_argument(
         "--out",
         type=Path,
-        default=OUTPUT_DIR / "europa_electron_energy_minmax.png",
+        default=DIAGNOSTIC_PLOTS_DIR / "europa_electron_energy_minmax.png",
         help="Output plot path.",
     )
     parser.add_argument(
@@ -254,6 +254,7 @@ def main() -> None:
         spacing="proportional",
     )
     cbar2.set_label("Electron energy ($T$; MeV)")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(args.out, bbox_inches="tight")
     print(f"Plot saved to: {args.out}")

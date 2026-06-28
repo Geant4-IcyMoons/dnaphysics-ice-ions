@@ -17,6 +17,7 @@ from constants import (
     ELASTIC_BLEND_N_POINTS,
     ELASTIC_BLEND_T,
     CROSS_SECTIONS_DIR,
+    CROSS_SECTION_PLOTS_DIR,
     ELSEPA_MUFFIN_TOTAL,
     EV_TO_MEV,
     FM2_TO_CM2,
@@ -25,7 +26,6 @@ from constants import (
     MICHAUD_SIGMA_SCALE_CM2,
     MICHAUD_TABLE2_PATH,
     MICHAUD_TABLE3_PATH,
-    OUTPUT_DIR,
     RC_BASE_ELASTIC,
     SR_ALPHA_1,
     SR_BETA_1,
@@ -202,7 +202,8 @@ def plot_elastic_cross_sections():
     plt.tight_layout()
     
     # Save figure
-    output_file = OUTPUT_DIR / "elastic_cross_sections.png"
+    output_file = CROSS_SECTION_PLOTS_DIR / "elastic_cross_sections.png"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_file, bbox_inches='tight')
     print(f"\nPlot saved to: {output_file}")
     
@@ -305,7 +306,8 @@ def plot_vibrational_excitations():
     plt.tight_layout()
     
     # Save figure
-    output_file = OUTPUT_DIR / "vibrational_excitations.png"
+    output_file = CROSS_SECTION_PLOTS_DIR / "vibrational_excitations.png"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_file, bbox_inches='tight', dpi=150)
     print(f"\nVibrational excitations plot saved to: {output_file}")
     
@@ -378,7 +380,8 @@ def plot_vibrational_energy_distributions():
     plt.tight_layout()
     
     # Save figure
-    output_file = OUTPUT_DIR / "vibrational_energy_distributions.png"
+    output_file = CROSS_SECTION_PLOTS_DIR / "vibrational_energy_distributions.png"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_file, bbox_inches='tight', dpi=150)
     print(f"\nVibrational energy distributions plot saved to: {output_file}")
     
@@ -409,7 +412,8 @@ def plot_attachment_cross_section():
 
     plt.tight_layout()
 
-    output_file = OUTPUT_DIR / "attachment_cross_section_g4dna.png"
+    output_file = CROSS_SECTION_PLOTS_DIR / "attachment_cross_section_g4dna.png"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_file, bbox_inches='tight', dpi=150)
     print(f"\nAttachment cross-section plot saved to: {output_file}")
 

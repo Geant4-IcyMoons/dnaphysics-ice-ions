@@ -77,7 +77,7 @@ The application writes a ROOT file containing a TTree with per‑step variables 
 
 ## Python diagnostics
 
-Diagnostic scripts live under `python_scripts/` and save figure outputs to `python_scripts/output/`.
+Diagnostic scripts live under `python_scripts/` and save generated figures under `plots/`.
 
 - `plotting/plot_diagnostics_all_processes.py`
   - Plots per‑process/per‑channel cross‑sections from `build/dna.root` with optional reference overlays from `.dat` files (Michaud vib/elastic/attachment).
@@ -99,7 +99,7 @@ python python_scripts/plotting/plot_diagnostics_all_processes.py --root build/dn
 Notes:
 
 - When `G4LEDATA` is set, the script locates reference `.dat` files in `$G4LEDATA/dna`.
-- All outputs are written to `python_scripts/output/`.
+- Numerical caches remain under `python_scripts/physics_ice/output/`; generated figures are written under `plots/`.
 
 ## Data generation and modeling notes
 

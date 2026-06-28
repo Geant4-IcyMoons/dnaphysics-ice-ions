@@ -137,7 +137,7 @@ or explicitly:
 ```bash
 python3 examples/example_3/plot_example_3_depth_diagnostics.py \
   --root "examples/example_3/outputs/example_3.root" \
-  --out "examples/example_3/outputs/example_3_depth_diagnostics.png"
+  --out "plots/examples/example_3/example_3_depth_diagnostics.png"
 ```
 
 The plot shows:

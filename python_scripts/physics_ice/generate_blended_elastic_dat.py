@@ -17,6 +17,7 @@ from constants import (
     BLEND_E_MIN_LOW as E_MIN_LOW,
     BLEND_E_SPLIT as E_SPLIT,
     CROSS_SECTIONS_DIR,
+    CROSS_SECTION_PLOTS_DIR,
     ELASTIC_BLEND_E0,
     ELASTIC_BLEND_T,
     ELSEPA_MUFFIN_CDF,
@@ -28,7 +29,6 @@ from constants import (
     HFONT_COURIER,
     MICHAUD_SIGMA_SCALE_CM2,
     MICHAUD_TABLE2_PATH,
-    OUTPUT_DIR,
     PROJECT_ROOT,
     RC_BASE_STANDARD,
     SR_ALPHA_1,
@@ -50,7 +50,7 @@ FONTSIZE = FONTSIZE_24
 plt.rcParams.update(rcparams_with_fontsize(RC_BASE_STANDARD, FONTSIZE))
 
 ROOT = PROJECT_ROOT
-OUTDIR = OUTPUT_DIR  # diagnostics
+OUTDIR = CROSS_SECTION_PLOTS_DIR  # diagnostics
 OUTDIR.mkdir(parents=True, exist_ok=True)
 # Save final .dat files in the shared cross_sections folder at project root
 DATADIR = CROSS_SECTIONS_DIR

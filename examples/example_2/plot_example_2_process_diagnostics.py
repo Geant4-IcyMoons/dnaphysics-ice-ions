@@ -63,8 +63,9 @@ def load_config(root_file: uproot.reading.ReadOnlyDirectory) -> dict[str, str]:
 
 def main() -> None:
     script_dir = Path(__file__).resolve().parent
+    plot_dir = script_dir.parents[1] / "plots" / "examples" / script_dir.name
     default_root = script_dir / "outputs" / "example_2.root"
-    default_out = script_dir / "outputs" / "example_2_process_diagnostics.png"
+    default_out = plot_dir / "example_2_process_diagnostics.png"
 
     parser = argparse.ArgumentParser(description="Plot process diagnostics for example_2.root")
     parser.add_argument("--root", default=str(default_root), help="Path to example_2.root")

@@ -39,8 +39,9 @@ def format_mev(value_mev: float) -> str:
 
 def main() -> None:
     script_dir = Path(__file__).resolve().parent
+    plot_dir = script_dir.parents[1] / "plots" / "examples" / script_dir.name
     default_root = script_dir / "outputs" / "example_1.root"
-    default_out = script_dir / "outputs" / "example_1_depth_diagnostics.png"
+    default_out = plot_dir / "example_1_depth_diagnostics.png"
 
     parser = argparse.ArgumentParser(description="Plot depth diagnostics for example_1.root")
     parser.add_argument("--root", default=str(default_root), help="Path to example_1.root")

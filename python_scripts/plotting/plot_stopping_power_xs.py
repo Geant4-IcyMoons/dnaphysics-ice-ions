@@ -30,6 +30,7 @@ from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
 
 from constants import (
     CROSS_SECTIONS_DIR,
+    CROSS_SECTION_PLOTS_DIR,
     CUSTOM_DATA_ROOT_GEANT4,
     CUSTOM_DATA_ROOT_PROJECT,
     EMFI_EXCITATION_EEV,
@@ -759,7 +760,7 @@ def main() -> None:
     parser.add_argument(
         "--out",
         type=Path,
-        default=OUTPUT_DIR / "stopping_power_xs_water_vs_ice.png",
+        default=CROSS_SECTION_PLOTS_DIR / "stopping_power_xs_water_vs_ice.png",
         help="Output plot path.",
     )
     parser.add_argument(

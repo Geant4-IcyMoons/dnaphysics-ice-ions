@@ -106,7 +106,7 @@ or explicitly:
 ```bash
 python3 examples/example_2/plot_example_2_process_diagnostics.py \
   --root "examples/example_2/outputs/example_2.root" \
-  --out "examples/example_2/outputs/example_2_process_diagnostics.png"
+  --out "plots/examples/example_2/example_2_process_diagnostics.png"
 ```
 
 The plot shows, by event energy:
