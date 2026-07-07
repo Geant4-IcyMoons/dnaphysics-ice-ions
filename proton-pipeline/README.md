@@ -23,7 +23,24 @@ From the package root:
 
 ```bash
 export DNA_PHYSICS=ice_hex
-./build/dnaphysics_proton e1_proton.mac
+./build/dnaphysics_proton e1_proton.mac 12 proton 10 10 100000 1
+```
+
+Arguments after the macro are:
+
+```text
+threads particle Emin_MeV Emax_MeV events particles_per_event
+```
+
+If `Emin_MeV == Emax_MeV`, the source is monoenergetic. If the two
+energies differ, the source energy is drawn uniformly over that interval.
+The default macro uses a straight beam direction, `/gps/direction 0 0 1`.
+
+Select table mode with:
+
+```bash
+export DNA_PROTON_BARKAS_DCS=0   # bare Born tables
+export DNA_PROTON_BARKAS_DCS=1   # Born+Barkas corrected tables
 ```
 
 `DNA_PHYSICS` supported values:
@@ -44,9 +61,23 @@ The expected filenames are listed in [cross_sections/README.md](./cross_sections
 
 Included in `python_scripts/`:
 
-- `plot_diagnostics_all_processes.py`
+- `plotting/plot_diagnostics_all_processes_protons.py`
+- `plotting/plot_ion_root_observables.py`
 - `plot_depth_diagnostics.py`
 - `constants.py`
 - `root_utils.py`
 
-These scripts expect the usual ROOT output file produced by the run, typically `dna.root`.
+The proton macro writes full ROOT step diagnostics by default.  The output
+contains process/model strings, channel index, per-process macroscopic cross
+section, per-channel microscopic cross section, energy loss, step length, and
+event energy-budget trees.
+
+Examples:
+
+```bash
+python ../python_scripts/plotting/plot_diagnostics_all_processes_protons.py \
+  --root dna.root --processes all --no-show
+
+python ../python_scripts/plotting/plot_ion_root_observables.py \
+  --root dna.root --particle proton --emin-eV 1e5 --emax-eV 1e8
+```

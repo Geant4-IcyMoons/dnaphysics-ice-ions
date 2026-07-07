@@ -8,11 +8,49 @@
 
 #include "G4DNAIonisation.hh"
 #include "G4DNAExcitation.hh"
-#include "G4DNARuddIonisationModel.hh"
-#include "G4DNAMillerGreenExcitationModel.hh"
 #include "G4DNAEmfietzoglou_iceProtonIonisationModel.hh"
 #include "G4DNAEmfietzoglou_iceProtonExcitationModel.hh"
 #include "G4Proton.hh"
+
+#include <cctype>
+#include <cstdlib>
+#include <string>
+
+namespace {
+std::string ToLower(std::string value)
+{
+  for (auto& ch : value) ch = static_cast<char>(std::tolower(ch));
+  return value;
+}
+
+G4bool ReadEnvFlag(const char* key, G4bool defaultValue)
+{
+  const char* raw = std::getenv(key);
+  if (!raw || !*raw) return defaultValue;
+  const std::string value = ToLower(raw);
+  if (value == "1" || value == "true" || value == "on" || value == "yes") {
+    return true;
+  }
+  if (value == "0" || value == "false" || value == "off" || value == "no") {
+    return false;
+  }
+  G4cout << "PhysicsList_Proton: invalid " << key << "='" << raw
+         << "', using default " << (defaultValue ? "on" : "off") << G4endl;
+  return defaultValue;
+}
+
+G4double ReadEnvEnergyEV(const char* key, G4double defaultValue)
+{
+  const char* raw = std::getenv(key);
+  if (!raw || !*raw) return defaultValue;
+  char* end = nullptr;
+  const G4double value = std::strtod(raw, &end);
+  if (end != raw && value > 0.) return value * eV;
+  G4cout << "PhysicsList_Proton: invalid " << key << "='" << raw
+         << "', using default " << defaultValue / eV << " eV" << G4endl;
+  return defaultValue;
+}
+}  // namespace
 
 PhysicsList_Proton::PhysicsList_Proton() : G4VModularPhysicsList()
 {
@@ -40,56 +78,59 @@ void PhysicsList_Proton::ConstructProcess()
   AddTransportation();
 
   auto* ph = G4PhysicsListHelper::GetPhysicsListHelper();
+  auto* proton = G4Proton::ProtonDefinition();
 
-  // Proton excitation model tiling:
-  // - Geant4-DNA water (Miller-Green): 10 eV - 100 keV
-  // - Custom ice model:                100 keV - 10 MeV
-  constexpr G4double kExcWaterLow = 10.0 * eV;
-  constexpr G4double kExcWaterHigh = 100.0 * keV;
-  constexpr G4double kExcIceLow = 100.0 * keV;
-  constexpr G4double kExcIceHigh = 10.0 * MeV;
+  const G4bool enableExcitation =
+      ReadEnvFlag("DNA_PROTON_ENABLE_EXCITATION", true);
+  const G4bool enableIonisation =
+      ReadEnvFlag("DNA_PROTON_ENABLE_IONISATION", true);
+  const G4bool useBarkas =
+      ReadEnvFlag("DNA_PROTON_BARKAS_DCS",
+                  ReadEnvFlag("DNA_ICE_PROTON_BARKAS_DCS", false));
+  G4double protonMin = ReadEnvEnergyEV("DNA_PROTON_MIN_ENERGY_EV", 1.0e5 * eV);
+  G4double protonMax = ReadEnvEnergyEV("DNA_PROTON_MAX_ENERGY_EV", 1.0e8 * eV);
+  if (protonMin >= protonMax) {
+    G4cout << "PhysicsList_Proton: invalid proton energy window, using "
+           << "0.1-100 MeV" << G4endl;
+    protonMin = 0.1 * MeV;
+    protonMax = 100. * MeV;
+  }
 
-  auto* protonExcitation = new G4DNAExcitation("proton_G4DNAExcitation");
-  auto* protonWaterExcitationModel = new G4DNAMillerGreenExcitationModel();
-  protonWaterExcitationModel->SelectStationary(false);
-  protonWaterExcitationModel->SetLowEnergyLimit(kExcWaterLow);
-  protonWaterExcitationModel->SetHighEnergyLimit(kExcWaterHigh);
-  protonExcitation->SetEmModel(protonWaterExcitationModel);
+  G4cout << "PhysicsList_Proton: proton-only ice DCS models"
+         << " [excitation=" << (enableExcitation ? "on" : "off")
+         << ", ionisation=" << (enableIonisation ? "on" : "off")
+         << ", barkas_dcs=" << (useBarkas ? "on" : "off")
+         << ", range=" << protonMin / MeV << "-" << protonMax / MeV
+         << " MeV]" << G4endl;
 
-  auto* protonIceExcitationModel = new G4DNAEmfietzoglou_iceProtonExcitationModel();
-  protonIceExcitationModel->SelectStationary(false);
-  protonIceExcitationModel->SetLowEnergyLimit(kExcIceLow);
-  protonIceExcitationModel->SetHighEnergyLimit(kExcIceHigh);
-  protonExcitation->AddEmModel(2, protonIceExcitationModel);
-  protonExcitation->SetMinKinEnergy(kExcWaterLow);
-  protonExcitation->SetMaxKinEnergy(kExcIceHigh);
-  ph->RegisterProcess(protonExcitation, G4Proton::ProtonDefinition());
+  if (ReadEnvFlag("DNA_PROTON_ENABLE_CHARGE_EXCHANGE", false)) {
+    G4cout << "PhysicsList_Proton: charge exchange is not registered in this "
+           << "proton-only DCS pass; leaving it off." << G4endl;
+  }
 
-  // Proton ionisation model tiling:
-  // - Geant4-DNA water (Rudd): 10 eV - 100 keV
-  // - Custom ice model:         100 keV - 10 MeV
-  constexpr G4double kWaterLow = 10.0 * eV;
-  constexpr G4double kWaterHigh = 100.0 * keV;
-  constexpr G4double kIceLow = 100.0 * keV;
-  constexpr G4double kIceHigh = 10.0 * MeV;
+  if (enableExcitation) {
+    auto* protonExcitation = new G4DNAExcitation("proton_G4DNAExcitation");
+    auto* protonExcitationModel = new G4DNAEmfietzoglou_iceProtonExcitationModel();
+    protonExcitationModel->SelectStationary(false);
+    protonExcitationModel->SetLowEnergyLimit(protonMin);
+    protonExcitationModel->SetHighEnergyLimit(protonMax);
+    protonExcitation->SetEmModel(protonExcitationModel);
+    protonExcitation->SetMinKinEnergy(protonMin);
+    protonExcitation->SetMaxKinEnergy(protonMax);
+    ph->RegisterProcess(protonExcitation, proton);
+  }
 
-  auto* protonIonisation = new G4DNAIonisation("proton_G4DNAIonisation");
-  auto* protonWaterModel = new G4DNARuddIonisationModel();
-  protonWaterModel->SelectStationary(false);
-  protonWaterModel->SetLowEnergyLimit(kWaterLow);
-  protonWaterModel->SetHighEnergyLimit(kWaterHigh);
-  protonIonisation->SetEmModel(protonWaterModel);
-
-  auto* protonModel = new G4DNAEmfietzoglou_iceProtonIonisationModel();
-  protonModel->SelectFasterComputation(false);
-  protonModel->SelectStationary(false);
-  protonModel->SetLowEnergyLimit(kIceLow);
-  protonModel->SetHighEnergyLimit(kIceHigh);
-  protonIonisation->AddEmModel(2, protonModel);
-  protonIonisation->SetMinKinEnergy(kWaterLow);
-  protonIonisation->SetMaxKinEnergy(kIceHigh);
-
-  ph->RegisterProcess(protonIonisation, G4Proton::ProtonDefinition());
+  if (enableIonisation) {
+    auto* protonIonisation = new G4DNAIonisation("proton_G4DNAIonisation");
+    auto* protonIonisationModel = new G4DNAEmfietzoglou_iceProtonIonisationModel();
+    protonIonisationModel->SelectStationary(false);
+    protonIonisationModel->SetLowEnergyLimit(protonMin);
+    protonIonisationModel->SetHighEnergyLimit(protonMax);
+    protonIonisation->SetEmModel(protonIonisationModel);
+    protonIonisation->SetMinKinEnergy(protonMin);
+    protonIonisation->SetMaxKinEnergy(protonMax);
+    ph->RegisterProcess(protonIonisation, proton);
+  }
 }
 
 void PhysicsList_Proton::AddPhysics(const G4String&)

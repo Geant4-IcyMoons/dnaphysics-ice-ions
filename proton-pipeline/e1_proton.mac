@@ -1,12 +1,10 @@
-# Proton test macro (excitation + ionisation)
+# Proton-only ice DCS test macro.
+# Select bare vs Barkas tables with DNA_PROTON_BARKAS_DCS before /run/initialize.
 
-/control/verbose 1
-/run/verbose 1
-/event/verbose 1
-/tracking/verbose 1
-
-# number of threads (for MT build)
-/run/numberOfThreads 8
+/control/verbose 0
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
 
 /dna/test/setLogMode full
 
@@ -15,14 +13,3 @@
 /dna/test/setMat G4_WATER_ICE_USER
 
 /run/initialize
-
-/gps/particle proton
-/gps/number 1
-/gps/pos/type Point
-/gps/pos/centre 0 0 -0.01 mm
-/gps/direction 0 0 1
-/gps/ene/type Mono
-
-# Must stay inside proton model limits: 0.1 MeV - 10 MeV
-/gps/ene/mono 0.5 MeV
-/run/beamOn 10

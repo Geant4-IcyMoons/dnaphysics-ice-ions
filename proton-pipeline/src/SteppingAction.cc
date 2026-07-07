@@ -271,7 +271,6 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   }
 
   if (fEventAction &&
-      partDef == G4Electron::ElectronDefinition() &&
       processName.find("G4DNAIonisation") != std::string::npos) {
     fEventAction->AddInelastic();
   }

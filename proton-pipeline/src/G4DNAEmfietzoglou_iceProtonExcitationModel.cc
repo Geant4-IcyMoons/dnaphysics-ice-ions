@@ -1,53 +1,20 @@
 //
-// ********************************************************************
-// * License and Disclaimer                                           *
-// *                                                                  *
-// * The  Geant4 software  is  copyright of the Copyright Holders  of *
-// * the Geant4 Collaboration.  It is provided  under  the terms  and *
-// * conditions of the Geant4 Software License,  included in the file *
-// * LICENSE and available at  http://cern.ch/geant4/license .  These *
-// * include a list of copyright holders.                             *
-// *                                                                  *
-// * Neither the authors of this software system, nor their employing *
-// * institutes,nor the agencies providing financial support for this *
-// * work  make  any representation or  warranty, express or implied, *
-// * regarding  this  software system or assume any liability for its *
-// * use.  Please see the license in the file  LICENSE  and URL above *
-// * for the full disclaimer and the limitation of liability.         *
-// *                                                                  *
-// * This  code  implementation is the result of  the  scientific and *
-// * technical work of the GEANT4 collaboration.                      *
-// * By using,  copying,  modifying or  distributing the software (or *
-// * any work based  on the software)  you  agree  to acknowledge its *
-// * use  in  resulting  scientific  publications,  and indicate your *
-// * acceptance of all terms of the Geant4 Software license.          *
-// ********************************************************************
-//
-// Based on the work described in
-// Rad Res 163, 98-111 (2005)
-// D. Emfietzoglou_ice, H. Nikjoo
-//
-// Authors of the class (2014):
-// I. Kyriakou (kyriak@cc.uoi.gr)
-// D. Emfietzoglou_ice (demfietz@cc.uoi.gr)
-// S. Incerti (incerti@cenbg.in2p3.fr)
+// Proton-only excitation model for generated ice DCS/TCS tables.
 //
 
 #include "G4DNAEmfietzoglou_iceProtonExcitationModel.hh"
-#include "G4SystemOfUnits.hh"
+
 #include "G4DNAChemistryManager.hh"
 #include "G4DNAMolecularMaterial.hh"
+#include "G4Material.hh"
+#include "G4Proton.hh"
+#include "G4SystemOfUnits.hh"
 #include "ModelDataRegistry.hh"
+
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
-#include <fstream>
 #include <string>
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
-
-using namespace std;
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
 
 namespace {
 thread_local G4int g_lastIceProtonExcLevel = -1;
@@ -61,31 +28,44 @@ std::string ToLower(std::string value)
 
 std::string NormalizeIcePhase(const char* raw)
 {
-  if (!raw) return {};
-  std::string phase = ToLower(raw);
-  if (phase == "water") return {};
-  if (phase == "ice_hex") {
-    return "hexagonal";
-  }
-  if (phase == "ice_am") {
-    return "amorphous";
-  }
-  return {};
+  if (!raw) return "hexagonal";
+  const std::string phase = ToLower(raw);
+  if (phase == "ice_hex" || phase == "hexagonal") return "hexagonal";
+  if (phase == "ice_am" || phase == "amorphous") return "amorphous";
+  return "hexagonal";
 }
 
-std::string BuildDataPath(const char* data_dir, const std::string& filename)
+G4bool ReadEnvFlag(const char* key, G4bool defaultValue)
 {
-  if (!data_dir || !*data_dir) {
-    return std::string("dna/") + filename;
+  const char* raw = std::getenv(key);
+  if (!raw || !*raw) return defaultValue;
+  const std::string value = ToLower(raw);
+  if (value == "1" || value == "true" || value == "on" || value == "yes") {
+    return true;
   }
-  return std::string(data_dir) + "/dna/" + filename;
+  if (value == "0" || value == "false" || value == "off" || value == "no") {
+    return false;
+  }
+  G4cout << "G4DNAEmfietzoglou_iceProtonExcitationModel: invalid "
+         << key << "='" << raw << "', using default "
+         << (defaultValue ? "on" : "off") << G4endl;
+  return defaultValue;
 }
 
-bool FileExists(const std::string& path)
+G4bool UseBarkasDcsTables()
 {
-  std::ifstream fin(path.c_str());
-  return fin.good();
+  const G4bool legacy = ReadEnvFlag("DNA_ICE_PROTON_BARKAS_DCS", false);
+  return ReadEnvFlag("DNA_PROTON_BARKAS_DCS", legacy);
 }
+}  // namespace
+
+G4DNAEmfietzoglou_iceProtonExcitationModel::
+G4DNAEmfietzoglou_iceProtonExcitationModel(const G4ParticleDefinition*,
+                                           const G4String& nam)
+    : G4VEmModel(nam)
+{
+  SetLowEnergyLimit(0.1 * MeV);
+  SetHighEnergyLimit(100. * MeV);
 }
 
 G4int G4DNAEmfietzoglou_iceProtonExcitationModel::GetLastExcitationIndex()
@@ -109,292 +89,92 @@ void G4DNAEmfietzoglou_iceProtonExcitationModel::ClearLastPartialSigma_cm2()
   g_lastIceProtonExcSigma_cm2 = -1.0;
 }
 
-G4DNAEmfietzoglou_iceProtonExcitationModel::G4DNAEmfietzoglou_iceProtonExcitationModel(const G4ParticleDefinition*,
-                                                   const G4String& nam)
-:G4VEmModel(nam)
+void G4DNAEmfietzoglou_iceProtonExcitationModel::Initialise(
+    const G4ParticleDefinition* particle,
+    const G4DataVector&)
 {
-    fpMolWaterDensity = nullptr;
+  if (particle != G4Proton::ProtonDefinition()) {
+    G4Exception("G4DNAEmfietzoglou_iceProtonExcitationModel::Initialise",
+                "protonexc001", FatalException,
+                "Model is only applicable to protons.");
+  }
 
-    verboseLevel= 0;
-    // Verbosity scale:
-    // 0 = nothing
-    // 1 = warning for energy non-conservation
-    // 2 = details of energy budget
-    // 3 = calculation of cross sections, file openings, sampling of atoms
-    // 4 = entering in methods
+  const std::string phase = NormalizeIcePhase(std::getenv("DNA_PHYSICS"));
+  const std::string correction = UseBarkasDcsTables() ? "_barkas_dcs" : "";
+  const std::string total =
+      "sigma_excitation_proton_" + phase + "_ice" + correction +
+      "_emfietzoglou_kyriakou";
+  const std::string diff =
+      "sigmadiff_excitation_proton_" + phase + "_ice" + correction +
+      "_emfietzoglou_kyriakou.dat";
 
-    if( verboseLevel>0 )
-    {
-      G4cout << "Emfietzoglou_ice proton excitation model is constructed " << G4endl;
-    }
-    fParticleChangeForGamma = nullptr;
-
-    SetLowEnergyLimit(100.*keV);
-    SetHighEnergyLimit(10.*MeV);
-
-    // Selection of stationary mode
-    statCode = false;
-}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
-
-G4DNAEmfietzoglou_iceProtonExcitationModel::~G4DNAEmfietzoglou_iceProtonExcitationModel()
-{
-    // Cross section
-
-    std::map< G4String,G4DNACrossSectionDataSet*,std::less<G4String> >::iterator pos;
-    for (pos = tableData.begin(); pos != tableData.end(); ++pos)
-    {
-        G4DNACrossSectionDataSet* table = pos->second;
-        delete table;
-    }
-
-}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
-
-void G4DNAEmfietzoglou_iceProtonExcitationModel::Initialise(const G4ParticleDefinition* particle,
-                                          const G4DataVector& /*cuts*/)
-{
-
-    if (verboseLevel > 3)
-        G4cout << "Calling G4DNAEmfietzoglou_iceProtonExcitationModel::Initialise()" << G4endl;
-
-    if (particle != G4Proton::ProtonDefinition()) {
-      G4Exception("G4DNAEmfietzoglou_iceProtonExcitationModel::Initialise",
-                  "em0002", FatalException, "Model is only applicable to protons.");
-    }
-
-    G4String fileProton("dna/sigma_excitation_p_born");
-    // Require ice-specific total/differential excitation tables when phase is set.
-    std::string diffFileToUse;
-    const char* path = G4FindDataDir("G4LEDATA");
-    // Phase is encoded in DNA_PHYSICS (water | ice_hex | ice_am).
-    const std::string icePhase = NormalizeIcePhase(std::getenv("DNA_PHYSICS"));
-    if (!icePhase.empty()) {
-      const std::string phaseTotalFile =
-          "sigma_excitation_p_" + icePhase + "_ice_emfietzoglou_kyriakou";
-      const std::string phaseDiffFile =
-          "sigmadiff_excitation_p_" + icePhase + "_ice_emfietzoglou_kyriakou.dat";
-      const std::string totalPath = BuildDataPath(path, phaseTotalFile + ".dat");
-      const std::string phasePath = BuildDataPath(path, phaseDiffFile);
-      if (!FileExists(totalPath)) {
-        const std::string missing = "Missing data file: " + totalPath;
-        G4Exception("G4DNAEmfietzoglou_iceProtonExcitationModel::Initialise",
-                    "em0003", FatalException, missing.c_str());
-      }
-      if (!FileExists(phasePath)) {
-        const std::string missing = "Missing data file: " + phasePath;
-        G4Exception("G4DNAEmfietzoglou_iceProtonExcitationModel::Initialise",
-                    "em0003", FatalException, missing.c_str());
-      }
-      fileProton = "dna/" + phaseTotalFile;
-      diffFileToUse = phaseDiffFile;
-    } else {
-      diffFileToUse = "sigmadiff_excitation_p_born.dat";
-    }
-    ModelDataRegistry::Instance().Record(
+  fTable.Load(total, diff);
+  ModelDataRegistry::Instance().Record(
       std::string("model_ref:") + GetName(),
-      ModelDataRegistry::NormalizeDatBasename(fileProton));
-    if (!diffFileToUse.empty()) {
-      ModelDataRegistry::Instance().Record(
-        std::string("model_ref_diff:") + GetName(),
-        ModelDataRegistry::NormalizeDatBasename(diffFileToUse));
-    }
+      ModelDataRegistry::NormalizeDatBasename(total));
+  ModelDataRegistry::Instance().Record(
+      std::string("model_ref_diff:") + GetName(),
+      ModelDataRegistry::NormalizeDatBasename(diff));
+  ModelDataRegistry::Instance().Record(
+      std::string("model_mode:") + GetName(),
+      UseBarkasDcsTables() ? "born_plus_barkas_dcs" : "bare_born");
 
-    G4ParticleDefinition* protonDef = G4Proton::ProtonDefinition();
+  fpMolWaterDensity =
+      G4DNAMolecularMaterial::Instance()->GetNumMolPerVolTableFor(
+          G4Material::GetMaterial("G4_WATER"));
+  fParticleChangeForGamma = GetParticleChangeForGamma();
+  fInitialised = true;
 
-    G4String proton;
-
-    G4double scaleFactor = (1.e-22 / 3.343) * m*m;
-
-    // *** PROTON
-
-    proton = protonDef->GetParticleName();
-
-    tableFile[proton] = fileProton;
-
-    // Cross section
-
-    auto  tableP = new G4DNACrossSectionDataSet(new G4LogLogInterpolation, eV,scaleFactor );
-    tableP->LoadData(fileProton);
-
-    tableData[proton] = tableP;
-
-    //
-
-    if( verboseLevel>0 )
-    {
-      G4cout << "Emfietzoglou_ice proton excitation model is initialized " << G4endl
-             << "Energy range: "
-             << LowEnergyLimit() / eV << " eV - "
-             << HighEnergyLimit() / keV << " keV for "
-             << particle->GetParticleName()
-             << G4endl;
-    }
-
-    // Initialize water density pointer
-    fpMolWaterDensity = G4DNAMolecularMaterial::Instance()->GetNumMolPerVolTableFor(G4Material::GetMaterial("G4_WATER"));
-
-    if (isInitialised) return;
-    fParticleChangeForGamma = GetParticleChangeForGamma();
-    isInitialised = true;
+  G4cout << "Initialized proton ice excitation model with "
+         << fTable.TotalPath() << " and " << fTable.DiffPath() << G4endl;
 }
 
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
-
-G4double G4DNAEmfietzoglou_iceProtonExcitationModel::CrossSectionPerVolume(const G4Material* material,
-                                                         const G4ParticleDefinition* particleDefinition,
-                                                         G4double ekin,
-                                                         G4double,
-                                                         G4double)
+G4double G4DNAEmfietzoglou_iceProtonExcitationModel::CrossSectionPerVolume(
+    const G4Material* material,
+    const G4ParticleDefinition* particleDefinition,
+    G4double ekin,
+    G4double,
+    G4double)
 {
-    if (verboseLevel > 3)
-        G4cout << "Calling CrossSectionPerVolume() of G4DNAEmfietzoglou_iceProtonExcitationModel" << G4endl;
-
-    if (particleDefinition != G4Proton::ProtonDefinition()) return 0;
-
-    // Calculate total cross section for model
-
-    G4double sigma=0;
-
-    G4double waterDensity = (*fpMolWaterDensity)[material->GetIndex()];
-
-    const G4String& particleName = particleDefinition->GetParticleName();
-
-    if (ekin >= LowEnergyLimit() && ekin <= HighEnergyLimit())
-    {
-      std::map< G4String,G4DNACrossSectionDataSet*,std::less<G4String> >::iterator pos;
-      pos = tableData.find(particleName);
-
-      if (pos != tableData.end())
-      {
-        G4DNACrossSectionDataSet* table = pos->second;
-        if (table != nullptr) sigma = table->FindValue(ekin);
-      }
-      else
-      {
-        G4Exception("G4DNAEmfietzoglou_iceProtonExcitationModel::CrossSectionPerVolume","em0002",
-                            FatalException,"Model not applicable to particle type.");
-      }
-    }
-
-    if (verboseLevel > 2)
-    {
-      G4cout << "__________________________________" << G4endl;
-      G4cout << "G4DNAEmfietzoglou_iceProtonExcitationModel - XS INFO START" << G4endl;
-      G4cout << "Kinetic energy(eV)=" << ekin/eV << " particle : " << particleName << G4endl;
-      G4cout << "Cross section per water molecule (cm^2)=" << sigma/cm/cm << G4endl;
-      G4cout << "Cross section per water molecule (cm^-1)=" << sigma*waterDensity/(1./cm) << G4endl;
-      //G4cout << "   Cross section per water molecule (cm^-1)=" <<
-      ///sigma*material->GetAtomicNumDensityVector()[1]/(1./cm) << G4endl;
-      G4cout << "G4DNAEmfietzoglou_iceProtonExcitationModel - XS INFO END" << G4endl;
-    }
-
-    return sigma*waterDensity;
+  if (particleDefinition != G4Proton::ProtonDefinition()) return 0.;
+  if (!fInitialised || ekin < LowEnergyLimit() || ekin > HighEnergyLimit()) {
+    return 0.;
+  }
+  const G4double waterDensity = (*fpMolWaterDensity)[material->GetIndex()];
+  return fTable.TotalCrossSection(ekin) * waterDensity;
 }
 
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
-
-void G4DNAEmfietzoglou_iceProtonExcitationModel::SampleSecondaries(std::vector<G4DynamicParticle*>* /*fvect*/,
-                                                 const G4MaterialCutsCouple* /*couple*/,
-                                                 const G4DynamicParticle* aDynamicParticle,
-                                                 G4double,
-                                                 G4double)
+void G4DNAEmfietzoglou_iceProtonExcitationModel::SampleSecondaries(
+    std::vector<G4DynamicParticle*>*,
+    const G4MaterialCutsCouple*,
+    const G4DynamicParticle* particle,
+    G4double,
+    G4double)
 {
+  const G4double kineticEnergy = particle->GetKineticEnergy();
+  if (!fInitialised ||
+      kineticEnergy < LowEnergyLimit() ||
+      kineticEnergy > HighEnergyLimit()) {
+    return;
+  }
 
-    if (verboseLevel > 3)
-        G4cout << "Calling SampleSecondaries() of G4DNAEmfietzoglou_iceProtonExcitationModel" << G4endl;
+  const G4int level = fTable.SelectComponent(kineticEnergy);
+  g_lastIceProtonExcLevel = level;
+  g_lastIceProtonExcSigma_cm2 =
+      fTable.TotalCrossSection(kineticEnergy, level) / (cm * cm);
 
-    G4double k = aDynamicParticle->GetKineticEnergy();
+  G4double transfer = fTable.SampleTransferEnergy(kineticEnergy, level);
+  if (transfer <= 0.) return;
+  transfer = std::min(transfer, 0.999 * kineticEnergy);
 
-    const G4String& particleName = aDynamicParticle->GetDefinition()->GetParticleName();
+  fParticleChangeForGamma->ProposeMomentumDirection(
+      particle->GetMomentumDirection());
+  fParticleChangeForGamma->SetProposedKineticEnergy(
+      fStationary ? kineticEnergy : kineticEnergy - transfer);
+  fParticleChangeForGamma->ProposeLocalEnergyDeposit(transfer);
 
-    G4int level = RandomSelect(k,particleName);
-    g_lastIceProtonExcLevel = level;
-    G4double excitationEnergy = waterStructure.ExcitationEnergy(level);
-    G4double newEnergy = k - excitationEnergy;
-
-    if (newEnergy > 0)
-    {
-        fParticleChangeForGamma->ProposeMomentumDirection(aDynamicParticle->GetMomentumDirection());
-
-        if (!statCode) fParticleChangeForGamma->SetProposedKineticEnergy(newEnergy);
-        else fParticleChangeForGamma->SetProposedKineticEnergy(k);
-
-        fParticleChangeForGamma->ProposeLocalEnergyDeposit(excitationEnergy);
-    }
-
-    const G4Track * theIncomingTrack = fParticleChangeForGamma->GetCurrentTrack();
-    G4DNAChemistryManager::Instance()->CreateWaterMolecule(eExcitedMolecule,
-                                                           level,
-                                                           theIncomingTrack);
-}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-G4int G4DNAEmfietzoglou_iceProtonExcitationModel::RandomSelect(G4double k, const G4String& particle)
-{
-
-    G4int level = 0;
-    g_lastIceProtonExcSigma_cm2 = -1.0;
-
-    std::map< G4String,G4DNACrossSectionDataSet*,std::less<G4String> >::iterator pos;
-    pos = tableData.find(particle);
-
-    if (pos != tableData.end())
-    {
-        G4DNACrossSectionDataSet* table = pos->second;
-
-        if (table != nullptr)
-        {
-            auto  valuesBuffer = new G4double[table->NumberOfComponents()];
-            const auto  n = (G4int)table->NumberOfComponents();
-            G4int i(n);
-            G4double value = 0.;
-
-            //Check reading of initial xs file
-	        //G4cout << table->GetComponent(0)->FindValue(k)/ ((1.e-22 / 3.343) * m*m) << G4endl;
-            //G4cout << table->GetComponent(1)->FindValue(k)/ ((1.e-22 / 3.343) * m*m) << G4endl;
-            //G4cout << table->GetComponent(2)->FindValue(k)/ ((1.e-22 / 3.343) * m*m) << G4endl;
-            //G4cout << table->GetComponent(3)->FindValue(k)/ ((1.e-22 / 3.343) * m*m) << G4endl;
-            //G4cout << table->GetComponent(4)->FindValue(k)/ ((1.e-22 / 3.343) * m*m) << G4endl;
-            //G4cout << table->GetComponent(5)->FindValue(k)/ ((1.e-22 / 3.343) * m*m) << G4endl;
-            //G4cout << table->GetComponent(6)->FindValue(k)/ ((1.e-22 / 3.343) * m*m) << G4endl;
-            //abort();
-
-	    while (i>0)
-            {
-                i--;
-                valuesBuffer[i] = table->GetComponent(i)->FindValue(k);
-                value += valuesBuffer[i];
-            }
-
-            value *= G4UniformRand();
-
-            i = n;
-
-            while (i > 0)
-            {
-                i--;
-
-                if (valuesBuffer[i] > value)
-                {
-                    g_lastIceProtonExcSigma_cm2 = valuesBuffer[i] / (cm * cm);
-                    delete[] valuesBuffer;
-                    return i;
-                }
-                value -= valuesBuffer[i];
-            }
-
-            delete[] valuesBuffer;
-
-        }
-    }
-    else
-    {
-        G4Exception("G4DNAEmfietzoglou_iceProtonExcitationModel::RandomSelect","em0002",
-                    FatalException,"Model not applicable to particle type.");
-    }
-    return level;
+  const G4Track* incomingTrack = fParticleChangeForGamma->GetCurrentTrack();
+  G4DNAChemistryManager::Instance()->CreateWaterMolecule(eExcitedMolecule,
+                                                         level,
+                                                         incomingTrack);
 }

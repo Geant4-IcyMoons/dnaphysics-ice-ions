@@ -48,7 +48,14 @@ import numpy as np
 
 import barkas_dcs
 import emfietzoglou_model_finite_q as model
-from constants import AVOGADRO, CROSS_SECTION_PLOTS_DIR, H2O_MOLAR_MASS_G_MOL, RC_BASE_ELASTIC, rcparams_with_fontsize
+from constants import (
+    AVOGADRO,
+    CROSS_SECTION_PLOTS_DIR,
+    FONT_COURIER,
+    H2O_MOLAR_MASS_G_MOL,
+    RC_BASE_ELASTIC,
+    rcparams_with_fontsize,
+)
 
 
 SBETHE_DATASET_ID = "7zw25f428t"
@@ -398,9 +405,9 @@ def _plot(path, rows):
     plt.rcParams.update(
         rcparams_with_fontsize(
             RC_BASE_ELASTIC,
-            12,
+            14,
             {
-                "font.family": "DejaVu Sans",
+                "font.family": FONT_COURIER,
                 "figure.dpi": 120,
                 "savefig.dpi": 300,
             },
@@ -413,20 +420,18 @@ def _plot(path, rows):
         sharex=True,
         gridspec_kw={"height_ratios": [3.0, 1.2]},
     )
-    ax.loglog(T[valid], ref[valid], "ko-", lw=2.2, label="SBETHE water")
-    ax.loglog(T, ours_formula, color="#c0392b", ls="--", marker="s", lw=2.0, label="ours, SBETHE OOS")
-    ax.loglog(T, ours_prod, color="#2c7fb8", ls=":", marker="^", lw=2.0, label="ours, Geant4-table OOS")
+    ax.loglog(T[valid], ref[valid], "k-", lw=2.4, label="SBETHE Barkas")
+    ax.loglog(T, ours_formula, color="#c0392b", ls="--", marker="s", lw=2.0, label="Our kernel + SBETHE OOS")
+    ax.loglog(T, ours_prod, color="#2c7fb8", ls=":", marker="^", lw=2.1, label="Our kernel + ice OOS")
     ax.set_ylabel(r"$S_\mathrm{Barkas}$ (MeV cm$^2$/g)")
-    ax.set_title("Barkas stopping-moment benchmark, bare proton in H2O")
+    ax.set_title("Barkas stopping-moment check, bare proton in H2O")
     ax.legend(loc="best", frameon=False)
-    ax.grid(True, which="both", ls=":", lw=0.6, alpha=0.35)
 
     rax.axhline(0.0, color="black", lw=1.0)
-    rax.semilogx(T[valid], rel_formula[valid], color="#c0392b", marker="s", lw=2.0, label="formula")
-    rax.semilogx(T[valid], rel_prod[valid], color="#2c7fb8", marker="^", lw=2.0, label="Geant4 OOS")
+    rax.semilogx(T[valid], rel_formula[valid], color="#c0392b", marker="s", lw=2.0, label="kernel")
+    rax.semilogx(T[valid], rel_prod[valid], color="#2c7fb8", marker="^", lw=2.0, label="ice OOS")
     rax.set_xlabel("Proton kinetic energy (MeV)")
     rax.set_ylabel("fractional diff.")
-    rax.grid(True, which="both", ls=":", lw=0.6, alpha=0.35)
     rax.legend(loc="best", frameon=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight")
