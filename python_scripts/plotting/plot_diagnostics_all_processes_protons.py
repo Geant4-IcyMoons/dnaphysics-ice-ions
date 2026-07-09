@@ -41,6 +41,7 @@ import warnings
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import uproot
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -127,6 +128,173 @@ def _show_pending_figures_if_needed() -> None:
         return
     plt.show()
     plt.close("all")
+
+
+def _is_channel_overlay_process(pcode: int) -> bool:
+    """Processes whose ROOT diagnostics should show all physical channels together."""
+    family = _process_family(int(pcode))
+    return family in ("excitation", "ionisation") and int(pcode) != 15
+
+
+def _reference_for_process(config_refs: dict[str, str] | None, pcode: int) -> str | None:
+    if not config_refs:
+        return None
+    pcode = int(pcode)
+    if pcode == 15:
+        return config_refs.get("ref_vib")
+    family = _process_family(pcode)
+    if family == "excitation":
+        return config_refs.get("ref_excitation") or config_refs.get("ref_excitation_born")
+    if family == "ionisation":
+        return config_refs.get("ref_ionisation") or config_refs.get("ref_ionisation_born")
+    if family == "attachment":
+        return config_refs.get("ref_attachment")
+    return None
+
+
+def _mev_tick_label(value_eV: float, _pos=None) -> str:
+    value_MeV = float(value_eV) * 1e-6
+    if not np.isfinite(value_MeV):
+        return ""
+    if abs(value_MeV) < 1e-12:
+        return "0"
+    return f"{value_MeV:g}"
+
+
+def _format_energy_axis(ax) -> None:
+    ax.set_xlabel("Kinetic Energy (MeV)")
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(_mev_tick_label))
+    ax.xaxis.offsetText.set_visible(False)
+    if ax.get_xscale() == "log":
+        ax.xaxis.set_major_locator(mticker.LogLocator(base=10.0, numticks=6))
+        ax.xaxis.set_minor_formatter(mticker.NullFormatter())
+    ax.tick_params(axis="both", which="major", labelsize=max(9, int(FONTSIZE * 0.70)))
+    ax.tick_params(axis="x", which="major", pad=2)
+
+
+def _short_legend_label(label: str) -> str:
+    text = str(label or "").strip()
+    lower = text.lower()
+    if not text:
+        return "Reference"
+    if lower.startswith("sigma_") or lower.endswith(".dat"):
+        return "Reference table"
+    if text.startswith("Simulation"):
+        return "Simulation"
+    return text if len(text) <= 34 else text[:31] + "..."
+
+
+def _dedupe_legend(handles: list, labels: list[str]) -> tuple[list, list[str]]:
+    out_handles = []
+    out_labels = []
+    seen = set()
+    for handle, label in zip(handles, labels):
+        clean = _short_legend_label(label)
+        if clean in seen:
+            continue
+        seen.add(clean)
+        out_handles.append(handle)
+        out_labels.append(clean)
+    return out_handles, out_labels
+
+
+def _add_bottom_legend(fig, handles: list, labels: list[str], *, max_cols: int = 4) -> float:
+    handles, labels = _dedupe_legend(handles, labels)
+    if not handles:
+        return 0.08
+    ncols = max(1, min(max_cols, len(handles)))
+    rows = int(math.ceil(len(handles) / ncols))
+    bottom = 0.13 + 0.045 * max(0, rows - 1)
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.015),
+        ncol=ncols,
+        frameon=False,
+        fontsize=max(9, int(FONTSIZE * 0.70)),
+        handlelength=2.6,
+        columnspacing=1.2,
+    )
+    return bottom
+
+
+def _collapse_xy_by_energy(x_eV: np.ndarray, y: np.ndarray, nbins: int = 120) -> tuple[np.ndarray, np.ndarray]:
+    """Average repeated ROOT samples into a compact plottable energy series."""
+    x = np.asarray(x_eV, dtype=float)
+    yy = np.asarray(y, dtype=float)
+    valid = np.isfinite(x) & np.isfinite(yy) & (x > 0.0)
+    if not np.any(valid):
+        return np.asarray([], dtype=float), np.asarray([], dtype=float)
+    x = x[valid]
+    yy = yy[valid]
+    e_min = float(np.nanmin(x))
+    e_max = float(np.nanmax(x))
+    if e_max <= e_min:
+        return np.asarray([e_min], dtype=float), np.asarray([float(np.nanmean(yy))], dtype=float)
+    unique = np.unique(x)
+    if unique.size <= nbins:
+        xs = []
+        ys = []
+        for val in unique:
+            m = x == val
+            xs.append(float(val))
+            ys.append(float(np.nanmean(yy[m])))
+        return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
+    if e_max / max(e_min, 1e-30) > 1.2:
+        bins = np.geomspace(e_min, e_max, nbins + 1)
+    else:
+        bins = np.linspace(e_min, e_max, nbins + 1)
+    idx = np.digitize(x, bins) - 1
+    centers = np.sqrt(bins[:-1] * bins[1:]) if bins[0] > 0 else 0.5 * (bins[:-1] + bins[1:])
+    xs = []
+    ys = []
+    for b in range(nbins):
+        m = idx == b
+        if np.any(m):
+            xs.append(float(centers[b]))
+            ys.append(float(np.nanmean(yy[m])))
+    return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
+
+
+def _plot_sim_series(ax, x_eV: np.ndarray, y: np.ndarray, *, color, label: str, zorder: int = 2):
+    x_plot, y_plot = _collapse_xy_by_energy(x_eV, y)
+    if x_plot.size == 0:
+        return None
+    if x_plot.size == 1:
+        return ax.plot(
+            x_plot,
+            y_plot,
+            linestyle="none",
+            marker="o",
+            markersize=4.5,
+            color=color,
+            label=label,
+            zorder=zorder,
+        )[0]
+    return ax.plot(
+        x_plot,
+        y_plot,
+        linestyle="--",
+        linewidth=2.0,
+        color=color,
+        label=label,
+        zorder=zorder,
+    )[0]
+
+
+def _format_3d_summary_axis(ax, title: str | None = None) -> None:
+    ax.set_xlabel("x (nm)", labelpad=8)
+    ax.set_ylabel("y (nm)", labelpad=8)
+    ax.set_zlabel("z (nm)", labelpad=10)
+    if title:
+        ax.set_title(title, pad=10)
+    ax.view_init(elev=24, azim=-55)
+    try:
+        ax.tick_params(axis="both", which="major", pad=2, labelsize=max(8, int(FONTSIZE * 0.60)))
+        ax.tick_params(axis="z", which="major", pad=2, labelsize=max(8, int(FONTSIZE * 0.60)))
+    except Exception:
+        pass
 
 
 def _find_g4ledata_file(basename: str) -> str | None:
@@ -1223,7 +1391,7 @@ def _stream_accumulate(path: str, tree_name: str, step_size: int, nH2O_cm3: floa
             if chan_idx_all is not None:
                 ch = chan_idx_all[m]
             if ch is None or not np.any(ch >= 0):
-                if int(pcode) in (12, 13) and dE_all is not None:
+                if _is_channel_overlay_process(int(pcode)) and dE_all is not None:
                     ch = _infer_channel_indices(int(pcode), dE_all[m])
                 else:
                     ch = np.zeros_like(ke, dtype=int)
@@ -1678,7 +1846,8 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
     )
 
     pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
-    legend_added = False
+    legend_handles: list = []
+    legend_labels: list[str] = []
 
     # Use counts-based partial XS when model does not provide per-channel microscopic XS.
     has_chan_micro = chan_micro is not None and np.any(chan_micro > 0.0)
@@ -1710,13 +1879,12 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
             if x.size == 0:
                 ax.set_visible(False)
                 continue
-            line_sim, = ax.plot(
+            line_sim = _plot_sim_series(
+                ax,
                 x,
                 y * scale,
-                "--",
-                linewidth=2,
-                c="dodgerblue",
-                label="Simulation (counts)",
+                color="dodgerblue",
+                label="Simulation",
                 zorder=2,
             )
         else:
@@ -1746,12 +1914,11 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
                 xs_micro_sel = chan_micro[m]
                 xs_micro_cm2 = np.where(xs_micro_sel > 0.0, xs_micro_sel, xs_micro_cm2)
 
-            line_sim, = ax.plot(
+            line_sim = _plot_sim_series(
+                ax,
                 ke[ke_order],
                 xs_micro_cm2[ke_order] * scale,
-                "--",
-                linewidth=2,
-                c="dodgerblue",
+                color="dodgerblue",
                 label="Simulation",
                 zorder=2,
             )
@@ -1765,7 +1932,7 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
             lr, = ax.plot(ref_E, y_ref, color="black", linewidth=2.5, alpha=0.9, label=ref_label or "Reference", zorder=1)
             lines_ref.append(lr)
 
-        ax.set_xlabel("Kinetic Energy (eV)")
+        _format_energy_axis(ax)
         ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
         panel_label = f"{pname}_ch{ch}" if (chan_idx is not None and np.any(chan_idx >= 0)) else pname
         ax.set_title(panel_label)
@@ -1784,8 +1951,9 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
         if span_vals:
             e_min = float(np.nanmin(span_vals))
             e_max = float(np.nanmax(span_vals))
-            if e_max / max(e_min, 1e-30) > 1e3:
+            if e_max / max(e_min, 1e-30) >= 100.0:
                 ax.set_xscale("log")
+                _format_energy_axis(ax)
 
         # Independent y autoscale per panel avoids visually "empty" channels
         # when one channel dominates by orders of magnitude.
@@ -1794,17 +1962,12 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
             pad = 0.08 * (ymax - ymin)
             ax.set_ylim(max(0.0, ymin - pad), ymax + pad)
 
-        if not legend_added and (lines_ref or line_sim is not None):
-            handles = []
-            labels = []
-            if lines_ref:
-                handles.extend(lines_ref)
-                labels.extend([lr.get_label() for lr in lines_ref])
-            if line_sim is not None:
-                handles.append(line_sim); labels.append(line_sim.get_label())
-            if handles:
-                ax.legend(handles, labels, loc="best", frameon=True)
-                legend_added = True
+        if lines_ref:
+            legend_handles.extend(lines_ref)
+            legend_labels.extend([lr.get_label() for lr in lines_ref])
+        if line_sim is not None:
+            legend_handles.append(line_sim)
+            legend_labels.append(line_sim.get_label())
 
     total_axes = nrows * ncols
     for j in range(n, total_axes):
@@ -1827,8 +1990,9 @@ def plot_cross_sections_for_process(arrs, pcode: int, ncols: int, scale: float,
             ax.set_xlabel("")
             ax.tick_params(labelbottom=True)
 
+    bottom = _add_bottom_legend(fig, legend_handles, legend_labels, max_cols=2)
     fig.align_ylabels([axes[r][0] for r in range(nrows) if axes[r][0].get_visible()])
-    fig.tight_layout()
+    fig.tight_layout(rect=(0.0, bottom, 1.0, 1.0))
     return _finalize_figure(fig, out_path)
 
 def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
@@ -1904,23 +2068,27 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
         if total_series[0].size == 0 and ke_all.size:
             total_series = (ke_all, total_xs_micro)
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(9.5, 6.8))
     pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
     cmap = plt.cm.tab10 if len(channels) <= 10 else plt.cm.tab20
     colors = cmap(np.linspace(0, 1, len(channels)))
+    legend_handles: list = []
+    legend_labels: list[str] = []
 
     # Reference per-channel
     if ref_E is not None and ref_by_ch:
         for i, ch in enumerate(channels):
             if ch >= len(ref_by_ch):
                 continue
-            ax.plot(
+            line, = ax.plot(
                 ref_E,
                 ref_by_ch[ch],
                 color=colors[i],
                 linewidth=2.0,
                 label=f"ch{ch} ref",
             )
+            legend_handles.append(line)
+            legend_labels.append(line.get_label())
 
     # Simulation per-channel
     for i, ch in enumerate(channels):
@@ -1929,33 +2097,38 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
         x_sim, y_sim = series_by_ch[ch]
         if x_sim.size == 0:
             continue
-        ax.plot(
+        line = _plot_sim_series(
+            ax,
             x_sim,
             y_sim * scale,
-            linestyle="--",
-            marker="o",
-            markersize=3,
             color=colors[i],
             label=f"ch{ch} sim",
         )
+        if line is not None:
+            legend_handles.append(line)
+            legend_labels.append(line.get_label())
 
     # Cumulative totals
     if ref_E is not None and ref_by_ch:
         ref_cum = np.sum(np.vstack(ref_by_ch), axis=0)
-        ax.plot(ref_E, ref_cum, color="gray", linewidth=4, label="total ref")
+        line, = ax.plot(ref_E, ref_cum, color="gray", linewidth=4, label="total ref")
+        legend_handles.append(line)
+        legend_labels.append(line.get_label())
     if total_series[0].size:
         x_tot, y_tot = total_series
         order = np.argsort(x_tot)
-        ax.plot(
+        line = _plot_sim_series(
+            ax,
             x_tot[order],
             y_tot[order] * scale,
             color="black",
-            linestyle="--",
-            linewidth=2.0,
             label="total sim",
         )
+        if line is not None:
+            legend_handles.append(line)
+            legend_labels.append(line.get_label())
 
-    ax.set_xlabel("Kinetic Energy (eV)")
+    _format_energy_axis(ax)
     ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
     ax.set_title(pname)
 
@@ -1973,11 +2146,12 @@ def plot_channel_overlay_for_process(arrs, pcode: int, scale: float,
     if span_vals:
         e_min = float(np.nanmin(span_vals))
         e_max = float(np.nanmax(span_vals))
-        if e_max / max(e_min, 1e-30) > 1e3:
+        if e_max / max(e_min, 1e-30) >= 100.0:
             ax.set_xscale("log")
+            _format_energy_axis(ax)
 
-    ax.legend(loc="best", frameon=True, ncol=2)
-    fig.tight_layout()
+    bottom = _add_bottom_legend(fig, legend_handles, legend_labels, max_cols=4)
+    fig.tight_layout(rect=(0.0, bottom, 1.0, 1.0))
     return _finalize_figure(fig, out_path)
 
 def plot_cross_sections_for_process_stream(acc: dict, pcode: int, model: str, ncols: int,
@@ -2030,7 +2204,8 @@ def plot_cross_sections_for_process_stream(acc: dict, pcode: int, model: str, nc
     )
 
     pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
-    legend_added = False
+    legend_handles: list = []
+    legend_labels: list[str] = []
     for i, ch in enumerate(channels):
         r, c = divmod(i, ncols)
         ax = axes[r][c]
@@ -2046,13 +2221,12 @@ def plot_cross_sections_for_process_stream(acc: dict, pcode: int, model: str, nc
         if not np.any(mask):
             ax.set_visible(False)
             continue
-        line_sim, = ax.plot(
+        line_sim = _plot_sim_series(
+            ax,
             centers[mask],
             y[mask] * scale,
-            "--",
-            linewidth=2,
-            c="dodgerblue",
-            label="Simulation (binned)",
+            color="dodgerblue",
+            label="Simulation",
             zorder=2,
         )
 
@@ -2065,35 +2239,32 @@ def plot_cross_sections_for_process_stream(acc: dict, pcode: int, model: str, nc
             lr, = ax.plot(ref_E, y_ref, color="black", linewidth=2.5, alpha=0.9, label=ref_label or "Reference", zorder=1)
             lines_ref.append(lr)
 
-        ax.set_xlabel("Kinetic Energy (eV)")
+        _format_energy_axis(ax)
         ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
         ax.set_title(f"{pname}_ch{ch}")
         if data["is_log"]:
             ax.set_xscale("log")
+            _format_energy_axis(ax)
         ymin, ymax = ax.get_ylim()
         if np.isfinite(ymin) and np.isfinite(ymax) and ymax > ymin:
             pad = 0.08 * (ymax - ymin)
             ax.set_ylim(max(0.0, ymin - pad), ymax + pad)
 
-        if not legend_added and (lines_ref or line_sim is not None):
-            handles = []
-            labels = []
-            if lines_ref:
-                handles.extend(lines_ref)
-                labels.extend([lr.get_label() for lr in lines_ref])
-            if line_sim is not None:
-                handles.append(line_sim); labels.append(line_sim.get_label())
-            if handles:
-                ax.legend(handles, labels, loc="best", frameon=True)
-                legend_added = True
+        if lines_ref:
+            legend_handles.extend(lines_ref)
+            legend_labels.extend([lr.get_label() for lr in lines_ref])
+        if line_sim is not None:
+            legend_handles.append(line_sim)
+            legend_labels.append(line_sim.get_label())
 
     total_axes = nrows * ncols
     for j in range(n, total_axes):
         r, c = divmod(j, ncols)
         axes[r][c].set_visible(False)
 
+    bottom = _add_bottom_legend(fig, legend_handles, legend_labels, max_cols=2)
     fig.align_ylabels([axes[r][0] for r in range(nrows) if axes[r][0].get_visible()])
-    fig.tight_layout()
+    fig.tight_layout(rect=(0.0, bottom, 1.0, 1.0))
     return _finalize_figure(fig, out_path)
 
 def plot_channel_overlay_for_process_stream(acc: dict, pcode: int, model: str, scale: float,
@@ -2119,17 +2290,21 @@ def plot_channel_overlay_for_process_stream(acc: dict, pcode: int, model: str, s
     if not channels:
         channels = [0]
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(9.5, 6.8))
     pname = _process_name_map().get(int(pcode), f"proc{int(pcode)}")
     cmap = plt.cm.tab10 if len(channels) <= 10 else plt.cm.tab20
     colors = cmap(np.linspace(0, 1, len(channels)))
+    legend_handles: list = []
+    legend_labels: list[str] = []
 
     # Reference per-channel
     if ref_E is not None and ref_by_ch:
         for i, ch in enumerate(channels):
             if ch >= len(ref_by_ch):
                 continue
-            ax.plot(ref_E, ref_by_ch[ch], color=colors[i], linewidth=2.0, label=f"ch{ch} ref")
+            line, = ax.plot(ref_E, ref_by_ch[ch], color=colors[i], linewidth=2.0, label=f"ch{ch} ref")
+            legend_handles.append(line)
+            legend_labels.append(line.get_label())
 
     # Simulation per-channel (counts-based)
     for i, ch in enumerate(channels):
@@ -2139,38 +2314,44 @@ def plot_channel_overlay_for_process_stream(acc: dict, pcode: int, model: str, s
         mask = (count_ch > 0) & np.isfinite(y)
         if not np.any(mask):
             continue
-        ax.plot(
+        line = _plot_sim_series(
+            ax,
             centers[mask],
             y[mask] * scale,
-            linestyle="--",
-            marker="o",
-            markersize=3,
             color=colors[i],
             label=f"ch{ch} sim",
         )
+        if line is not None:
+            legend_handles.append(line)
+            legend_labels.append(line.get_label())
 
     if ref_E is not None and ref_by_ch:
         ref_cum = np.sum(np.vstack(ref_by_ch), axis=0)
-        ax.plot(ref_E, ref_cum, color="gray", linewidth=4, label="total ref")
+        line, = ax.plot(ref_E, ref_cum, color="gray", linewidth=4, label="total ref")
+        legend_handles.append(line)
+        legend_labels.append(line.get_label())
 
     if np.any(count_total > 0):
         mask = count_total > 0
-        ax.plot(
+        line = _plot_sim_series(
+            ax,
             centers[mask],
             mean_total[mask] * scale,
             color="black",
-            linestyle="--",
-            linewidth=2.0,
             label="total sim",
         )
+        if line is not None:
+            legend_handles.append(line)
+            legend_labels.append(line.get_label())
 
-    ax.set_xlabel("Kinetic Energy (eV)")
+    _format_energy_axis(ax)
     ax.set_ylabel("Cross Section (10$^{-16}$ cm$^{2}$)")
     ax.set_title(pname)
     if data["is_log"]:
         ax.set_xscale("log")
-    ax.legend(loc="best", frameon=True, ncol=2)
-    fig.tight_layout()
+        _format_energy_axis(ax)
+    bottom = _add_bottom_legend(fig, legend_handles, legend_labels, max_cols=4)
+    fig.tight_layout(rect=(0.0, bottom, 1.0, 1.0))
     return _finalize_figure(fig, out_path)
 
 def _overlay_lineshape(ax, shape: str, centers: list[float], widths: list[float] | None, bins):
@@ -2266,10 +2447,11 @@ def plot_summary_stream(acc: dict, out_path: str, fontsize: float):
     summary = acc.get("summary", {})
     if not summary:
         return None
-    fig, axs = plt.subplots(1, 4, figsize=(20, 5), squeeze=True, constrained_layout=True)
+    fig = plt.figure(figsize=(12, 9), constrained_layout=True)
+    gs = fig.add_gridspec(2, 2)
 
     # Panel 1: histogram of flagProcess
-    ax1 = axs[0]
+    ax1 = fig.add_subplot(gs[0, 0])
     proc_counts = summary.get("proc_counts", {})
     if proc_counts:
         uniq = np.array(sorted(proc_counts.keys()), dtype=float)
@@ -2290,14 +2472,14 @@ def plot_summary_stream(acc: dict, out_path: str, fontsize: float):
 
     # Panel 2: 3D scatter
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
-    ax2 = fig.add_subplot(1, 4, 2, projection="3d")
+    ax2 = fig.add_subplot(gs[0, 1], projection="3d")
     sx = summary["scatter"]["x"]; sy = summary["scatter"]["y"]; sz = summary["scatter"]["z"]
     if sx.size:
         ax2.scatter(sx, sy, sz, s=1, c="black", alpha=0.6)
-    ax2.set_xlabel("x (nm)"); ax2.set_ylabel("y (nm)"); ax2.set_zlabel("z (nm)")
+    _format_3d_summary_axis(ax2, summary.get("primary_label", "primary"))
 
     # Panel 3: position histogram along x by process categories
-    ax3 = axs[2]
+    ax3 = fig.add_subplot(gs[1, 0])
     centers = 0.5 * (summary["x_bins"][1:] + summary["x_bins"][:-1])
     has_positive_panel3 = False
     for lab, (ids, col) in _summary_category_styles().items():
@@ -2315,12 +2497,13 @@ def plot_summary_stream(acc: dict, out_path: str, fontsize: float):
         ax3.set_yscale("log")
 
     # Panel 4: kinetic energy histogram for primary particle species
-    ax4 = axs[3]
+    ax4 = fig.add_subplot(gs[1, 1])
     k_centers = 0.5 * (summary["k_bins"][1:] + summary["k_bins"][:-1])
     ax4.hist(k_centers, bins=summary["k_bins"], weights=summary["k_hist"], histtype="stepfilled", alpha=0.7, color="#d62728")
     if np.any(np.asarray(summary["k_hist"], dtype=float) > 0):
         ax4.set_yscale("log")
-    ax4.set_xlabel("Kinetic Energy (eV)"); ax4.set_ylabel("Counts")
+    _format_energy_axis(ax4)
+    ax4.set_ylabel("Counts")
     ax4.set_title(summary.get("primary_label", "primary"))
 
     return _finalize_figure(fig, out_path)
@@ -2580,10 +2763,11 @@ def plot_summary(arrs, out_path: str, fontsize: float):
         arrs.get("trackID"),
     )
     primary_label = _particle_label_from_flag(primary_flag)
-    fig, axs = plt.subplots(1, 4, figsize=(20, 5), squeeze=True, constrained_layout=True)
+    fig = plt.figure(figsize=(12, 9), constrained_layout=True)
+    gs = fig.add_gridspec(2, 2)
 
     # Panel 1: histogram of flagProcess with category overlays
-    ax1 = axs[0]
+    ax1 = fig.add_subplot(gs[0, 0])
     vals = np.asarray(fl_p, dtype=float)
     uniq, counts = np.unique(vals, return_counts=True)
     ax1.bar(uniq, counts, width=0.9, color="#dddddd", edgecolor="none", label="All")
@@ -2602,16 +2786,15 @@ def plot_summary(arrs, out_path: str, fontsize: float):
 
     # Panel 2: 3D scatter x:y:z for primary particle species (downsample)
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
-    ax2 = fig.add_subplot(1, 4, 2, projection='3d')
+    ax2 = fig.add_subplot(gs[0, 1], projection='3d')
     idx = np.where(fp_i == primary_flag)[0]
     step = max(1, idx.size // 50000) if idx.size > 50000 else 1
     idx = idx[::step]
     ax2.scatter(x_nm[idx], y_nm[idx], z_nm[idx], s=1, c='black', alpha=0.6)
-    ax2.set_xlabel("x (nm)"); ax2.set_ylabel("y (nm)"); ax2.set_zlabel("z (nm)")
-    ax2.set_title(primary_label)
+    _format_3d_summary_axis(ax2, primary_label)
 
     # Panel 3: position histogram along x by process categories
-    ax3 = axs[2]
+    ax3 = fig.add_subplot(gs[1, 0])
     bins = np.linspace(0, 2000, 101)
     fl_pi = np.asarray(fl_p, dtype=int)
     has_positive_panel3 = False
@@ -2628,7 +2811,7 @@ def plot_summary(arrs, out_path: str, fontsize: float):
         ax3.set_yscale('log')
 
     # Panel 4: kinetic energy histogram for primary particle species
-    ax4 = axs[3]
+    ax4 = fig.add_subplot(gs[1, 1])
     m = (fp_i == primary_flag)
     kmax = np.nanmax(np.asarray(kinE)[m]) if np.any(m) else np.nanmax(np.asarray(kinE))
     rng = (0, float(kmax) if np.isfinite(kmax) and kmax>0 else 2000)
@@ -2636,7 +2819,8 @@ def plot_summary(arrs, out_path: str, fontsize: float):
     h_counts, _ = np.histogram(np.asarray(kinE)[m], bins=100, range=rng)
     if np.any(h_counts > 0):
         ax4.set_yscale('log')
-    ax4.set_xlabel("Kinetic Energy (eV)"); ax4.set_ylabel("Counts")
+    _format_energy_axis(ax4)
+    ax4.set_ylabel("Counts")
     ax4.set_title(primary_label)
 
     return _finalize_figure(fig, out_path)
@@ -2876,23 +3060,14 @@ def main():
 
         base, ext = os.path.splitext(args.out)
         pname_map = _process_name_map()
-        ref_by_proc: dict[int, str | None] = {}
-        if config_refs and args.dat is None:
-            ref_by_proc = {
-                12: config_refs.get("ref_excitation") or config_refs.get("ref_excitation_born"),
-                13: config_refs.get("ref_ionisation") or config_refs.get("ref_ionisation_born"),
-                14: config_refs.get("ref_attachment"),
-                15: config_refs.get("ref_vib"),
-            }
-
         for pcode in proc_list:
-            dat_path = args.dat if args.dat else ref_by_proc.get(int(pcode))
+            dat_path = args.dat if args.dat else _reference_for_process(config_refs, int(pcode))
             suffix = pname_map.get(int(pcode), str(int(pcode)))
             models = meta.get("models_by_proc", {}).get(int(pcode), set())
             if not models:
                 models = {""}
 
-            if int(pcode) in (12, 13):
+            if _is_channel_overlay_process(int(pcode)):
                 for model in sorted(models):
                     msafe = f"_{_sanitize_label(model)}" if model else ""
                     outname = f"{base}_{suffix}{msafe}{ext or '.png'}"
@@ -2958,18 +3133,10 @@ def main():
     # Plot per-process XS
     base, ext = os.path.splitext(args.out)
     pname_map = _process_name_map()
-    ref_by_proc: dict[int, str | None] = {}
-    if config_refs and args.dat is None:
-        ref_by_proc = {
-            12: config_refs.get("ref_excitation") or config_refs.get("ref_excitation_born"),
-            13: config_refs.get("ref_ionisation") or config_refs.get("ref_ionisation_born"),
-            14: config_refs.get("ref_attachment"),
-            15: config_refs.get("ref_vib"),
-        }
     for pcode in proc_list:
-        dat_path = args.dat if args.dat else ref_by_proc.get(int(pcode))
+        dat_path = args.dat if args.dat else _reference_for_process(config_refs, int(pcode))
         suffix = pname_map.get(int(pcode), str(int(pcode)))
-        if int(pcode) in (12, 13):
+        if _is_channel_overlay_process(int(pcode)):
             # If model names are present, emit one plot per model using model_ref
             if arrs is not None and "modelName" in arrs:
                 models_all = _decode_to_str_array(arrs["modelName"])

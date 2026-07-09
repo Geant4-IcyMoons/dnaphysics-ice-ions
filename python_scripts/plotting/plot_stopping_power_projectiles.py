@@ -13,11 +13,16 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import uproot
 from matplotlib.ticker import LogFormatterMathtext, LogLocator, MaxNLocator, NullFormatter
 
+PYTHON_SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(PYTHON_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SCRIPTS_DIR))
 PHYSICS_ICE_DIR = Path(__file__).resolve().parents[1] / "physics_ice"
 if str(PHYSICS_ICE_DIR) not in sys.path:
     sys.path.insert(0, str(PHYSICS_ICE_DIR))
@@ -35,10 +40,13 @@ from constants import (  # noqa: E402
     MC2_eV,
     N,
     OUTPUT_DIR,
+    PROJECT_ROOT,
     PROJECTILE_LIBRARY,
     RC_BASE_ELASTIC,
     rcparams_with_fontsize,
 )
+from physics_ice.root_utils import resolve_root_paths  # noqa: E402
+from plot_proton_root_observables import ION_CONFIGS as ROOT_ION_CONFIGS  # noqa: E402
 
 plt.rcParams["font.family"] = FONT_COURIER
 plt.rcParams["mathtext.rm"] = FONT_COURIER
@@ -1079,23 +1087,24 @@ def _plot(
         icru_y_grid = _interp_loglog(icru_energy, icru_y, energy_grid)
 
     for item in series:
+        item_energy = np.asarray(item.get("energy_eV", energy_grid), dtype=float)
         density = float(item["density_g_cm3"])
         y_sp, ylabel = _units_and_label(units, density, item["dedx_total"])
         y_imfp = item["imfp_total"]
-        valid_sp = np.isfinite(y_sp) & (y_sp > 0.0)
-        valid_imfp = np.isfinite(y_imfp) & (y_imfp > 0.0)
+        valid_sp = np.isfinite(item_energy) & (item_energy > 0.0) & np.isfinite(y_sp) & (y_sp > 0.0)
+        valid_imfp = np.isfinite(item_energy) & (item_energy > 0.0) & np.isfinite(y_imfp) & (y_imfp > 0.0)
         emin = item.get("emin")
         emax = item.get("emax")
         if emin is not None:
-            valid_sp &= energy_grid >= float(emin)
-            valid_imfp &= energy_grid >= float(emin)
+            valid_sp &= item_energy >= float(emin)
+            valid_imfp &= item_energy >= float(emin)
         if emax is not None:
-            valid_sp &= energy_grid <= float(emax)
-            valid_imfp &= energy_grid <= float(emax)
+            valid_sp &= item_energy <= float(emax)
+            valid_imfp &= item_energy <= float(emax)
         valid_any = valid_sp | valid_imfp
         if np.any(valid_any):
-            xmins.append(float(np.min(energy_grid[valid_any])))
-            xmaxs.append(float(np.max(energy_grid[valid_any])))
+            xmins.append(float(np.min(item_energy[valid_any])))
+            xmaxs.append(float(np.max(item_energy[valid_any])))
         style = dict(styles.get(item["ice_type"], {"color": "0.5", "ls": "-"}))
         if item.get("charge_scaling") in {"zeff_born_only", "zeff_decomposed_born_plus_barkas"}:
             style["color"] = "#D55E00"
@@ -1103,7 +1112,7 @@ def _plot(
             style["color"] = "#CC79A7"
             style["ls"] = ":"
         ax_sp.loglog(
-            energy_grid[valid_sp],
+            item_energy[valid_sp],
             y_sp[valid_sp],
             color=style["color"],
             ls=style["ls"],
@@ -1111,7 +1120,7 @@ def _plot(
             label=item["label"],
         )
         ax_imfp.loglog(
-            energy_grid[valid_imfp],
+            item_energy[valid_imfp],
             y_imfp[valid_imfp],
             color=style["color"],
             ls=style["ls"],
@@ -1119,16 +1128,17 @@ def _plot(
             label=item["label"],
         )
         if icru_y_grid is not None and item.get("ice_type") in {"amorphous", "hexagonal"}:
-            residual = (y_sp / icru_y_grid) - 1.0
+            icru_y_item = _interp_loglog(icru_energy, icru_y, item_energy)
+            residual = (y_sp / icru_y_item) - 1.0
             valid_res = (
                 valid_sp
-                & np.isfinite(icru_y_grid)
-                & (icru_y_grid > 0.0)
+                & np.isfinite(icru_y_item)
+                & (icru_y_item > 0.0)
                 & np.isfinite(residual)
             )
             if np.any(valid_res):
                 ax_res.semilogx(
-                    energy_grid[valid_res],
+                    item_energy[valid_res],
                     residual[valid_res],
                     color=style["color"],
                     ls=style["ls"],
@@ -1160,7 +1170,10 @@ def _plot(
     ax_res.yaxis.set_major_locator(MaxNLocator(nbins=3))
     ax_imfp.set_ylabel(r"IMFP (nm$^{-1}$)")
     ax_imfp.set_xlabel(f"{projectile_axis_label} energy ($T$; eV)")
-    ax_imfp.set_xlim(float(np.min(energy_grid)), float(np.max(energy_grid)))
+    if xmins and xmaxs:
+        ax_imfp.set_xlim(float(np.min(xmins)), float(np.max(xmaxs)))
+    else:
+        ax_imfp.set_xlim(float(np.min(energy_grid)), float(np.max(energy_grid)))
     for ax in (ax_sp, ax_res, ax_imfp):
         ax.xaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0,), numticks=50))
         ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
@@ -1189,6 +1202,7 @@ def _json_array(values: np.ndarray) -> list[float | None]:
 
 
 def _series_to_json(item: dict, energy_grid: np.ndarray, units: str) -> dict:
+    item_energy = np.asarray(item.get("energy_eV", energy_grid), dtype=float)
     density = float(item["density_g_cm3"])
     sp_total, sp_label = _units_and_label(units, density, item["dedx_total"])
     sp_exc, _ = _units_and_label(units, density, item["dedx_exc"])
@@ -1207,6 +1221,7 @@ def _series_to_json(item: dict, energy_grid: np.ndarray, units: str) -> dict:
             "min": float(item["emin"]),
             "max": float(item["emax"]),
         },
+        "energy_eV": _json_array(item_energy),
         "stopping_power": {
             "units": sp_label,
             "total": _json_array(sp_total),
@@ -1232,6 +1247,10 @@ def _series_to_json(item: dict, energy_grid: np.ndarray, units: str) -> dict:
     }
     if item.get("source_model"):
         payload["source_model"] = str(item["source_model"])
+    if item.get("stopping_source"):
+        payload["stopping_source"] = str(item["stopping_source"])
+    if item.get("simulation_cache"):
+        payload["simulation_cache"] = str(item["simulation_cache"])
     if item.get("cross_section_tables"):
         payload["cross_section_tables"] = str(item["cross_section_tables"])
     if item.get("table_semantics"):
@@ -1277,6 +1296,7 @@ def _ratios_at_energies(
     water_sp = None
     water_imfp = None
     if water is not None:
+        water_energy = np.asarray(water.get("energy_eV", energy_grid), dtype=float)
         water_sp = _units_and_label(units, float(water["density_g_cm3"]), water["dedx_total"])[0]
         water_imfp = np.asarray(water["imfp_total"], dtype=float)
     material_counts = {
@@ -1291,17 +1311,18 @@ def _ratios_at_energies(
         water_sp_point = None
         water_imfp_point = None
         if water_sp is not None:
-            water_sp_point = float(_interp_loglog(energy_grid, water_sp, np.asarray([point]))[0])
-            water_imfp_point = float(_interp_loglog(energy_grid, water_imfp, np.asarray([point]))[0])
+            water_sp_point = float(_interp_loglog(water_energy, water_sp, np.asarray([point]))[0])
+            water_imfp_point = float(_interp_loglog(water_energy, water_imfp, np.asarray([point]))[0])
         icru_point = None
         if icru_energy is not None and icru_y is not None:
             icru_point = float(_interp_loglog(icru_energy, icru_y, np.asarray([point]))[0])
 
         for item in series:
+            item_energy = np.asarray(item.get("energy_eV", energy_grid), dtype=float)
             sp = _units_and_label(units, float(item["density_g_cm3"]), item["dedx_total"])[0]
             imfp = np.asarray(item["imfp_total"], dtype=float)
-            sp_point = float(_interp_loglog(energy_grid, sp, np.asarray([point]))[0])
-            imfp_point = float(_interp_loglog(energy_grid, imfp, np.asarray([point]))[0])
+            sp_point = float(_interp_loglog(item_energy, sp, np.asarray([point]))[0])
+            imfp_point = float(_interp_loglog(item_energy, imfp, np.asarray([point]))[0])
             entry = {
                 "label": str(item.get("label", item["ice_type"])),
                 "stopping_power": sp_point if sp_point > 0.0 else None,
@@ -1315,6 +1336,8 @@ def _ratios_at_energies(
                 entry["table_semantics"] = str(item["table_semantics"])
             if item.get("charge_scaling"):
                 entry["charge_scaling"] = str(item["charge_scaling"])
+            if item.get("stopping_source"):
+                entry["stopping_source"] = str(item["stopping_source"])
             entry["barkas_difference_used"] = bool(item.get("barkas_difference_used", False))
             if item.get("warnings"):
                 entry["warnings"] = list(item["warnings"])
@@ -1349,7 +1372,10 @@ def _write_json_output(
     include_bloch_stopping: bool,
     cross_section_set: str,
     cross_section_set_requested: str,
+    stopping_source: str = "cross_sections",
+    simulation_root: str | None = None,
 ) -> None:
+    is_simulation_source = stopping_source == "simulation"
     icru = None
     icru_curve = _load_icru_stopping_power(projectile_key)
     if icru_curve is not None:
@@ -1378,22 +1404,48 @@ def _write_json_output(
             "include_kshell": bool(include_kshell),
             "include_water": bool(include_water),
             "barkas_zeff": bool(barkas_zeff),
-            "barkas_zeff_formula": "Zeff = Z * (1 - exp(-125 * beta * Z^(-2/3)))",
+            "barkas_zeff_formula": (
+                "not_applicable"
+                if is_simulation_source
+                else "Zeff = Z * (1 - exp(-125 * beta * Z^(-2/3)))"
+            ),
             "include_bloch_stopping": bool(include_bloch_stopping),
             "bloch_formula": (
-                "Delta_L = psi(1) - Re psi(1+i eta) = "
-                "-sum eta^2/[n*(n^2+eta^2)]"
+                "not_applicable"
+                if is_simulation_source
+                else (
+                    "Delta_L = psi(1) - Re psi(1+i eta) = "
+                    "-sum eta^2/[n*(n^2+eta^2)]"
+                )
             ),
             "bloch_stopping_cross_section": (
-                "S_Bloch = 4*pi*r_e^2*m_e*c^2*Z_H2O*(q^2/beta^2)*Delta_L"
+                "not_applicable"
+                if is_simulation_source
+                else "S_Bloch = 4*pi*r_e^2*m_e*c^2*Z_H2O*(q^2/beta^2)*Delta_L"
             ),
-            "bloch_applied_to": "stopping_power_only",
-            "bloch_does_not_modify": ["DCS", "TCS", "IMFP", "CDF", "Geant4 sampling"],
-            "bloch_charge_mode": "effective_charge" if barkas_zeff else "bare_charge",
-            "cross_section_set": str(cross_section_set),
-            "cross_section_set_requested": str(cross_section_set_requested),
-            "barkas_dcs": str(cross_section_set) == "both",
-            "barkas_dcs_table_semantics": "born_plus_barkas_corrected_total",
+            "bloch_applied_to": "not_applicable" if is_simulation_source else "stopping_power_only",
+            "bloch_does_not_modify": (
+                [] if is_simulation_source else ["DCS", "TCS", "IMFP", "CDF", "Geant4 sampling"]
+            ),
+            "bloch_charge_mode": (
+                "not_applicable"
+                if is_simulation_source
+                else "effective_charge"
+                if barkas_zeff
+                else "bare_charge"
+            ),
+            "cross_section_set": "none" if is_simulation_source else str(cross_section_set),
+            "cross_section_set_requested": (
+                "not_applicable" if is_simulation_source else str(cross_section_set_requested)
+            ),
+            "stopping_source": str(stopping_source),
+            "simulation_root": str(simulation_root) if simulation_root else None,
+            "barkas_dcs": (str(cross_section_set) == "both" and not is_simulation_source),
+            "barkas_dcs_table_semantics": (
+                "not_applicable"
+                if is_simulation_source
+                else "born_plus_barkas_corrected_total"
+            ),
             "energy_grid_count": int(np.asarray(energy_grid).size),
         },
         "energy_eV": _json_array(energy_grid),
@@ -1444,6 +1496,376 @@ def _config_optional_bool(config: dict[str, object], *keys: str) -> bool | None:
         if key in config:
             return _config_bool(config.get(key), False)
     return None
+
+
+def _build_simulation_series(
+    root_arg: str | Path,
+    projectile_key: str,
+    ice_type: str,
+    emin_eV: float,
+    emax_eV: float,
+    nbins: int,
+    rho_ice: float | None,
+    rebuild_cache: bool = False,
+) -> dict:
+    """Build a projectile plot series from ROOT step energy loss, not DCS moments."""
+    if projectile_key not in ROOT_ION_CONFIGS:
+        supported = ", ".join(sorted(ROOT_ION_CONFIGS))
+        raise ValueError(
+            f"ROOT-derived projectile stopping is not configured for {projectile_key!r}; "
+            f"supported ROOT particle keys are: {supported}."
+        )
+    root_text = str(root_arg)
+    root_path = Path(root_text).expanduser()
+    if not root_path.is_absolute():
+        root_path = PROJECT_ROOT / root_path
+    root_text = str(root_path)
+
+    density = float(rho_ice) if rho_ice is not None else float(ICE_DENSITY_BY_TYPE[ice_type])
+    n_cm3 = N_CM3_WATER * (density / WATER_DENSITY_G_CM3)
+    step_size = "100 MB"
+    cache = _simulation_cache_default_path(
+        root_text,
+        projectile_key,
+        ice_type,
+        float(emin_eV),
+        float(emax_eV),
+        int(nbins),
+    )
+    if cache.exists() and not rebuild_cache:
+        data, cache_meta = _load_simulation_cache(
+            cache,
+            projectile_key,
+            ice_type,
+            float(emin_eV),
+            float(emax_eV),
+            int(nbins),
+        )
+        print(f"Loaded ROOT simulation cache: {cache}")
+        root_text = str(cache_meta.get("root", root_text))
+    else:
+        if cache.exists() and rebuild_cache:
+            print(f"Rebuilding ROOT simulation cache: {cache}")
+        else:
+            print(f"Building ROOT simulation cache: {cache}")
+        data = _compute_simulation_observables_streaming(
+            root_text,
+            projectile_key,
+            float(emin_eV),
+            float(emax_eV),
+            int(nbins),
+            n_cm3,
+            density,
+            step_size,
+        )
+        _write_simulation_cache(
+            cache,
+            data,
+            {
+                "root": root_text,
+                "projectile": projectile_key,
+                "ice_type": ice_type,
+                "emin_eV": float(emin_eV),
+                "emax_eV": float(emax_eV),
+                "nbins": int(nbins),
+                "density_g_cm3": density,
+                "n_h2o_cm3": n_cm3,
+                "step_size": str(step_size),
+            },
+        )
+        print(f"Wrote ROOT simulation cache: {cache}")
+
+    energy = np.asarray(data["energy_eV"], dtype=float)
+    dedx_total = np.asarray(data["stopping_power_eV_per_nm"], dtype=float)
+    imfp_total = np.asarray(data["inverse_mfp_nm_inv"], dtype=float)
+    valid = np.isfinite(energy) & (energy > 0.0) & (
+        (np.isfinite(dedx_total) & (dedx_total > 0.0))
+        | (np.isfinite(imfp_total) & (imfp_total > 0.0))
+    )
+    if not np.any(valid):
+        raise RuntimeError(f"No finite ROOT-derived stopping/IMFP bins found in {root_text}.")
+
+    zeros = np.zeros_like(energy, dtype=float)
+    nan_values = np.full_like(energy, np.nan, dtype=float)
+    return {
+        "label": f"{ice_type.capitalize()}: simulation",
+        "ice_type": ice_type,
+        "energy_eV": energy,
+        "density_g_cm3": density,
+        "source_model": f"ROOT simulation: {root_text}",
+        "simulation_cache": str(cache),
+        "stopping_source": "simulation_root",
+        "cross_section_tables": "none",
+        "table_semantics": "simulation_energy_loss_per_path_length",
+        "charge_scaling": "simulation_transport",
+        "barkas_difference_used": False,
+        "include_bloch_stopping": False,
+        "bloch_charge_mode": "none",
+        "emin": float(np.min(energy[valid])),
+        "emax": float(np.max(energy[valid])),
+        "dedx_exc": nan_values,
+        "dedx_ion": nan_values,
+        "dedx_dcs_total": nan_values,
+        "dedx_bloch": zeros,
+        "dedx_stopping_total": dedx_total,
+        "dedx_total": dedx_total,
+        "imfp_exc": nan_values,
+        "imfp_ion": nan_values,
+        "imfp_total": imfp_total,
+    }
+
+
+def _compute_simulation_observables_streaming(
+    root_arg: str | Path,
+    particle_key: str,
+    emin_eV: float,
+    emax_eV: float,
+    nbins: int,
+    n_h2o_cm3: float,
+    density_g_cm3: float,
+    step_size: str | int = "100 MB",
+) -> dict[str, np.ndarray]:
+    """Compute ROOT-derived stopping/IMFP in one streaming pass over step trees."""
+    if nbins < 2:
+        raise ValueError("Simulation stopping requires nbins >= 2.")
+    if emin_eV <= 0.0 or emax_eV <= emin_eV:
+        raise ValueError("Simulation stopping requires 0 < emin < emax.")
+    cfg = ROOT_ION_CONFIGS[particle_key]
+    paths = resolve_root_paths(root_arg)
+    if not paths:
+        raise FileNotFoundError(root_arg)
+
+    required = [
+        "flagParticle",
+        "flagProcess",
+        "kineticEnergy",
+        "kineticEnergyDifference",
+        "stepLength",
+        "vibCrossSection",
+    ]
+    with uproot.open(paths[0]) as handle:
+        if "step" not in handle:
+            raise RuntimeError(f"Tree 'step' not found in {paths[0]}.")
+        missing = [name for name in required if name not in handle["step"].keys()]
+    if missing:
+        raise RuntimeError(
+            "ROOT step tree is missing full diagnostic branches. "
+            "Run the proton macro with /dna/test/setLogMode full. "
+            f"Missing: {', '.join(missing)}"
+        )
+
+    edges = np.logspace(np.log10(float(emin_eV)), np.log10(float(emax_eV)), int(nbins) + 1)
+    centers = np.sqrt(edges[:-1] * edges[1:])
+    path_nm = np.zeros(nbins, dtype=float)
+    energy_loss_eV = np.zeros(nbins, dtype=float)
+    n_inelastic = np.zeros(nbins, dtype=float)
+    sigma_exc_sum = np.zeros(nbins, dtype=float)
+    sigma_ion_sum = np.zeros(nbins, dtype=float)
+    sigma_exc_count = np.zeros(nbins, dtype=float)
+    sigma_ion_count = np.zeros(nbins, dtype=float)
+
+    tree_specs = [f"{path}:step" for path in paths]
+    chunks = 0
+    selected_steps = 0
+    for chunk in uproot.iterate(tree_specs, required, library="np", step_size=step_size):
+        chunks += 1
+        flag_particle = np.asarray(chunk["flagParticle"], dtype=int)
+        flag_process = np.asarray(chunk["flagProcess"], dtype=int)
+        energy = np.asarray(chunk["kineticEnergy"], dtype=float)
+        dE = np.asarray(chunk["kineticEnergyDifference"], dtype=float)
+        step_nm = np.asarray(chunk["stepLength"], dtype=float)
+        macro_xs_cm_inv = np.asarray(chunk["vibCrossSection"], dtype=float)
+
+        ion = (
+            (flag_particle == int(cfg["flag"]))
+            & np.isfinite(energy)
+            & np.isfinite(dE)
+            & np.isfinite(step_nm)
+            & np.isfinite(macro_xs_cm_inv)
+            & (energy > 0.0)
+            & (step_nm > 0.0)
+            & (energy >= float(emin_eV))
+            & (energy <= float(emax_eV))
+        )
+        if not np.any(ion):
+            continue
+
+        e = energy[ion]
+        bins = np.digitize(e, edges) - 1
+        in_range = (bins >= 0) & (bins < nbins)
+        if not np.any(in_range):
+            continue
+
+        bins = bins[in_range]
+        dE_in = np.maximum(dE[ion][in_range], 0.0)
+        step_in = step_nm[ion][in_range]
+        proc_in = flag_process[ion][in_range]
+        macro_in = macro_xs_cm_inv[ion][in_range]
+        selected_steps += int(bins.size)
+
+        np.add.at(path_nm, bins, step_in)
+        np.add.at(energy_loss_eV, bins, dE_in)
+
+        is_exc = np.isin(proc_in, list(cfg["excitation"]))
+        is_ion = np.isin(proc_in, list(cfg["ionisation"]))
+        inelastic = is_exc | is_ion
+        if np.any(inelastic):
+            np.add.at(n_inelastic, bins[inelastic], 1.0)
+
+        micro_in = np.divide(
+            macro_in,
+            n_h2o_cm3,
+            out=np.full_like(macro_in, np.nan, dtype=float),
+            where=n_h2o_cm3 > 0.0,
+        )
+        valid_micro = np.isfinite(micro_in) & (micro_in >= 0.0)
+        if np.any(is_exc & valid_micro):
+            idx = is_exc & valid_micro
+            np.add.at(sigma_exc_sum, bins[idx], micro_in[idx])
+            np.add.at(sigma_exc_count, bins[idx], 1.0)
+        if np.any(is_ion & valid_micro):
+            idx = is_ion & valid_micro
+            np.add.at(sigma_ion_sum, bins[idx], micro_in[idx])
+            np.add.at(sigma_ion_count, bins[idx], 1.0)
+
+    if selected_steps == 0:
+        raise RuntimeError(
+            f"No {particle_key} steps in the requested energy range "
+            f"{emin_eV:.6g} to {emax_eV:.6g} eV across {len(paths)} ROOT file(s)."
+        )
+
+    stopping_eV_per_nm = np.divide(
+        energy_loss_eV,
+        path_nm,
+        out=np.full(nbins, np.nan, dtype=float),
+        where=path_nm > 0.0,
+    )
+    inverse_mfp_nm_inv = np.divide(
+        n_inelastic,
+        path_nm,
+        out=np.full(nbins, np.nan, dtype=float),
+        where=path_nm > 0.0,
+    )
+    imfp_nm = np.divide(
+        1.0,
+        inverse_mfp_nm_inv,
+        out=np.full(nbins, np.nan, dtype=float),
+        where=inverse_mfp_nm_inv > 0.0,
+    )
+    sigma_exc = np.divide(
+        sigma_exc_sum,
+        sigma_exc_count,
+        out=np.full(nbins, np.nan, dtype=float),
+        where=sigma_exc_count > 0.0,
+    )
+    sigma_ion = np.divide(
+        sigma_ion_sum,
+        sigma_ion_count,
+        out=np.full(nbins, np.nan, dtype=float),
+        where=sigma_ion_count > 0.0,
+    )
+    sigma_total = np.nansum(np.vstack([sigma_exc, sigma_ion]), axis=0)
+    sigma_total[~np.isfinite(sigma_exc) & ~np.isfinite(sigma_ion)] = np.nan
+
+    print(
+        "Streamed ROOT simulation stopping from "
+        f"{len(paths)} file(s), {chunks} chunk(s), {selected_steps} selected step(s)."
+    )
+    return {
+        "energy_eV": centers,
+        "path_length_nm": path_nm,
+        "n_inelastic": n_inelastic,
+        "stopping_power_eV_per_nm": stopping_eV_per_nm,
+        "stopping_power_eV_per_A": stopping_eV_per_nm * EV_NM_TO_EV_ANG,
+        "mass_stopping_power_MeV_cm2_g": (stopping_eV_per_nm * EV_NM_TO_MEV_CM) / density_g_cm3,
+        "inverse_mfp_nm_inv": inverse_mfp_nm_inv,
+        "imfp_nm": imfp_nm,
+        "sigma_excitation_cm2": sigma_exc,
+        "sigma_ionisation_cm2": sigma_ion,
+        "sigma_total_cm2": sigma_total,
+    }
+
+
+def _simulation_cache_default_path(
+    root_arg: str | Path,
+    projectile_key: str,
+    ice_type: str,
+    emin_eV: float,
+    emax_eV: float,
+    nbins: int,
+) -> Path:
+    root_stem = Path(str(root_arg)).stem or "root"
+    tag = (
+        f"{projectile_key}_{ice_type}_"
+        f"{emin_eV:.6g}_{emax_eV:.6g}_{int(nbins)}bins_{root_stem}"
+    )
+    tag = tag.replace("+", "p").replace(".", "p")
+    return CROSS_SECTION_PLOTS_DIR / "simulation_cache" / f"simulation_observables_{tag}.npz"
+
+
+def _write_simulation_cache(path: Path, data: dict[str, np.ndarray], metadata: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {key: np.asarray(value, dtype=float) for key, value in data.items()}
+    payload["metadata_json"] = np.asarray(json.dumps(metadata, indent=2))
+    np.savez_compressed(path, **payload)
+
+
+def _load_simulation_cache(
+    path: Path,
+    projectile_key: str,
+    ice_type: str,
+    emin_eV: float,
+    emax_eV: float,
+    nbins: int,
+) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    with np.load(path, allow_pickle=False) as cached:
+        if "metadata_json" not in cached:
+            raise RuntimeError(f"Simulation cache has no metadata_json field: {path}")
+        metadata = json.loads(str(cached["metadata_json"].item()))
+        expected = {
+            "projectile": str(projectile_key),
+            "ice_type": str(ice_type),
+            "nbins": int(nbins),
+        }
+        for key, value in expected.items():
+            if metadata.get(key) != value:
+                raise RuntimeError(
+                    f"Simulation cache metadata mismatch for {key}: "
+                    f"cache={metadata.get(key)!r}, requested={value!r}. "
+                    f"Use rebuild_simulation_cache=True to overwrite {path}."
+                )
+        for key, value in (("emin_eV", float(emin_eV)), ("emax_eV", float(emax_eV))):
+            cached_value = float(metadata.get(key, np.nan))
+            if not np.isclose(cached_value, value, rtol=1e-12, atol=1e-9):
+                raise RuntimeError(
+                    f"Simulation cache metadata mismatch for {key}: "
+                    f"cache={cached_value:.12g}, requested={value:.12g}. "
+                    f"Use rebuild_simulation_cache=True to overwrite {path}."
+                )
+        data = {
+            key: np.asarray(cached[key], dtype=float)
+            for key in (
+                "energy_eV",
+                "path_length_nm",
+                "n_inelastic",
+                "stopping_power_eV_per_nm",
+                "stopping_power_eV_per_A",
+                "mass_stopping_power_MeV_cm2_g",
+                "inverse_mfp_nm_inv",
+                "imfp_nm",
+                "sigma_excitation_cm2",
+                "sigma_ionisation_cm2",
+                "sigma_total_cm2",
+            )
+            if key in cached
+        }
+    required = {"energy_eV", "stopping_power_eV_per_nm", "inverse_mfp_nm_inv"}
+    missing = sorted(required - set(data))
+    if missing:
+        raise RuntimeError(f"Simulation cache is missing required arrays {missing}: {path}")
+    return data, metadata
 
 
 def _required_table_sets(cross_section_mode: str, barkas_zeff: bool) -> tuple[str, ...]:
@@ -1513,6 +1935,17 @@ def _print_water_icru_comparison(
 def main(config: dict[str, object] | None = None) -> None:
     config = {} if config is None else config
     barkas_dcs_default = _config_optional_bool(config, "barkas_dcs", "Barkas_DCS")
+    simulation_stopping_default = _config_optional_bool(
+        config,
+        "simulation_stopping",
+        "Simulation_SP",
+    )
+    stopping_source_default = str(
+        config.get(
+            "stopping_source",
+            "simulation" if simulation_stopping_default is True else "cross_sections",
+        )
+    )
     cross_section_set_default = (
         "both"
         if barkas_dcs_default is True
@@ -1584,6 +2017,41 @@ def main(config: dict[str, object] | None = None) -> None:
             "Use wmax_nonrel to test the 2009 heavy-projectile convention; "
             "IMFP/total cross sections are unchanged."
         ),
+    )
+    parser.add_argument(
+        "--stopping-source",
+        default=stopping_source_default,
+        choices=("cross_sections", "simulation"),
+        help=(
+            "Source for plotted ice projectile stopping/IMFP: "
+            "cross_sections uses generated DCS/TCS tables; simulation uses ROOT step energy loss."
+        ),
+    )
+    parser.add_argument(
+        "--simulation-stopping",
+        "--Simulation_SP",
+        dest="simulation_stopping",
+        action=argparse.BooleanOptionalAction,
+        default=simulation_stopping_default,
+        help="Use ROOT simulation energy loss/path length instead of DCS tables when a ROOT file is available.",
+    )
+    parser.add_argument(
+        "--simulation-root",
+        type=Path,
+        default=config.get("simulation_root", "dna.root"),
+        help="ROOT file or split ROOT glob used when --stopping-source simulation is active.",
+    )
+    parser.add_argument(
+        "--simulation-ice-type",
+        default=config.get("simulation_ice_type", None),
+        help="Ice type label for the ROOT simulation series; defaults to the first requested ice type.",
+    )
+    parser.add_argument(
+        "--rebuild-simulation-cache",
+        dest="rebuild_simulation_cache",
+        action=argparse.BooleanOptionalAction,
+        default=_config_bool(config.get("rebuild_simulation_cache", False), False),
+        help="Force rebuilding the simulation cache from ROOT even if the cache exists.",
     )
     parser.add_argument(
         "--include-water",
@@ -1681,57 +2149,108 @@ def main(config: dict[str, object] | None = None) -> None:
     ice_types = [v for v in ice_types if v in ICE_DENSITY_BY_TYPE]
     if not ice_types:
         raise ValueError("No valid ice types specified.")
-    required_table_sets = _required_table_sets(cross_section_mode, args.barkas_zeff)
-    series_requests = _series_requests(cross_section_mode, args.barkas_zeff)
-
-    coverage = {}
-    for ice_type in ice_types:
-        ranges = [
-            _plot_energy_range(projectile_token, ice_type, cross_section_set)
-            for cross_section_set in required_table_sets
-        ]
-        coverage[ice_type] = (
-            max(bounds[0] for bounds in ranges),
-            min(bounds[1] for bounds in ranges),
-        )
-    domain_emin = max(bounds[0] for bounds in coverage.values())
-    domain_emax = min(bounds[1] for bounds in coverage.values())
-    plot_emin = max(float(args.emin), domain_emin)
-    plot_emax = min(float(args.emax), domain_emax)
-    if plot_emin >= plot_emax:
-        raise ValueError(
-            "Requested energy range does not overlap the generated projectile "
-            f"cross-section domain ({domain_emin:.6g} to {domain_emax:.6g} eV)."
-        )
-    if plot_emin != args.emin or plot_emax != args.emax:
-        print(
-            "Using projectile generated-energy domain "
-            f"{plot_emin:.6g} to {plot_emax:.6g} eV "
-            "(from the available table files)."
-        )
-
-    energy = np.logspace(np.log10(plot_emin), np.log10(plot_emax), args.nbins)
     series = []
-    for ice_type in ice_types:
-        for series_set, use_zeff in series_requests:
-            series.append(
-                _build_series(
-                    projectile_token,
-                    projectile_label,
-                    projectile_mass_au,
-                    projectile_charge,
-                    ice_type,
-                    energy,
-                    args.rho_ice,
-                    args.stopping_cutoff,
-                    args.include_kshell,
-                    use_zeff,
-                    args.include_bloch_stopping,
-                    series_set,
-                )
-            )
     water_series = None
-    if args.include_water:
+    simulation_root_used = None
+    use_simulation_source = str(args.stopping_source) == "simulation"
+    if args.simulation_stopping is not None:
+        use_simulation_source = bool(args.simulation_stopping)
+
+    if use_simulation_source:
+        sim_ice_type = str(args.simulation_ice_type or ice_types[0]).strip().lower()
+        if sim_ice_type not in ICE_DENSITY_BY_TYPE:
+            raise ValueError(
+                f"Invalid simulation_ice_type={sim_ice_type!r}; "
+                f"choose one of {', '.join(ICE_DENSITY_BY_TYPE)}."
+            )
+        try:
+            sim_series = _build_simulation_series(
+                args.simulation_root,
+                projectile_key,
+                sim_ice_type,
+                float(args.emin),
+                float(args.emax),
+                int(args.nbins),
+                args.rho_ice,
+                bool(args.rebuild_simulation_cache),
+            )
+            series.append(sim_series)
+            simulation_root_used = str(args.simulation_root)
+            energy = np.asarray(sim_series["energy_eV"], dtype=float)
+            print(
+                "Using ROOT simulation-derived stopping/IMFP from "
+                f"{simulation_root_used} for {sim_ice_type} ice."
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "stopping_source='simulation' was requested, but the ROOT simulation "
+                "could not be loaded or did not contain usable proton/ion full-log steps. "
+                "No cross-section-table fallback was used. "
+                f"simulation_root={args.simulation_root!s}; reason: {exc}"
+            ) from exc
+
+    if not series:
+        required_table_sets = _required_table_sets(cross_section_mode, args.barkas_zeff)
+        series_requests = _series_requests(cross_section_mode, args.barkas_zeff)
+
+        coverage = {}
+        for ice_type in ice_types:
+            ranges = [
+                _plot_energy_range(projectile_token, ice_type, cross_section_set)
+                for cross_section_set in required_table_sets
+            ]
+            coverage[ice_type] = (
+                max(bounds[0] for bounds in ranges),
+                min(bounds[1] for bounds in ranges),
+            )
+        domain_emin = max(bounds[0] for bounds in coverage.values())
+        domain_emax = min(bounds[1] for bounds in coverage.values())
+        plot_emin = max(float(args.emin), domain_emin)
+        plot_emax = min(float(args.emax), domain_emax)
+        if plot_emin >= plot_emax:
+            raise ValueError(
+                "Requested energy range does not overlap the generated projectile "
+                f"cross-section domain ({domain_emin:.6g} to {domain_emax:.6g} eV)."
+            )
+        if plot_emin != args.emin or plot_emax != args.emax:
+            print(
+                "Using projectile generated-energy domain "
+                f"{plot_emin:.6g} to {plot_emax:.6g} eV "
+                "(from the available table files)."
+            )
+
+        energy = np.logspace(np.log10(plot_emin), np.log10(plot_emax), args.nbins)
+        for ice_type in ice_types:
+            for series_set, use_zeff in series_requests:
+                series.append(
+                    _build_series(
+                        projectile_token,
+                        projectile_label,
+                        projectile_mass_au,
+                        projectile_charge,
+                        ice_type,
+                        energy,
+                        args.rho_ice,
+                        args.stopping_cutoff,
+                        args.include_kshell,
+                        use_zeff,
+                        args.include_bloch_stopping,
+                        series_set,
+                    )
+                )
+
+    actual_stopping_source = "simulation" if simulation_root_used else "cross_sections"
+    if actual_stopping_source == "simulation" and (
+        args.barkas_zeff
+        or args.include_bloch_stopping
+        or cross_section_mode != "bare"
+    ):
+        print(
+            "Simulation stopping source selected: ignoring Barkas_Zeff, Barkas_DCS, "
+            "Bloch_SP, and cross-section table selectors in the plotter. "
+            "The plotted stopping power is whatever the ROOT simulation transported."
+        )
+    if args.include_water and actual_stopping_source == "cross_sections":
         water_series = _build_water_series(
             projectile_key,
             projectile_mass_au,
@@ -1743,17 +2262,23 @@ def main(config: dict[str, object] | None = None) -> None:
             series.append(water_series)
         else:
             print(f"No Geant4-DNA water Born table overlay is available for {projectile_key}.")
+    elif args.include_water and actual_stopping_source == "simulation":
+        print("Skipping Geant4-DNA water table overlay because stopping_source=simulation.")
 
     out_path = args.out
     if out_path is None:
-        ice_suffix = "_".join(ice_types)
-        physics_tag = _physics_filename_tag(
-            cross_section_mode,
-            args.barkas_zeff,
-            args.include_bloch_stopping,
-            args.include_kshell,
-            args.stopping_cutoff,
-        )
+        if actual_stopping_source == "simulation":
+            ice_suffix = str(series[0].get("ice_type", "_".join(ice_types)))
+            physics_tag = "simulation_root"
+        else:
+            ice_suffix = "_".join(ice_types)
+            physics_tag = _physics_filename_tag(
+                cross_section_mode,
+                args.barkas_zeff,
+                args.include_bloch_stopping,
+                args.include_kshell,
+                args.stopping_cutoff,
+            )
         out_path = (
             CROSS_SECTION_PLOTS_DIR
             / (
@@ -1781,10 +2306,14 @@ def main(config: dict[str, object] | None = None) -> None:
         stopping_cutoff=args.stopping_cutoff,
         include_kshell=args.include_kshell,
         include_water=args.include_water,
-        barkas_zeff=args.barkas_zeff,
-        include_bloch_stopping=args.include_bloch_stopping,
+        barkas_zeff=args.barkas_zeff if actual_stopping_source == "cross_sections" else False,
+        include_bloch_stopping=(
+            args.include_bloch_stopping if actual_stopping_source == "cross_sections" else False
+        ),
         cross_section_set=cross_section_mode,
         cross_section_set_requested=cross_section_set_requested,
+        stopping_source=actual_stopping_source,
+        simulation_root=simulation_root_used,
     )
     _print_water_icru_comparison(energy, water_series, projectile_key, args.units)
 
@@ -1801,7 +2330,14 @@ if __name__ == "__main__":
         "include_kshell": True,
         "Barkas_Zeff": False,
         "Barkas_DCS": True,
-        "Bloch_SP":True,
+        "Bloch_SP": False,
+        # Choose "cross_sections" or "simulation".
+        "stopping_source": "simulation",
+        # If stopping_source == "simulation", use this ROOT file when it exists.
+        "simulation_root": "dna.root",
+        "simulation_ice_type": "amorphous",
+        # False: read cache if present, build it if missing. True: rebuild from ROOT.
+        "rebuild_simulation_cache": True,
     }
 
     main(RUN_CONFIG)
