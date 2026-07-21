@@ -113,6 +113,14 @@ int main(int argc, char** argv)
   if (argc >= 7) sourceEvents = argv[6];
   if (argc >= 8) sourceNumber = argv[7];
 
+  for (auto& c : sourceParticle) c = static_cast<char>(std::tolower(c));
+  if (sourceParticle != "proton" && sourceParticle != "alpha") {
+    G4cerr << "### dnaphysics_proton Error: unsupported source particle '"
+           << sourceParticle << "'. Use proton or alpha." << G4endl;
+    delete runManager;
+    return 2;
+  }
+
   const G4double sourceEminValueMeV =
     ParsePositiveDouble(sourceEminMeV, 0.5, "source Emin_MeV");
   const G4double sourceEmaxValueMeV =
@@ -131,13 +139,14 @@ int main(int argc, char** argv)
     phys_choice = "ice_hex";
   }
   setenv("DNA_PHYSICS", phys_choice.c_str(), 1);
+  setenv("DNA_SOURCE_PARTICLE", sourceParticle.c_str(), 1);
+  setenv("DNA_SOURCE_EMIN_MEV", sourceEminMeV.c_str(), 1);
+  setenv("DNA_SOURCE_EMAX_MEV", sourceEmaxMeV.c_str(), 1);
+  setenv("DNA_SOURCE_EVENTS", sourceEvents.c_str(), 1);
+  setenv("DNA_SOURCE_NUMBER", sourceNumber.c_str(), 1);
 
-  G4cout << "Using proton physics list (DNA_PHYSICS=" << phys_choice << ")" << G4endl;
-  if (sourceParticle != "proton") {
-    G4cout << "### dnaphysics_proton Warning: source particle '" << sourceParticle
-           << "' was requested, but this physics list currently registers custom ice DCS "
-           << "processes only for protons." << G4endl;
-  }
+  G4cout << "Using proton/alpha ion physics list (DNA_PHYSICS="
+         << phys_choice << ")" << G4endl;
   G4cout << "Source settings: particle=" << sourceParticle
          << ", energy=" << sourceEminValueMeV << "-" << sourceEmaxValueMeV << " MeV"
          << ", events=" << sourceEvents

@@ -39,30 +39,35 @@ from physics_ice.root_utils import resolve_root_paths  # noqa: E402
 ION_CONFIGS = {
     "proton": {
         "flag": 2,
-        "excitation": (22,),
-        "ionisation": (23,),
+        "flags": (2, 3),
+        "excitation": (22, 32),
+        "ionisation": (23, 33),
         "label": "Proton",
     },
     "hydrogen": {
         "flag": 3,
+        "flags": (3,),
         "excitation": (32,),
         "ionisation": (33,),
         "label": "Hydrogen",
     },
     "alpha": {
         "flag": 4,
-        "excitation": (42,),
-        "ionisation": (43,),
+        "flags": (4, 5, 6),
+        "excitation": (42, 52, 62),
+        "ionisation": (43, 53, 63),
         "label": "Alpha",
     },
     "alpha+": {
         "flag": 5,
+        "flags": (5,),
         "excitation": (52,),
         "ionisation": (53,),
         "label": "Alpha+",
     },
     "helium": {
         "flag": 6,
+        "flags": (6,),
         "excitation": (62,),
         "ionisation": (63,),
         "label": "Helium",
@@ -121,6 +126,7 @@ def compute_observables(
     density_g_cm3: float,
 ) -> dict[str, np.ndarray]:
     cfg = ION_CONFIGS[particle_key]
+    particle_flags = tuple(int(flag) for flag in cfg.get("flags", (cfg["flag"],)))
     flag_particle = np.asarray(arrs["flagParticle"], dtype=int)
     flag_process = np.asarray(arrs["flagProcess"], dtype=int)
     energy_eV = np.asarray(arrs["kineticEnergy"], dtype=float)
@@ -129,7 +135,7 @@ def compute_observables(
     macro_xs_cm_inv = np.asarray(arrs["vibCrossSection"], dtype=float)
 
     ion = (
-        (flag_particle == int(cfg["flag"]))
+        np.isin(flag_particle, particle_flags)
         & np.isfinite(energy_eV)
         & np.isfinite(dE_eV)
         & np.isfinite(step_nm)

@@ -1,5 +1,5 @@
-# Proton-only ice DCS test macro.
-# Select bare vs Barkas tables with DNA_PROTON_BARKAS_DCS before /run/initialize.
+# Proton/alpha ice DCS test macro.
+# Select Barkas tables and Dingfelder charge exchange before /run/initialize.
 
 /control/verbose 0
 /run/verbose 0

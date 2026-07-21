@@ -18,7 +18,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import uproot
-from matplotlib.ticker import LogFormatterMathtext, LogLocator, MaxNLocator, NullFormatter
+from matplotlib.ticker import LogFormatterMathtext, LogLocator, NullFormatter
 
 PYTHON_SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 if str(PYTHON_SCRIPTS_DIR) not in sys.path:
@@ -69,6 +69,7 @@ BARKAS_ZEFF_COEFF = 125.0
 FINE_STRUCTURE = 7.2973525693e-3
 CLASSICAL_ELECTRON_RADIUS_CM = 2.8179403262e-13
 TARGET_ELECTRONS_H2O = 10.0
+SIMULATION_REDUCER_VERSION = 2
 ICE_DENSITY_BY_TYPE = {
     "amorphous": ICE_AMORPHOUS_DENSITY_G_CM3,
     "hexagonal": ICE_HEXAGONAL_DENSITY_G_CM3,
@@ -1167,7 +1168,7 @@ def _plot(
     ax_sp.set_ylabel(ylabel)
     ax_res.axhline(0.0, color="black", linewidth=1.0, alpha=0.7)
     ax_res.set_ylabel(r"$\Delta_{\rm ICRU}$")
-    ax_res.yaxis.set_major_locator(MaxNLocator(nbins=3))
+    ax_res.set_yscale("symlog", base=10.0, linthresh=0.1, linscale=1.0)
     ax_imfp.set_ylabel(r"IMFP (nm$^{-1}$)")
     ax_imfp.set_xlabel(f"{projectile_axis_label} energy ($T$; eV)")
     if xmins and xmaxs:
@@ -1213,6 +1214,11 @@ def _series_to_json(item: dict, energy_grid: np.ndarray, units: str) -> dict:
     sp_dcs_total, _ = _units_and_label(units, density, dedx_dcs_total)
     sp_bloch, _ = _units_and_label(units, density, dedx_bloch)
     sp_stopping_total, _ = _units_and_label(units, density, dedx_stopping_total)
+    dedx_simulation_total = item.get("dedx_simulation_total")
+    sp_simulation_total = None
+    if dedx_simulation_total is not None:
+        dedx_simulation_total = np.asarray(dedx_simulation_total, dtype=float)
+        sp_simulation_total, _ = _units_and_label(units, density, dedx_simulation_total)
     payload = {
         "label": item["label"],
         "material": item["ice_type"],
@@ -1245,12 +1251,19 @@ def _series_to_json(item: dict, energy_grid: np.ndarray, units: str) -> dict:
             "ionisation": _json_array(item["imfp_ion"]),
         },
     }
+    if sp_simulation_total is not None and dedx_simulation_total is not None:
+        payload["stopping_power"]["simulation_uncorrected"] = _json_array(sp_simulation_total)
+        payload["dedx_ev_nm"]["simulation_uncorrected"] = _json_array(dedx_simulation_total)
     if item.get("source_model"):
         payload["source_model"] = str(item["source_model"])
     if item.get("stopping_source"):
         payload["stopping_source"] = str(item["stopping_source"])
     if item.get("simulation_cache"):
         payload["simulation_cache"] = str(item["simulation_cache"])
+    if "simulation_barkas_dcs" in item:
+        payload["simulation_barkas_dcs"] = item["simulation_barkas_dcs"]
+    if "simulation_charge_exchange" in item:
+        payload["simulation_charge_exchange"] = item["simulation_charge_exchange"]
     if item.get("cross_section_tables"):
         payload["cross_section_tables"] = str(item["cross_section_tables"])
     if item.get("table_semantics"):
@@ -1411,24 +1424,30 @@ def _write_json_output(
             ),
             "include_bloch_stopping": bool(include_bloch_stopping),
             "bloch_formula": (
-                "not_applicable"
-                if is_simulation_source
-                else (
+                (
                     "Delta_L = psi(1) - Re psi(1+i eta) = "
                     "-sum eta^2/[n*(n^2+eta^2)]"
                 )
+                if include_bloch_stopping
+                else "not_applied"
             ),
             "bloch_stopping_cross_section": (
-                "not_applicable"
-                if is_simulation_source
-                else "S_Bloch = 4*pi*r_e^2*m_e*c^2*Z_H2O*(q^2/beta^2)*Delta_L"
+                "S_Bloch = 4*pi*r_e^2*m_e*c^2*Z_H2O*(q^2/beta^2)*Delta_L"
+                if include_bloch_stopping
+                else "not_applied"
             ),
-            "bloch_applied_to": "not_applicable" if is_simulation_source else "stopping_power_only",
-            "bloch_does_not_modify": (
-                [] if is_simulation_source else ["DCS", "TCS", "IMFP", "CDF", "Geant4 sampling"]
+            "bloch_applied_to": (
+                "simulation_derived_stopping_power_only"
+                if is_simulation_source and include_bloch_stopping
+                else "stopping_power_only"
+                if include_bloch_stopping
+                else "not_applied"
             ),
+            "bloch_does_not_modify": ["DCS", "TCS", "IMFP", "CDF", "Geant4 sampling"],
             "bloch_charge_mode": (
-                "not_applicable"
+                "none"
+                if not include_bloch_stopping
+                else "bare_charge"
                 if is_simulation_source
                 else "effective_charge"
                 if barkas_zeff
@@ -1440,6 +1459,12 @@ def _write_json_output(
             ),
             "stopping_source": str(stopping_source),
             "simulation_root": str(simulation_root) if simulation_root else None,
+            "simulation_barkas_dcs": (
+                series[0].get("simulation_barkas_dcs") if is_simulation_source else None
+            ),
+            "simulation_charge_exchange": (
+                series[0].get("simulation_charge_exchange") if is_simulation_source else None
+            ),
             "barkas_dcs": (str(cross_section_set) == "both" and not is_simulation_source),
             "barkas_dcs_table_semantics": (
                 "not_applicable"
@@ -1498,6 +1523,66 @@ def _config_optional_bool(config: dict[str, object], *keys: str) -> bool | None:
     return None
 
 
+def _simulation_run_flags(root_arg: str | Path) -> dict[str, bool | None]:
+    """Read Barkas-DCS and charge-exchange settings recorded in ROOT config."""
+    requested = {"barkas_dcs", "charge_exchange"}
+    raw_values: dict[str, set[str]] = {key: set() for key in requested}
+    for path in resolve_root_paths(root_arg):
+        with uproot.open(path) as handle:
+            if "config" not in handle:
+                continue
+            config = handle["config"]
+            if "key" not in config.keys() or "value" not in config.keys():
+                continue
+            arrays = config.arrays(["key", "value"], library="np")
+            for key, value in zip(arrays["key"], arrays["value"], strict=False):
+                key_text = key.decode() if isinstance(key, bytes) else str(key)
+                if key_text not in requested:
+                    continue
+                value_text = value.decode() if isinstance(value, bytes) else str(value)
+                raw_values[key_text].add(value_text.strip().lower())
+
+    result: dict[str, bool | None] = {}
+    for key in sorted(requested):
+        values = raw_values[key]
+        if not values:
+            print(
+                f"WARNING: ROOT config does not record {key}; "
+                "the simulation filename will mark it as unknown."
+            )
+            result[key] = None
+            continue
+        try:
+            normalized = {_cli_bool_value(value) for value in values}
+        except argparse.ArgumentTypeError as exc:
+            raise RuntimeError(
+                f"ROOT config has an invalid {key} value: {sorted(values)}"
+            ) from exc
+        if len(normalized) != 1:
+            raise RuntimeError(
+                f"ROOT inputs mix incompatible {key} settings: {sorted(values)}"
+            )
+        result[key] = normalized.pop()
+    return result
+
+
+def _simulation_flag_tag(value: bool | None) -> str:
+    if value is None:
+        return "unknown"
+    return "1" if value else "0"
+
+
+def _simulation_physics_filename_tag(series: dict, include_bloch_stopping: bool) -> str:
+    tag = (
+        "simulation_root_"
+        f"Barkas-{_simulation_flag_tag(series.get('simulation_barkas_dcs'))}_"
+        f"CE-{_simulation_flag_tag(series.get('simulation_charge_exchange'))}"
+    )
+    if include_bloch_stopping:
+        tag += "_blochSP"
+    return tag
+
+
 def _build_simulation_series(
     root_arg: str | Path,
     projectile_key: str,
@@ -1520,6 +1605,8 @@ def _build_simulation_series(
     if not root_path.is_absolute():
         root_path = PROJECT_ROOT / root_path
     root_text = str(root_path)
+    _validate_simulation_projectile(root_text, projectile_key)
+    simulation_flags = _simulation_run_flags(root_text)
 
     density = float(rho_ice) if rho_ice is not None else float(ICE_DENSITY_BY_TYPE[ice_type])
     n_cm3 = N_CM3_WATER * (density / WATER_DENSITY_G_CM3)
@@ -1571,6 +1658,14 @@ def _build_simulation_series(
                 "density_g_cm3": density,
                 "n_h2o_cm3": n_cm3,
                 "step_size": str(step_size),
+                "simulation_reducer_version": SIMULATION_REDUCER_VERSION,
+                "transport_particle_flags": list(
+                    ROOT_ION_CONFIGS[projectile_key].get(
+                        "flags", (ROOT_ION_CONFIGS[projectile_key]["flag"],)
+                    )
+                ),
+                "simulation_barkas_dcs": simulation_flags["barkas_dcs"],
+                "simulation_charge_exchange": simulation_flags["charge_exchange"],
             },
         )
         print(f"Wrote ROOT simulation cache: {cache}")
@@ -1595,6 +1690,8 @@ def _build_simulation_series(
         "source_model": f"ROOT simulation: {root_text}",
         "simulation_cache": str(cache),
         "stopping_source": "simulation_root",
+        "simulation_barkas_dcs": simulation_flags["barkas_dcs"],
+        "simulation_charge_exchange": simulation_flags["charge_exchange"],
         "cross_section_tables": "none",
         "table_semantics": "simulation_energy_loss_per_path_length",
         "charge_scaling": "simulation_transport",
@@ -1615,6 +1712,112 @@ def _build_simulation_series(
     }
 
 
+def _apply_bloch_to_simulation_series(
+    series: dict,
+    projectile_mass_au: float,
+    projectile_charge: float,
+) -> dict:
+    """Add the stopping-only Bloch term to a ROOT-derived stopping series.
+
+    Existing simulation caches do not retain path length by transported charge
+    state.  Consequently this post-processing correction uses the configured
+    bare projectile charge, matching the bare-charge cross-section plot path,
+    and does not modify the simulated IMFP or event history.
+    """
+    out = dict(series)
+    energy = np.asarray(out["energy_eV"], dtype=float)
+    simulation_dedx = np.asarray(out["dedx_total"], dtype=float)
+    density = float(out["density_g_cm3"])
+    n_cm3 = N_CM3_WATER * (density / WATER_DENSITY_G_CM3)
+    interaction_charge = np.full_like(energy, float(projectile_charge), dtype=float)
+    bloch_eloss_xs = _bloch_eloss_xs_ev_cm2(
+        energy,
+        projectile_mass_au,
+        interaction_charge,
+    )
+    bloch_dedx = _to_dedx_ev_nm(bloch_eloss_xs, n_cm3)
+    corrected_dedx = simulation_dedx + bloch_dedx
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        bloch_fraction = np.divide(
+            bloch_dedx,
+            simulation_dedx,
+            out=np.full_like(bloch_dedx, np.nan, dtype=float),
+            where=np.isfinite(simulation_dedx) & (simulation_dedx != 0.0),
+        )
+
+    warnings = list(out.get("warnings", []))
+    nonpositive = np.count_nonzero(np.isfinite(corrected_dedx) & (corrected_dedx <= 0.0))
+    if nonpositive:
+        warnings.append(
+            "Bloch-corrected simulation stopping power is non-positive at some energies; "
+            "those values are invalid for log plotting."
+        )
+    too_large = np.count_nonzero(np.isfinite(bloch_fraction) & (np.abs(bloch_fraction) > 1.0))
+    if too_large:
+        warnings.append(
+            "Bloch correction exceeds the simulation-derived stopping magnitude; "
+            "the corrected-Bethe expansion may be outside its valid range."
+        )
+    for warning in warnings:
+        print(f"WARNING: {warning}")
+
+    finite_fraction = bloch_fraction[np.isfinite(bloch_fraction)]
+    finite_bloch = bloch_dedx[np.isfinite(bloch_dedx)]
+    out.update(
+        {
+            "label": _append_bloch_label(str(out["label"]), True),
+            "include_bloch_stopping": True,
+            "bloch_charge_mode": "bare_charge",
+            "projectile_charge_bare": float(projectile_charge),
+            "bloch_interaction_charge_min": float(projectile_charge),
+            "bloch_interaction_charge_max": float(projectile_charge),
+            "bloch_min_ev_nm": float(np.nanmin(finite_bloch)) if finite_bloch.size else 0.0,
+            "bloch_max_ev_nm": float(np.nanmax(finite_bloch)) if finite_bloch.size else 0.0,
+            "bloch_min_fraction_of_dcs": (
+                float(np.nanmin(finite_fraction)) if finite_fraction.size else None
+            ),
+            "bloch_max_fraction_of_dcs": (
+                float(np.nanmax(finite_fraction)) if finite_fraction.size else None
+            ),
+            "warnings": warnings,
+            "dedx_simulation_total": simulation_dedx,
+            "dedx_bloch": bloch_dedx,
+            "bloch_eloss_xs_ev_cm2": bloch_eloss_xs,
+            "dedx_stopping_total": corrected_dedx,
+            "dedx_total": corrected_dedx,
+        }
+    )
+    return out
+
+
+def _validate_simulation_projectile(root_arg: str | Path, projectile_key: str) -> None:
+    """Reject a ROOT/source-projectile mismatch without silently changing datasets."""
+    paths = resolve_root_paths(root_arg)
+    source_particles: set[str] = set()
+    for path in paths:
+        with uproot.open(path) as handle:
+            if "config" not in handle:
+                continue
+            config = handle["config"]
+            if "key" not in config.keys() or "value" not in config.keys():
+                continue
+            arrays = config.arrays(["key", "value"], library="np")
+            for key, value in zip(arrays["key"], arrays["value"], strict=False):
+                key_text = key.decode() if isinstance(key, bytes) else str(key)
+                if key_text != "source_particle":
+                    continue
+                value_text = value.decode() if isinstance(value, bytes) else str(value)
+                source_particles.add(value_text.strip().lower())
+
+    if source_particles and projectile_key not in source_particles:
+        found = ", ".join(sorted(source_particles))
+        raise RuntimeError(
+            f"ROOT source particle is {found}, but projectile={projectile_key!r}. "
+            f"Set projectile={found!r} or provide a {projectile_key} ROOT file."
+        )
+
+
 def _compute_simulation_observables_streaming(
     root_arg: str | Path,
     particle_key: str,
@@ -1631,6 +1834,7 @@ def _compute_simulation_observables_streaming(
     if emin_eV <= 0.0 or emax_eV <= emin_eV:
         raise ValueError("Simulation stopping requires 0 < emin < emax.")
     cfg = ROOT_ION_CONFIGS[particle_key]
+    particle_flags = tuple(int(flag) for flag in cfg.get("flags", (cfg["flag"],)))
     paths = resolve_root_paths(root_arg)
     if not paths:
         raise FileNotFoundError(root_arg)
@@ -1667,6 +1871,8 @@ def _compute_simulation_observables_streaming(
     tree_specs = [f"{path}:step" for path in paths]
     chunks = 0
     selected_steps = 0
+    available_emin = np.inf
+    available_emax = -np.inf
     for chunk in uproot.iterate(tree_specs, required, library="np", step_size=step_size):
         chunks += 1
         flag_particle = np.asarray(chunk["flagParticle"], dtype=int)
@@ -1676,14 +1882,22 @@ def _compute_simulation_observables_streaming(
         step_nm = np.asarray(chunk["stepLength"], dtype=float)
         macro_xs_cm_inv = np.asarray(chunk["vibCrossSection"], dtype=float)
 
-        ion = (
-            (flag_particle == int(cfg["flag"]))
+        particle_family = (
+            np.isin(flag_particle, particle_flags)
             & np.isfinite(energy)
             & np.isfinite(dE)
             & np.isfinite(step_nm)
             & np.isfinite(macro_xs_cm_inv)
             & (energy > 0.0)
             & (step_nm > 0.0)
+        )
+        if np.any(particle_family):
+            family_energy = energy[particle_family]
+            available_emin = min(available_emin, float(np.min(family_energy)))
+            available_emax = max(available_emax, float(np.max(family_energy)))
+
+        ion = (
+            particle_family
             & (energy >= float(emin_eV))
             & (energy <= float(emax_eV))
         )
@@ -1729,8 +1943,14 @@ def _compute_simulation_observables_streaming(
             np.add.at(sigma_ion_count, bins[idx], 1.0)
 
     if selected_steps == 0:
+        if np.isfinite(available_emin) and np.isfinite(available_emax):
+            raise RuntimeError(
+                f"The ROOT file contains {particle_key} charge-state steps only from "
+                f"{available_emin:.6g} to {available_emax:.6g} eV, outside the requested "
+                f"range {emin_eV:.6g} to {emax_eV:.6g} eV."
+            )
         raise RuntimeError(
-            f"No {particle_key} steps in the requested energy range "
+            f"No {particle_key} charge-state steps in the requested energy range "
             f"{emin_eV:.6g} to {emax_eV:.6g} eV across {len(paths)} ROOT file(s)."
         )
 
@@ -1828,6 +2048,7 @@ def _load_simulation_cache(
             "projectile": str(projectile_key),
             "ice_type": str(ice_type),
             "nbins": int(nbins),
+            "simulation_reducer_version": SIMULATION_REDUCER_VERSION,
         }
         for key, value in expected.items():
             if metadata.get(key) != value:
@@ -2174,6 +2395,12 @@ def main(config: dict[str, object] | None = None) -> None:
                 args.rho_ice,
                 bool(args.rebuild_simulation_cache),
             )
+            if args.include_bloch_stopping:
+                sim_series = _apply_bloch_to_simulation_series(
+                    sim_series,
+                    projectile_mass_au,
+                    projectile_charge,
+                )
             series.append(sim_series)
             simulation_root_used = str(args.simulation_root)
             energy = np.asarray(sim_series["energy_eV"], dtype=float)
@@ -2242,13 +2469,16 @@ def main(config: dict[str, object] | None = None) -> None:
     actual_stopping_source = "simulation" if simulation_root_used else "cross_sections"
     if actual_stopping_source == "simulation" and (
         args.barkas_zeff
-        or args.include_bloch_stopping
         or cross_section_mode != "bare"
     ):
         print(
             "Simulation stopping source selected: ignoring Barkas_Zeff, Barkas_DCS, "
-            "Bloch_SP, and cross-section table selectors in the plotter. "
-            "The plotted stopping power is whatever the ROOT simulation transported."
+            "and cross-section table selectors in the plotter."
+        )
+    if actual_stopping_source == "simulation" and args.include_bloch_stopping:
+        print(
+            "Applied the bare-charge Bloch stopping correction to the ROOT-derived "
+            "stopping power; simulation IMFP is unchanged."
         )
     if args.include_water and actual_stopping_source == "cross_sections":
         water_series = _build_water_series(
@@ -2269,7 +2499,10 @@ def main(config: dict[str, object] | None = None) -> None:
     if out_path is None:
         if actual_stopping_source == "simulation":
             ice_suffix = str(series[0].get("ice_type", "_".join(ice_types)))
-            physics_tag = "simulation_root"
+            physics_tag = _simulation_physics_filename_tag(
+                series[0],
+                args.include_bloch_stopping,
+            )
         else:
             ice_suffix = "_".join(ice_types)
             physics_tag = _physics_filename_tag(
@@ -2307,9 +2540,7 @@ def main(config: dict[str, object] | None = None) -> None:
         include_kshell=args.include_kshell,
         include_water=args.include_water,
         barkas_zeff=args.barkas_zeff if actual_stopping_source == "cross_sections" else False,
-        include_bloch_stopping=(
-            args.include_bloch_stopping if actual_stopping_source == "cross_sections" else False
-        ),
+        include_bloch_stopping=args.include_bloch_stopping,
         cross_section_set=cross_section_mode,
         cross_section_set_requested=cross_section_set_requested,
         stopping_source=actual_stopping_source,
@@ -2320,7 +2551,7 @@ def main(config: dict[str, object] | None = None) -> None:
 
 if __name__ == "__main__":
     RUN_CONFIG = {
-        "projectile": "proton",
+        "projectile": "alpha",
         "ice_types": ("amorphous", "hexagonal"),
         "emin": 1.1e5,
         "emax": 1.0e8,
@@ -2328,9 +2559,9 @@ if __name__ == "__main__":
         "stopping_cutoff": "wmax_nonrel",
         "include_water": True,
         "include_kshell": True,
-        "Barkas_Zeff": False,
+        "Barkas_Zeff": True,
         "Barkas_DCS": True,
-        "Bloch_SP": False,
+        "Bloch_SP": True,
         # Choose "cross_sections" or "simulation".
         "stopping_source": "simulation",
         # If stopping_source == "simulation", use this ROOT file when it exists.

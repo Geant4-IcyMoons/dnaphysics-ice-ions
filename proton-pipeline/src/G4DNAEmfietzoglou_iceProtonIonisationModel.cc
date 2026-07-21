@@ -1,11 +1,12 @@
 //
-// Proton-only ionisation model for generated ice DCS/TCS tables.
+// Proton/alpha ionisation model for generated ice DCS/TCS tables.
 //
 
 #include "G4DNAEmfietzoglou_iceProtonIonisationModel.hh"
 
 #include "G4DNAChemistryManager.hh"
 #include "G4DNAMolecularMaterial.hh"
+#include "G4Alpha.hh"
 #include "G4DynamicParticle.hh"
 #include "G4Electron.hh"
 #include "G4Material.hh"
@@ -57,13 +58,28 @@ G4bool ReadEnvFlag(const char* key, G4bool defaultValue)
 
 G4bool UseBarkasDcsTables()
 {
+  const char* ionMode = std::getenv("DNA_ION_BARKAS_DCS");
+  if (ionMode && *ionMode) {
+    return ReadEnvFlag("DNA_ION_BARKAS_DCS", false);
+  }
   const G4bool legacy = ReadEnvFlag("DNA_ICE_PROTON_BARKAS_DCS", false);
   return ReadEnvFlag("DNA_PROTON_BARKAS_DCS", legacy);
 }
 
 G4bool TrackSecondaryElectrons()
 {
+  const char* ionMode = std::getenv("DNA_ION_TRACK_SECONDARY_ELECTRONS");
+  if (ionMode && *ionMode) {
+    return ReadEnvFlag("DNA_ION_TRACK_SECONDARY_ELECTRONS", false);
+  }
   return ReadEnvFlag("DNA_PROTON_TRACK_SECONDARY_ELECTRONS", false);
+}
+
+std::string ProjectileSlug(const G4ParticleDefinition* particle)
+{
+  if (particle == G4Proton::ProtonDefinition()) return "proton";
+  if (particle == G4Alpha::AlphaDefinition()) return "alpha";
+  return {};
 }
 }  // namespace
 
@@ -102,19 +118,21 @@ void G4DNAEmfietzoglou_iceProtonIonisationModel::Initialise(
     const G4ParticleDefinition* particle,
     const G4DataVector&)
 {
-  if (particle != G4Proton::ProtonDefinition()) {
+  const std::string projectile = ProjectileSlug(particle);
+  if (projectile.empty()) {
     G4Exception("G4DNAEmfietzoglou_iceProtonIonisationModel::Initialise",
                 "protonion001", FatalException,
-                "Model is only applicable to protons.");
+                "Model is only applicable to protons and alpha particles.");
   }
+  fProjectile = particle;
 
   const std::string phase = NormalizeIcePhase(std::getenv("DNA_PHYSICS"));
   const std::string correction = UseBarkasDcsTables() ? "_barkas_dcs" : "";
   const std::string total =
-      "sigma_ionisation_proton_" + phase + "_ice" + correction +
+      "sigma_ionisation_" + projectile + "_" + phase + "_ice" + correction +
       "_emfietzoglou_kyriakou";
   const std::string diff =
-      "sigmadiff_ionisation_proton_" + phase + "_ice" + correction +
+      "sigmadiff_ionisation_" + projectile + "_" + phase + "_ice" + correction +
       "_emfietzoglou_kyriakou.dat";
 
   fTable.Load(total, diff);
@@ -134,7 +152,7 @@ void G4DNAEmfietzoglou_iceProtonIonisationModel::Initialise(
   fParticleChangeForGamma = GetParticleChangeForGamma();
   fInitialised = true;
 
-  G4cout << "Initialized proton ice ionisation model with "
+  G4cout << "Initialized " << projectile << " ice ionisation model with "
          << fTable.TotalPath() << " and " << fTable.DiffPath() << G4endl;
 }
 
@@ -145,7 +163,7 @@ G4double G4DNAEmfietzoglou_iceProtonIonisationModel::CrossSectionPerVolume(
     G4double,
     G4double)
 {
-  if (particleDefinition != G4Proton::ProtonDefinition()) return 0.;
+  if (particleDefinition != fProjectile) return 0.;
   if (!fInitialised || ekin < LowEnergyLimit() || ekin > HighEnergyLimit()) {
     return 0.;
   }

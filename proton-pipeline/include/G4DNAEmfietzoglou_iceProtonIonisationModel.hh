@@ -1,5 +1,5 @@
 //
-// Proton-only ionisation model for generated ice DCS/TCS tables.
+// Proton/alpha ionisation model for generated ice DCS/TCS tables.
 //
 
 #ifndef G4DNAEmfietzoglou_iceProtonIonisationModel_h
@@ -47,6 +47,7 @@ public:
   static void ClearLastPartialSigma_cm2();
 
 private:
+  const G4ParticleDefinition* fProjectile = nullptr;
   const std::vector<G4double>* fpMolWaterDensity = nullptr;
   G4ParticleChangeForGamma* fParticleChangeForGamma = nullptr;
   G4DNAEmfietzoglou_iceProtonDcsTable fTable;

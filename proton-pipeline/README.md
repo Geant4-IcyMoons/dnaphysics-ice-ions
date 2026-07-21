@@ -1,12 +1,12 @@
-# Proton Pipeline
+# Proton/Alpha Ion Pipeline
 
 Standalone copy of the proton simulation pipeline, separated from the main `dnaphysics-ice` tree so it can be versioned and uploaded independently.
 
 ## Included
 
 - `dnaphysics_proton.cc`
-- proton physics list for water+ice excitation/ionisation tiling
-- proton ice excitation and ionisation models
+- proton/alpha physics list for generated ice excitation/ionisation tables
+- optional Dingfelder charge exchange for proton and helium charge states
 - shared detector, action, ROOT logging, and diagnostics code needed to run and analyze the proton simulation
 - minimal plotting scripts used in this project
 
@@ -36,12 +36,36 @@ If `Emin_MeV == Emax_MeV`, the source is monoenergetic. If the two
 energies differ, the source energy is drawn uniformly over that interval.
 The default macro uses a straight beam direction, `/gps/direction 0 0 1`.
 
-Select table mode with:
+Select table and charge-exchange modes independently with:
 
 ```bash
-export DNA_PROTON_BARKAS_DCS=0   # bare Born tables
-export DNA_PROTON_BARKAS_DCS=1   # Born+Barkas corrected tables
+export DNA_ION_BARKAS_DCS=0       # bare Born tables
+export DNA_ION_BARKAS_DCS=1       # Born+Barkas corrected tables
+export DNA_ION_CHARGE_EXCHANGE=0  # fixed proton or alpha charge
+export DNA_ION_CHARGE_EXCHANGE=1  # Dingfelder charge-state transitions
 ```
+
+The older `DNA_PROTON_BARKAS_DCS` and
+`DNA_PROTON_ENABLE_CHARGE_EXCHANGE` names remain supported as aliases.
+
+Examples:
+
+```bash
+# Proton, bare DCS, fixed charge
+DNA_PHYSICS=ice_am DNA_ION_BARKAS_DCS=0 DNA_ION_CHARGE_EXCHANGE=0 \
+  ./build/dnaphysics_proton e1_proton.mac 12 proton 10 10 100000 1
+
+# Alpha, Born+Barkas DCS with Dingfelder charge exchange
+DNA_PHYSICS=ice_am DNA_ION_BARKAS_DCS=1 DNA_ION_CHARGE_EXCHANGE=1 \
+  ./build/dnaphysics_proton e1_proton.mac 12 alpha 10 10 100000 1
+```
+
+For alpha transport with charge exchange, the generated alpha tables apply
+to the bare `alpha` state. Geant4-DNA's Dingfelder/Miller-Green/Rudd models
+transport the `alpha+` and neutral `helium` states. The Dingfelder and captured-
+state models used here are liquid-water parameterizations evaluated at the
+selected H2O material density; their use in ice is therefore an explicit model
+approximation for both proton and alpha simulations.
 
 `DNA_PHYSICS` supported values:
 
