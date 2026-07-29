@@ -87,6 +87,20 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
   - Rebuilds differential and cumulated vib‑excitation cross‑section tables from `michaud_table2.csv` and `michaud_table3.csv`.
   - Outputs: `sigmadiff_excitationvib_e_michaud.dat`, `sigmadiff_cumulated_excitationvib_e_michaud_hp.dat`.
 
+- `physics_ice/generate_carbon_charge_exchange_ctmc.py`
+  - Generates charge-state-resolved C(q+) + H2O SC, TI, SL, and LI molecular cross sections with the Liamsuwan–Nikjoo CTMC/IEVM/IPM framework.
+  - Uses shared project constants and writes restartable tables under `cross_sections/carbon_charge_exchange/`.
+  - Defaults to a Numba-compiled, 12-relative-coordinate DOP853 kernel. `--backend scipy` retains the slower full-coordinate reference implementation for validation.
+  - Runs shorter high-energy trajectories first and keeps the process queue bounded, so checkpoints appear early without changing seeds or results.
+  - Displays synchronized `tqdm` bars for attempted trajectories and completed grid points; `--progress-interval` controls the worker update chunk.
+  - Inspect the production grid before launching it:
+
+    ```bash
+    python python_scripts/physics_ice/generate_carbon_charge_exchange_ctmc.py --dry-run
+    ```
+
+  - The 41-energy, 10,000-trajectory default represents about 1.65 billion trajectories and still benefits strongly from distributed HPC resources.
+
 - `plotting/plot_vibExcitation_channelwise_angular_distributions.py`
   - Visualizes angular PDFs per vib channel using Michaud γ(E) and a Henyey–Greenstein mapping.
 

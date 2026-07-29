@@ -1078,6 +1078,7 @@ def _plot(
     }
     xmins = []
     xmaxs = []
+    icru_rms_entries: list[tuple[str, float]] = []
     icru_curve = _load_icru_stopping_power(projectile_key)
     icru_energy = None
     icru_y = None
@@ -1087,22 +1088,50 @@ def _plot(
         icru_y = _icru_mass_stopping_to_units(units, icru_mass_sp)
         icru_y_grid = _interp_loglog(icru_energy, icru_y, energy_grid)
 
+    simulation_items = [item for item in series if item.get("stopping_source") == "simulation_root"]
+    if simulation_items:
+        simulation_item = simulation_items[0]
+        barkas_status = simulation_item.get("simulation_barkas_dcs")
+        charge_exchange_status = simulation_item.get("simulation_charge_exchange")
+    else:
+        barkas_status = any(
+            item.get("table_semantics") == "born_plus_barkas_corrected"
+            for item in series
+        )
+        charge_exchange_status = "n/a"
+    bloch_status = any(bool(item.get("include_bloch_stopping", False)) for item in series)
+
+    def status_text(value: object) -> str:
+        if value == "n/a":
+            return "N/A"
+        if value is None:
+            return "UNKNOWN"
+        return "ON" if bool(value) else "OFF"
+
+    physics_status_text = "\n".join(
+        (
+            f"Barkas (DCS): {status_text(barkas_status)}",
+            f"Bloch: {status_text(bloch_status)}",
+            f"Charge exchange: {status_text(charge_exchange_status)}",
+        )
+    )
+
     for item in series:
         item_energy = np.asarray(item.get("energy_eV", energy_grid), dtype=float)
         density = float(item["density_g_cm3"])
         y_sp, ylabel = _units_and_label(units, density, item["dedx_total"])
         y_imfp = item["imfp_total"]
-        valid_sp = np.isfinite(item_energy) & (item_energy > 0.0) & np.isfinite(y_sp) & (y_sp > 0.0)
-        valid_imfp = np.isfinite(item_energy) & (item_energy > 0.0) & np.isfinite(y_imfp) & (y_imfp > 0.0)
+        valid_energy = np.isfinite(item_energy) & (item_energy > 0.0)
         emin = item.get("emin")
         emax = item.get("emax")
         if emin is not None:
-            valid_sp &= item_energy >= float(emin)
-            valid_imfp &= item_energy >= float(emin)
+            valid_energy &= item_energy >= float(emin)
         if emax is not None:
-            valid_sp &= item_energy <= float(emax)
-            valid_imfp &= item_energy <= float(emax)
-        valid_any = valid_sp | valid_imfp
+            valid_energy &= item_energy <= float(emax)
+        valid_sp_finite = valid_energy & np.isfinite(y_sp)
+        valid_sp = valid_sp_finite & (y_sp > 0.0)
+        valid_imfp = valid_energy & np.isfinite(y_imfp) & (y_imfp > 0.0)
+        valid_any = valid_sp_finite | valid_imfp
         if np.any(valid_any):
             xmins.append(float(np.min(item_energy[valid_any])))
             xmaxs.append(float(np.max(item_energy[valid_any])))
@@ -1132,12 +1161,20 @@ def _plot(
             icru_y_item = _interp_loglog(icru_energy, icru_y, item_energy)
             residual = (y_sp / icru_y_item) - 1.0
             valid_res = (
-                valid_sp
+                valid_sp_finite
                 & np.isfinite(icru_y_item)
                 & (icru_y_item > 0.0)
                 & np.isfinite(residual)
             )
             if np.any(valid_res):
+                rms_relative = float(np.sqrt(np.mean(np.square(residual[valid_res]))))
+                item["icru_relative_rms"] = rms_relative
+                item["icru_relative_rms_percent"] = 100.0 * rms_relative
+                item["icru_rms_energy_bin_count"] = int(np.count_nonzero(valid_res))
+                item["icru_rms_nonpositive_stopping_bin_count"] = int(
+                    np.count_nonzero(valid_res & (y_sp <= 0.0))
+                )
+                icru_rms_entries.append((str(item["label"]), rms_relative))
                 ax_res.semilogx(
                     item_energy[valid_res],
                     residual[valid_res],
@@ -1166,9 +1203,41 @@ def _plot(
             )
 
     ax_sp.set_ylabel(ylabel)
+    ax_sp.text(
+        0.98,
+        0.96,
+        physics_status_text,
+        transform=ax_sp.transAxes,
+        ha="right",
+        va="top",
+        fontsize=13,
+        family=FONT_COURIER,
+        color="black",
+        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.82, "pad": 2.0},
+        zorder=10,
+    )
     ax_res.axhline(0.0, color="black", linewidth=1.0, alpha=0.7)
     ax_res.set_ylabel(r"$\Delta_{\rm ICRU}$")
     ax_res.set_yscale("symlog", base=10.0, linthresh=0.1, linscale=1.0)
+    if len(icru_rms_entries) == 1:
+        rms_text = rf"RMS($\Delta_{{\rm ICRU}}$) = {100.0 * icru_rms_entries[0][1]:.1f}%"
+    else:
+        rms_text = "\n".join(
+            [r"RMS($\Delta_{\rm ICRU}$)"]
+            + [f"{label}: {100.0 * rms:.1f}%" for label, rms in icru_rms_entries]
+        )
+    if icru_rms_entries:
+        ax_res.text(
+            0.98,
+            0.94,
+            rms_text,
+            transform=ax_res.transAxes,
+            ha="right",
+            va="top",
+            fontsize=13 if len(icru_rms_entries) > 1 else 15,
+            family=FONT_COURIER,
+            color="black",
+        )
     ax_imfp.set_ylabel(r"IMFP (nm$^{-1}$)")
     ax_imfp.set_xlabel(f"{projectile_axis_label} energy ($T$; eV)")
     if xmins and xmaxs:
@@ -1264,6 +1333,14 @@ def _series_to_json(item: dict, energy_grid: np.ndarray, units: str) -> dict:
         payload["simulation_barkas_dcs"] = item["simulation_barkas_dcs"]
     if "simulation_charge_exchange" in item:
         payload["simulation_charge_exchange"] = item["simulation_charge_exchange"]
+    if "icru_relative_rms" in item:
+        payload["icru_relative_rms"] = float(item["icru_relative_rms"])
+        payload["icru_relative_rms_percent"] = float(item["icru_relative_rms_percent"])
+        payload["icru_rms_energy_bin_count"] = int(item["icru_rms_energy_bin_count"])
+        payload["icru_rms_nonpositive_stopping_bin_count"] = int(
+            item["icru_rms_nonpositive_stopping_bin_count"]
+        )
+        payload["icru_residual_definition"] = "stopping_power / ICRU_stopping_power - 1"
     if item.get("cross_section_tables"):
         payload["cross_section_tables"] = str(item["cross_section_tables"])
     if item.get("table_semantics"):
@@ -1546,10 +1623,6 @@ def _simulation_run_flags(root_arg: str | Path) -> dict[str, bool | None]:
     for key in sorted(requested):
         values = raw_values[key]
         if not values:
-            print(
-                f"WARNING: ROOT config does not record {key}; "
-                "the simulation filename will mark it as unknown."
-            )
             result[key] = None
             continue
         try:
@@ -1606,7 +1679,8 @@ def _build_simulation_series(
         root_path = PROJECT_ROOT / root_path
     root_text = str(root_path)
     _validate_simulation_projectile(root_text, projectile_key)
-    simulation_flags = _simulation_run_flags(root_text)
+    root_simulation_flags = _simulation_run_flags(root_text)
+    simulation_flags = dict(root_simulation_flags)
 
     density = float(rho_ice) if rho_ice is not None else float(ICE_DENSITY_BY_TYPE[ice_type])
     n_cm3 = N_CM3_WATER * (density / WATER_DENSITY_G_CM3)
@@ -1630,6 +1704,23 @@ def _build_simulation_series(
         )
         print(f"Loaded ROOT simulation cache: {cache}")
         root_text = str(cache_meta.get("root", root_text))
+        for flag_key, metadata_key in (
+            ("barkas_dcs", "simulation_barkas_dcs"),
+            ("charge_exchange", "simulation_charge_exchange"),
+        ):
+            cached_flag = cache_meta.get(metadata_key)
+            if cached_flag is None:
+                continue
+            cached_flag = bool(cached_flag)
+            root_flag = root_simulation_flags[flag_key]
+            if root_flag is not None and root_flag != cached_flag:
+                print(
+                    f"WARNING: ROOT {flag_key}={root_flag} differs from cached "
+                    f"{flag_key}={cached_flag}; using the cache setting because the "
+                    "plotted observables come from that cache. Rebuild the simulation "
+                    "cache to use the current ROOT run."
+                )
+            simulation_flags[flag_key] = cached_flag
     else:
         if cache.exists() and rebuild_cache:
             print(f"Rebuilding ROOT simulation cache: {cache}")
@@ -1669,6 +1760,13 @@ def _build_simulation_series(
             },
         )
         print(f"Wrote ROOT simulation cache: {cache}")
+
+    for flag_key in ("barkas_dcs", "charge_exchange"):
+        if simulation_flags[flag_key] is None:
+            print(
+                f"WARNING: Neither the simulation cache nor ROOT config records {flag_key}; "
+                "the plot annotation and filename will mark it as unknown."
+            )
 
     energy = np.asarray(data["energy_eV"], dtype=float)
     dedx_total = np.asarray(data["stopping_power_eV_per_nm"], dtype=float)
