@@ -9,7 +9,5 @@
 /dna/test/setLogMode full
 
 /dna/test/setIceSize 100 100 1000 mm
-/dna/test/setMatDens G4_WATER_ICE_USER 1. g/cm3
-/dna/test/setMat G4_WATER_ICE_USER
 
 /run/initialize

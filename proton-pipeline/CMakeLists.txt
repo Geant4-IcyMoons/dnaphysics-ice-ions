@@ -39,6 +39,7 @@ set(PROTON_HEADERS
   include/G4DNAEmfietzoglou_iceProtonExcitationModel.hh
   include/G4DNAEmfietzoglou_iceProtonIonisationModel.hh
   include/G4DNAEmfietzoglou_iceProtonIonisationStructure.hh
+  include/IcePhaseProperties.hh
   include/ModelDataRegistry.hh
   include/PhysicsList_Proton.hh
   include/PrimaryGeneratorAction.hh

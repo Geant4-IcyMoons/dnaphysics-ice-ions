@@ -69,9 +69,14 @@ approximation for both proton and alpha simulations.
 
 `DNA_PHYSICS` supported values:
 
-- `ice_hex`
-- `ice_am`
-- `water`
+- `ice_hex`: 0.917 g/cm3
+- `ice_am`: 0.940 g/cm3
+- `water`: 1.000 g/cm3
+
+The detector constructs the corresponding H2O material automatically and
+prints its material name, mass density, and molecular number density during
+initialization. A macro-level `/dna/test/setMatDens` command remains available
+only for explicit user overrides.
 
 ## Required Geant4-DNA data
 
