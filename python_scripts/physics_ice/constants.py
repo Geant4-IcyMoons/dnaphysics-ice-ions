@@ -17,6 +17,10 @@ DIAGNOSTIC_PLOTS_DIR = PLOTS_DIR / "diagnostics"
 DIELECTRIC_PLOTS_DIR = PLOTS_DIR / "dielectric"
 EXAMPLE_PLOTS_DIR = PLOTS_DIR / "examples"
 CROSS_SECTIONS_DIR = PROJECT_ROOT / "cross_sections"
+CARBON_CHARGE_EXCHANGE_DIR = CROSS_SECTIONS_DIR / "carbon_charge_exchange"
+LITHIUM_CHARGE_EXCHANGE_DIR = CROSS_SECTIONS_DIR / "lithium_charge_exchange"
+OXYGEN_CHARGE_EXCHANGE_DIR = CROSS_SECTIONS_DIR / "oxygen_charge_exchange"
+SULFUR_CHARGE_EXCHANGE_DIR = CROSS_SECTIONS_DIR / "sulfur_charge_exchange"
 TABULAR_DIR = PROJECT_ROOT / "tabular"
 BACKUP_TABULAR_DIR = TOP_ROOT / "backup" / "geant4_icyMoons" / "tabular"
 
@@ -115,6 +119,7 @@ RY = 13.605693009  # eV, Rydberg
 EV_TO_HA = 1.0 / EH
 
 a0 = 5.291e-11
+ATOMIC_MASS_UNIT_MASS_AU = 1822.888486209
 N = 3.34e28
 mass = 1.0
 
@@ -123,8 +128,22 @@ mass = 1.0
 # charge appropriate to the projectile velocity.
 PROTON_MASS_AU = 1836.152673
 ALPHA_MASS_AU = 7294.299536
+# Bare Li-7 nuclear mass in electron-mass atomic units. Derived from the NIST
+# neutral-atom relative mass 7.0160034366 u by subtracting three electron
+# masses and restoring the 203.486171126 eV total electronic binding energy
+# (the sum of the NIST Li0--Li2+ successive ionization energies).
+LITHIUM_7_BARE_MASS_AU = 12786.3922820
 CARBON_12_BARE_MASS_AU = 21868.6618
-OXYGEN_16_BARE_MASS_AU = 29156.9469
+# Bare O-16 nuclear mass in electron-mass atomic units.  Derived from the
+# NIST neutral-atom relative mass 15.99491461957 u by subtracting eight
+# electron masses and restoring the 2043.8429988 eV total electronic binding
+# energy (the sum of the NIST O0--O7+ successive ionization energies).
+OXYGEN_16_BARE_MASS_AU = 29148.9497
+# Bare S-32 nuclear mass in electron-mass atomic units.  Derived from the
+# NIST neutral-atom relative mass 31.9720711744 u by subtracting sixteen
+# electron masses and restoring the 10859.5983847 eV total electronic binding
+# energy (the sum of the NIST S0--S15+ successive ionization energies).
+SULFUR_32_BARE_MASS_AU = 58265.5417
 PROJECTILE_LIBRARY = {
     "proton": {
         "aliases": ("p", "h+", "proton"),
@@ -158,11 +177,20 @@ PROJECTILE_LIBRARY = {
         "file_token": "oxygen",
         "label": "Oxygen ion O8+ constant-charge approximation",
     },
+    "sulfur": {
+        "aliases": ("sulfur", "s", "s16+", "sulfur16+"),
+        "mass_au": SULFUR_32_BARE_MASS_AU,
+        "mass_number": 32.0,
+        "charge": 16.0,
+        "file_token": "sulfur",
+        "label": "Sulfur ion S16+ constant-charge approximation",
+    },
 }
 
 # Molecular-density / mass-density mapping for H2O
 AVOGADRO = 6.02214076e23  # mol^-1
 H2O_MOLAR_MASS_G_MOL = 18.01528
+H2O_MOLECULE_MASS_AU = H2O_MOLAR_MASS_G_MOL * ATOMIC_MASS_UNIT_MASS_AU
 
 # Ice phase nominal mass densities (g/cm^3)
 ICE_HEXAGONAL_DENSITY_G_CM3 = 0.917
@@ -170,6 +198,27 @@ ICE_AMORPHOUS_DENSITY_G_CM3 = 0.94
 
 # Reference mass density implied by N above (used in XS normalization code)
 N_REFERENCE_DENSITY_G_CM3 = (N / 1.0e6) * H2O_MOLAR_MASS_G_MOL / AVOGADRO
+
+# Numerical defaults for the Liamsuwan-Nikjoo CTMC implementation. The paper
+# defines the energy range and charge states but does not publish its energy
+# grid, impact grid, Runge--Kutta tolerances, radial-table resolution, or RNG
+# seed; output metadata reports these implementation controls explicitly.
+CARBON_CTMC_ENERGY_MIN_KEV_U = 1.0
+CARBON_CTMC_ENERGY_MAX_KEV_U = 1.0e4
+CARBON_CTMC_ENERGY_POINTS = 41
+CARBON_CTMC_ENERGY_SPACING = "log"
+CARBON_CTMC_CHARGES = "0:6"
+CARBON_CTMC_CHARGE_STEP = 1
+CARBON_CTMC_IMPACT_POINTS = 101
+CARBON_CTMC_TRAJECTORIES = 10_000
+CARBON_CTMC_WORKERS = 0  # Auto-detect scheduler/CPU affinity.
+CARBON_CTMC_BACKEND = "numba"
+# Zero disables the implementation-only step ceiling.  The paper terminates
+# trajectories by elapsed time and negligible screened-nucleus interaction,
+# not by an unpublished Runge--Kutta step count.
+CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS = 0
+CARBON_CTMC_RADIAL_GRID_POINTS = 4096
+CARBON_CTMC_SEED = 20130641
 
 C_AU = 137.035999084
 MC2_eV = 510998.95
