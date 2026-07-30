@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 PHYSICS_ICE_DIR = Path(__file__).resolve().parents[1] / "python_scripts" / "physics_ice"
 if str(PHYSICS_ICE_DIR) not in sys.path:
@@ -11,6 +12,7 @@ if str(PHYSICS_ICE_DIR) not in sys.path:
 
 import barkas_dcs
 import emfietzoglou_model_finite_q as model
+import generate_ice_cross_sections_ion as ion_generator
 
 
 def test_barkas_constants():
@@ -109,6 +111,34 @@ def test_barkas_xi_formula():
     assert np.allclose(barkas_dcs.barkas_xi(W, T, mass_au), expected)
 
 
+def test_barkas_kernel_formula_and_units():
+    T = np.array([1.0e6, 2.0e6])
+    W = np.array([20.0, 80.0])
+    df_dW = np.array([0.2, 0.05])
+    z_int = np.array([1.0, 2.5])
+    mass_me = 1836.152673
+
+    beta, gamma = barkas_dcs.projectile_beta_gamma(T, mass_me)
+    xi = 0.5616 * barkas_dcs.H2O_CB * W / (gamma * beta**2 * barkas_dcs.MEC2_EV)
+    expected_cm2 = (
+        4.0
+        * np.pi
+        * barkas_dcs.RE_CLASSICAL_CM**2
+        * barkas_dcs.ALPHA_FINE
+        / (gamma**2 * beta**5)
+        * df_dW
+        * (barkas_dcs.arbi1(xi) + barkas_dcs.arbi2(xi) / gamma**2)
+    )
+    assert np.allclose(
+        barkas_dcs.barkas_unit_dcs_cm2_per_eV(T, W, mass_me, df_dW),
+        expected_cm2,
+    )
+    assert np.allclose(
+        barkas_dcs.barkas_dcs_m2_per_eV(T, W, z_int, mass_me, df_dW),
+        barkas_dcs.CM2_TO_M2 * z_int**3 * expected_cm2,
+    )
+
+
 def test_oos_normalization_per_h2o():
     s = model.epsilon_optical("amorphous")
     W = np.geomspace(1.0e-3, 1.0e6, 1000)
@@ -118,6 +148,24 @@ def test_oos_normalization_per_h2o():
     assert np.isclose(oos.total_integral_norm_grid, 10.0, rtol=1e-5)
     assert np.isfinite(oos.total_integral_unique_grid)
     assert oos.df_dW_total_unique.size == np.unique(W).size
+
+
+def test_oos_normalization_is_separate_from_finite_q_kshell_fsum():
+    s = model.epsilon_optical("amorphous")
+    W = np.geomspace(1.0e-6, 1.0e8, 5000)
+    oos = barkas_dcs.oos_density(W, s, material="amorphous", include_kshell=True)
+    assert np.isclose(oos.valence_integral_raw * oos.valence_norm, 8.0, rtol=1e-12)
+    assert np.isclose(oos.ok_integral_raw * oos.ok_norm, 2.0, rtol=1e-12)
+    assert np.isclose(oos.total_integral_norm_grid, 10.0, rtol=1e-12)
+
+    kshell_fsum = model.oxygen_K_hydrogenic_gos_fsum(
+        B_K_eV=model.OXYGEN_K_B_EV,
+        Zeff=model.OXYGEN_K_ZEFF,
+        normalize_fsum=True,
+        fsum_target=model.OXYGEN_K_FSUM_TARGET,
+    )
+    assert np.isclose(kshell_fsum, model.OXYGEN_K_FSUM_TARGET, rtol=1e-4)
+    assert not np.isclose(2.0, model.OXYGEN_K_FSUM_TARGET)
 
 
 def test_born_reference_charge_scaling_modes():
@@ -181,3 +229,77 @@ def test_barkas_dcs_total_integrates_to_tcs_total():
     assert np.isclose(diag.TCS_total_m2[0], expected)
     assert np.isclose(diag.S_Barkas_check_eV_m2[0], np.trapezoid(W * diag.DCS_Barkas_m2_per_eV, W))
     assert diag.negative_or_unstable_T_eV.size == 0
+    assert np.all(np.isfinite(diag.DCS_total_m2_per_eV))
+    assert np.all(diag.DCS_total_m2_per_eV >= 0.0)
+    assert diag.barkas_channel_distribution == "bookkeeping_weighted_across_existing_channels"
+
+
+def test_same_interaction_charge_scales_born_and_barkas_terms():
+    s = model.epsilon_optical("amorphous")
+    T = 1.0e6
+    W = np.array([10.0, 20.0, 40.0, 80.0, 160.0])
+    exc = np.full((W.size, 1), 1.0e-6)
+    ion = np.full((W.size, 1), 2.0e-6)
+    z_int = 3.0
+    dcs_scale_m2 = 2.0e-22
+    dcs_data = {
+        "T_line": np.full(W.size, T),
+        "E_line": W,
+        "exc_vals": exc,
+        "ion_vals": ion,
+    }
+    corrected, diag = barkas_dcs.apply_barkas_correction_to_dcs_data(
+        dcs_data,
+        s,
+        material="amorphous",
+        projectile_mass_me=1836.152673,
+        nuclear_charge=8.0,
+        charge_mode="explicit",
+        explicit_charge=z_int,
+        include_barkas_dcs=True,
+        include_kshell=True,
+        dcs_scale_m2=dcs_scale_m2,
+        born_reference_charge="unit_charge",
+    )
+
+    raw_born_m2 = dcs_scale_m2 * np.sum(np.hstack([exc, ion]), axis=1)
+    oos = barkas_dcs.oos_density(W, s, material="amorphous", include_kshell=True)
+    expected_barkas = barkas_dcs.barkas_dcs_m2_per_eV(
+        np.full(W.size, T),
+        W,
+        z_int=np.full(W.size, z_int),
+        projectile_mass_me=1836.152673,
+        df_dW=oos.df_dW_total,
+    )
+
+    assert np.allclose(diag.z_int, z_int)
+    assert np.allclose(diag.DCS_Born_m2_per_eV, z_int**2 * raw_born_m2)
+    assert np.allclose(diag.DCS_Barkas_m2_per_eV, expected_barkas)
+    assert np.allclose(
+        diag.DCS_total_m2_per_eV,
+        dcs_scale_m2 * (np.sum(corrected["exc_vals"], axis=1) + np.sum(corrected["ion_vals"], axis=1)),
+    )
+
+
+def test_bloch_dcs_cannot_be_enabled_silently():
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["generate_ice_cross_sections_ion.py", "--include-bloch-dcs"]
+        with pytest.raises(ValueError, match="Bloch corrections"):
+            ion_generator._include_bloch_dcs_from_argv(default=False)
+        sys.argv = ["generate_ice_cross_sections_ion.py", "--include-bloch-dcs=true"]
+        with pytest.raises(ValueError, match="Bloch corrections"):
+            ion_generator._include_bloch_dcs_from_argv(default=False)
+    finally:
+        sys.argv = old_argv
+
+
+def test_energy_unit_per_u_converts_to_total_before_kinematics():
+    previous = ion_generator.PROJECTILE_KEY
+    try:
+        ion_generator.set_projectile("oxygen")
+        assert ion_generator.PROJECTILE_MASS_NUMBER == 16.0
+        assert ion_generator._energy_range_to_total_eV(1.0e6, 2.0e6, "total") == (1.0e6, 2.0e6)
+        assert ion_generator._energy_range_to_total_eV(1.0e6, 2.0e6, "per_u") == (16.0e6, 32.0e6)
+    finally:
+        ion_generator.set_projectile(previous)

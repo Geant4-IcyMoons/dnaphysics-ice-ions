@@ -10,10 +10,73 @@
 #include "G4VisExecutive.hh"
 #include "Randomize.hh"
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <string>
+
+namespace
+{
+std::string ReadEnvString(const char* key, const char* legacyKey, const std::string& defaultValue)
+{
+  const char* raw = std::getenv(key);
+  if (raw && *raw) return raw;
+  raw = legacyKey ? std::getenv(legacyKey) : nullptr;
+  if (raw && *raw) return raw;
+  return defaultValue;
+}
+
+G4double ParsePositiveDouble(const std::string& text, G4double fallback, const char* label)
+{
+  char* end = nullptr;
+  const G4double value = std::strtod(text.c_str(), &end);
+  if (end != text.c_str() && value > 0.) return value;
+  G4cout << "### dnaphysics_proton Warning: invalid " << label << "='" << text
+         << "', using " << fallback << G4endl;
+  return fallback;
+}
+
+void ApplySourceAndRun(G4UImanager* ui,
+                       const std::string& particle,
+                       G4double eminMeV,
+                       G4double emaxMeV,
+                       const std::string& events,
+                       const std::string& number)
+{
+  if (emaxMeV < eminMeV) {
+    G4cout << "### dnaphysics_proton Warning: Emax < Emin; swapping source energy bounds."
+           << G4endl;
+    const G4double tmp = eminMeV;
+    eminMeV = emaxMeV;
+    emaxMeV = tmp;
+  }
+
+  ui->ApplyCommand("/gps/particle " + G4String(particle));
+  ui->ApplyCommand("/gps/number " + G4String(number));
+  ui->ApplyCommand("/gps/pos/type Point");
+  ui->ApplyCommand("/gps/pos/centre 0 0 -0.01 mm");
+  ui->ApplyCommand("/gps/ang/type beam1d");
+  ui->ApplyCommand("/gps/direction 0 0 1");
+
+  if (std::fabs(emaxMeV - eminMeV) <= 1.0e-12 * std::max(1.0, std::fabs(eminMeV))) {
+    ui->ApplyCommand("/gps/ene/type Mono");
+    ui->ApplyCommand("/gps/ene/mono " + G4String(std::to_string(eminMeV)) + " MeV");
+    G4cout << "Source energy mode: mono " << eminMeV << " MeV" << G4endl;
+  } else {
+    ui->ApplyCommand("/gps/ene/type Lin");
+    ui->ApplyCommand("/gps/ene/min " + G4String(std::to_string(eminMeV)) + " MeV");
+    ui->ApplyCommand("/gps/ene/max " + G4String(std::to_string(emaxMeV)) + " MeV");
+    ui->ApplyCommand("/gps/ene/gradient 0.");
+    ui->ApplyCommand("/gps/ene/intercept 1.");
+    G4cout << "Source energy mode: uniform " << eminMeV << "-" << emaxMeV
+           << " MeV" << G4endl;
+  }
+
+  ui->ApplyCommand("/run/beamOn " + G4String(events));
+}
+}  // namespace
 
 int main(int argc, char** argv)
 {
@@ -23,11 +86,45 @@ int main(int argc, char** argv)
   }
 
   auto* runManager = G4RunManagerFactory::CreateRunManager();
-  if (argc == 3) {
+  if (argc >= 3) {
     runManager->SetNumberOfThreads(std::atoi(argv[2]));
   } else {
     runManager->SetNumberOfThreads(2);
   }
+
+  std::string sourceParticle =
+    ReadEnvString("DNA_SOURCE_PARTICLE", "DNA_PROTON_SOURCE_PARTICLE", "proton");
+  const std::string defaultSourceEnergyMeV =
+    ReadEnvString("DNA_SOURCE_ENERGY_MEV", "DNA_PROTON_SOURCE_ENERGY_MEV", "0.5");
+  std::string sourceEminMeV =
+    ReadEnvString("DNA_SOURCE_EMIN_MEV", "DNA_PROTON_SOURCE_EMIN_MEV", defaultSourceEnergyMeV);
+  std::string sourceEmaxMeV =
+    ReadEnvString("DNA_SOURCE_EMAX_MEV", "DNA_PROTON_SOURCE_EMAX_MEV", defaultSourceEnergyMeV);
+  std::string sourceEvents =
+    ReadEnvString("DNA_SOURCE_EVENTS", "DNA_PROTON_SOURCE_EVENTS", "10");
+  std::string sourceNumber =
+    ReadEnvString("DNA_SOURCE_NUMBER", "DNA_PROTON_SOURCE_NUMBER", "1");
+
+  // CLI form:
+  //   dnaphysics_proton macro.mac threads particle Emin_MeV Emax_MeV events particles_per_event
+  if (argc >= 4) sourceParticle = argv[3];
+  if (argc >= 5) sourceEminMeV = argv[4];
+  if (argc >= 6) sourceEmaxMeV = argv[5];
+  if (argc >= 7) sourceEvents = argv[6];
+  if (argc >= 8) sourceNumber = argv[7];
+
+  for (auto& c : sourceParticle) c = static_cast<char>(std::tolower(c));
+  if (sourceParticle != "proton" && sourceParticle != "alpha") {
+    G4cerr << "### dnaphysics_proton Error: unsupported source particle '"
+           << sourceParticle << "'. Use proton or alpha." << G4endl;
+    delete runManager;
+    return 2;
+  }
+
+  const G4double sourceEminValueMeV =
+    ParsePositiveDouble(sourceEminMeV, 0.5, "source Emin_MeV");
+  const G4double sourceEmaxValueMeV =
+    ParsePositiveDouble(sourceEmaxMeV, sourceEminValueMeV, "source Emax_MeV");
 
   // Keep phase selection compatible with existing data naming.
   const char* phys_env = std::getenv("DNA_PHYSICS");
@@ -42,8 +139,18 @@ int main(int argc, char** argv)
     phys_choice = "ice_hex";
   }
   setenv("DNA_PHYSICS", phys_choice.c_str(), 1);
+  setenv("DNA_SOURCE_PARTICLE", sourceParticle.c_str(), 1);
+  setenv("DNA_SOURCE_EMIN_MEV", sourceEminMeV.c_str(), 1);
+  setenv("DNA_SOURCE_EMAX_MEV", sourceEmaxMeV.c_str(), 1);
+  setenv("DNA_SOURCE_EVENTS", sourceEvents.c_str(), 1);
+  setenv("DNA_SOURCE_NUMBER", sourceNumber.c_str(), 1);
 
-  G4cout << "Using proton physics list (DNA_PHYSICS=" << phys_choice << ")" << G4endl;
+  G4cout << "Using proton/alpha ion physics list (DNA_PHYSICS="
+         << phys_choice << ")" << G4endl;
+  G4cout << "Source settings: particle=" << sourceParticle
+         << ", energy=" << sourceEminValueMeV << "-" << sourceEmaxValueMeV << " MeV"
+         << ", events=" << sourceEvents
+         << ", gps_number=" << sourceNumber << G4endl;
 
   auto* physlist = new PhysicsList_Proton();
   runManager->SetUserInitialization(new DetectorConstruction(physlist));
@@ -59,6 +166,12 @@ int main(int argc, char** argv)
     G4String command = "/control/execute ";
     G4String fileName = argv[1];
     UImanager->ApplyCommand(command + fileName);
+    ApplySourceAndRun(UImanager,
+                      sourceParticle,
+                      sourceEminValueMeV,
+                      sourceEmaxValueMeV,
+                      sourceEvents,
+                      sourceNumber);
   } else {
     visManager = new G4VisExecutive;
     visManager->Initialize();

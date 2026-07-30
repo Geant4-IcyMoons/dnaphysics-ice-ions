@@ -17,6 +17,7 @@ set(PROTON_SOURCES
   src/DetectorMessenger.cc
   src/EventAction.cc
   src/G4DNAEmfietzoglou_iceExcitationStructure.cc
+  src/G4DNAEmfietzoglou_iceProtonDcsTable.cc
   src/G4DNAEmfietzoglou_iceProtonExcitationModel.cc
   src/G4DNAEmfietzoglou_iceProtonIonisationModel.cc
   src/G4DNAEmfietzoglou_iceProtonIonisationStructure.cc
@@ -34,9 +35,11 @@ set(PROTON_HEADERS
   include/DetectorMessenger.hh
   include/EventAction.hh
   include/G4DNAEmfietzoglou_iceExcitationStructure.hh
+  include/G4DNAEmfietzoglou_iceProtonDcsTable.hh
   include/G4DNAEmfietzoglou_iceProtonExcitationModel.hh
   include/G4DNAEmfietzoglou_iceProtonIonisationModel.hh
   include/G4DNAEmfietzoglou_iceProtonIonisationStructure.hh
+  include/IcePhaseProperties.hh
   include/ModelDataRegistry.hh
   include/PhysicsList_Proton.hh
   include/PrimaryGeneratorAction.hh

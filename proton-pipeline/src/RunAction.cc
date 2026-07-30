@@ -408,6 +408,29 @@ void RunAction::BeginOfRunAction(const G4Run*)
     appendConfig("physics_list", physChoice);
     appendConfig("ice_phase", icePhase.empty() ? "n/a" : icePhase);
     appendConfig("log_mode", GetLogModeName());
+    appendConfig("source_particle",
+                 ReadEnvString("DNA_SOURCE_PARTICLE").empty()
+                     ? "proton"
+                     : ReadEnvString("DNA_SOURCE_PARTICLE"));
+    appendConfig("source_emin_MeV", ReadEnvString("DNA_SOURCE_EMIN_MEV"));
+    appendConfig("source_emax_MeV", ReadEnvString("DNA_SOURCE_EMAX_MEV"));
+    const bool barkasDcs = HasEnv("DNA_ION_BARKAS_DCS")
+                               ? ReadEnvFlag("DNA_ION_BARKAS_DCS", false)
+                               : ReadEnvFlag(
+                                     "DNA_PROTON_BARKAS_DCS",
+                                     ReadEnvFlag(
+                                         "DNA_ICE_PROTON_BARKAS_DCS", false));
+    const bool chargeExchange = HasEnv("DNA_ION_CHARGE_EXCHANGE")
+                                    ? ReadEnvFlag("DNA_ION_CHARGE_EXCHANGE", false)
+                                    : ReadEnvFlag(
+                                          "DNA_PROTON_ENABLE_CHARGE_EXCHANGE",
+                                          false);
+    appendConfig("barkas_dcs", barkasDcs ? "on" : "off");
+    appendConfig("charge_exchange", chargeExchange ? "on" : "off");
+    appendConfig("charge_exchange_model",
+                 chargeExchange ? "G4DNADingfelder" : "disabled");
+    appendConfig("charge_exchange_target_parameterization",
+                 chargeExchange ? "liquid_water_H2O_density_scaled" : "n/a");
   }
 
   // Clear any previous step logs so this run starts fresh
