@@ -93,8 +93,10 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     separate, immutable projectile definitions and entry points.
   - `physics_ice/CHARGE_EXCHANGE_CTMC_PROVENANCE.md` documents every paper,
     coefficient, physical definition, validity limit, and ice-density rule.
-    `physics_ice/CARBON_CTMC_PARALLEL.md` documents deterministic sharding,
-    checkpoint/resume behavior, convergence inputs, validation, and merging.
+    `physics_ice/CHARGE_EXCHANGE_CTMC_RUNBOOK.md` is the detailed C/Li/O/S
+    CPU, PBS, checkpoint/resume, and output guide.
+    `physics_ice/CARBON_CTMC_PARALLEL.md` retains the carbon-specific
+    validation and production history.
   - The optimized Numba DOP853 backend uses process-level CPU parallelism,
     deterministic per-trajectory random streams, bounded scheduling, and
     parent-owned `tqdm` progress bars. A SciPy backend is retained as the
@@ -103,6 +105,8 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     or many nodes through disjoint restartable shards. Initial separations
     and impact-parameter cutoffs are mandatory convergence inputs because
     unpublished values are never synthesized by the code.
+    `pbs/launch_charge_exchange_ctmc_example.sh` demonstrates validated,
+    array-limit-aware multi-node submission and a separate final merge.
   - Outputs are microscopic cross sections per H2O molecule. A Geant4
     table model must convert them to macroscopic interaction rates with the
     selected material's H2O molecular density; amorphous and hexagonal ice
