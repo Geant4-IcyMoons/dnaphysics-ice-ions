@@ -91,6 +91,27 @@ the density to the stored microscopic tables as well would double count it.
 The shared output writer records the three densities and molecular number
 densities in every carbon, lithium, oxygen, and sulfur metadata file.
 
+### Runtime implementation status
+
+The proton/alpha pipeline registers Geant4 11.3.2's Dingfelder charge-increase
+and charge-decrease models. Those models calculate
+`CrossSectionPerVolume` as the microscopic H2O cross section multiplied by
+the H2O molecular number density returned for the current material by
+`G4DNAMolecularMaterial`. Both the main application and proton/alpha pipeline
+construct `G4_WATER_ICE_AM` and `G4_WATER_ICE_HEX` from `G4_WATER` at the
+densities above. Proton/alpha charge-exchange rates therefore scale as
+`1.000:0.940:0.917` for water, amorphous ice, and hexagonal ice at the same
+microscopic cross section; their mean free paths scale inversely.
+
+The carbon, lithium, oxygen, and sulfur code in this repository currently
+generates microscopic CTMC tables. It does **not** yet register a Geant4
+process that reads those tables and changes the transported ion's charge
+state. Consequently, density scaling for those ions is a required interface
+contract recorded in their tables and metadata, not a claim that heavy-ion
+charge exchange is already active in Geant4. A future table model must return
+`n_H2O(material) * sigma(E,q)` from `CrossSectionPerVolume`; multiplying the
+stored table itself by a phase density would be an error.
+
 ## Carbon data
 
 The C0--C5+ binding energies and outer-shell occupancies are Table 1 of

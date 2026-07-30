@@ -75,7 +75,10 @@ approximation for both proton and alpha simulations.
 
 The detector constructs the corresponding H2O material automatically and
 prints its material name, mass density, and molecular number density during
-initialization. A macro-level `/dna/test/setMatDens` command remains available
+initialization. Geant4's Dingfelder charge-increase and charge-decrease models
+then multiply their microscopic H2O cross sections by that material's
+`G4DNAMolecularMaterial` number density. A macro-level
+`/dna/test/setMatDens` command remains available
 only for explicit user overrides.
 
 ## Required Geant4-DNA data

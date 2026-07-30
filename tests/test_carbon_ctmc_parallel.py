@@ -686,8 +686,8 @@ def test_sulfur_additions_preserve_oxygen_production_signature(
     ) == "0fb3dae255288ef1ada699228c6a1a404fb2781ab9c92fa6806307d7d441b526"
 
 
-@pytest.mark.parametrize("projectile", ("carbon", "oxygen", "sulfur"))
-def test_all_ctmc_projectiles_use_material_density_at_runtime(
+@pytest.mark.parametrize("projectile", tuple(ctmc.PROJECTILES))
+def test_all_ctmc_projectiles_declare_microscopic_phase_scaling(
     projectile: str,
 ) -> None:
     ctmc.select_projectile(projectile)
@@ -725,7 +725,20 @@ def test_cpp_and_python_ice_phase_densities_match() -> None:
         assert "kWaterDensityGPerCm3 = 1.0;" in header
 
 
-def test_ctmc_output_metadata_records_runtime_density_scaling(
+def test_both_geant4_apps_construct_phase_specific_h2o_materials() -> None:
+    project_root = PHYSICS_SCRIPT_DIR.parents[1]
+    for relative_path in (
+        Path("src/DetectorConstruction.cc"),
+        Path("proton-pipeline/src/DetectorConstruction.cc"),
+    ):
+        source = (project_root / relative_path).read_text(encoding="utf-8")
+        assert '"G4_WATER_ICE_AM"' in source
+        assert '"G4_WATER_ICE_HEX"' in source
+        assert 'BuildMaterialWithNewDensity(' in source
+        assert '"G4_WATER", densityGPerCm3 * g / cm3' in source
+
+
+def test_ctmc_output_metadata_records_required_runtime_density_scaling(
     tmp_path: Path,
 ) -> None:
     energies = np.asarray([1.0])

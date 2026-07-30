@@ -103,9 +103,11 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     or many nodes through disjoint restartable shards. Initial separations
     and impact-parameter cutoffs are mandatory convergence inputs because
     unpublished values are never synthesized by the code.
-  - Outputs are microscopic cross sections per H2O molecule. The selected
-    Geant4 material density converts them to macroscopic interaction rates;
-    amorphous and hexagonal ice do not require separate CTMC tables.
+  - Outputs are microscopic cross sections per H2O molecule. A Geant4
+    table model must convert them to macroscopic interaction rates with the
+    selected material's H2O molecular density; amorphous and hexagonal ice
+    do not require separate CTMC tables. The C/Li/O/S table generators are
+    present, but their Geant4 runtime consumer is not yet implemented.
 
 - `plotting/plot_vibExcitation_channelwise_angular_distributions.py`
   - Visualizes angular PDFs per vib channel using Michaud γ(E) and a Henyey–Greenstein mapping.
