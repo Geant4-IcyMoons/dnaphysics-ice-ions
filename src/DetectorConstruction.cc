@@ -38,10 +38,13 @@
 
 #include "DetectorConstruction.hh"
 #include "DetectorMessenger.hh"
+#include "IcePhaseProperties.hh"
 #include "G4VModularPhysicsList.hh"
 
 #include "G4LogicalVolumeStore.hh"
+#include "G4Material.hh"
 #include "G4NistManager.hh"
+#include "G4PhysicalConstants.hh"
 #include "G4RunManager.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4UserLimits.hh"
@@ -51,18 +54,71 @@
 #include <string>
 
 namespace {
+enum class TargetPhase
+{
+  Water,
+  HexagonalIce,
+  AmorphousIce
+};
+
 std::string ToLower(std::string s)
 {
   for (auto& ch : s) ch = static_cast<char>(std::tolower(ch));
   return s;
 }
 
-bool IsIcePhysicsEnabled()
+TargetPhase SelectedTargetPhase()
 {
   const char* env = std::getenv("DNA_PHYSICS");
-  if (!env || !*env) return true;  // project default is ice
+  if (!env || !*env) return TargetPhase::HexagonalIce;
   const std::string val = ToLower(std::string(env));
-  return val != "water";
+  if (val == "water") return TargetPhase::Water;
+  if (val == "ice_am") return TargetPhase::AmorphousIce;
+  return TargetPhase::HexagonalIce;
+}
+
+G4Material* FindOrBuildDefaultTargetMaterial()
+{
+  auto* nist = G4NistManager::Instance();
+  nist->FindOrBuildMaterial("G4_WATER");
+
+  const auto phase = SelectedTargetPhase();
+  if (phase == TargetPhase::Water) {
+    return nist->FindOrBuildMaterial("G4_WATER");
+  }
+
+  const G4String materialName =
+    phase == TargetPhase::AmorphousIce ? "G4_WATER_ICE_AM" : "G4_WATER_ICE_HEX";
+  const G4double densityGPerCm3 =
+    phase == TargetPhase::AmorphousIce
+      ? dna_ice::kAmorphousIceDensityGPerCm3
+      : dna_ice::kHexagonalIceDensityGPerCm3;
+
+  if (auto* existing = G4Material::GetMaterial(materialName, false)) {
+    return existing;
+  }
+  return nist->BuildMaterialWithNewDensity(
+    materialName, "G4_WATER", densityGPerCm3 * g / cm3);
+}
+
+bool IsDefaultH2OAlias(const G4String& materialName)
+{
+  return materialName == "G4_WATER" || materialName == "G4_ICE";
+}
+
+void PrintTargetMaterialSummary(const G4Material* material)
+{
+  if (!material) return;
+
+  constexpr G4double kH2OMolarMassGPerMole = 18.01528;
+  const G4double numberDensity =
+    material->GetDensity() /
+    (kH2OMolarMassGPerMole * g / mole) * Avogadro;
+
+  G4cout << "DetectorConstruction: target material=" << material->GetName()
+         << ", density=" << material->GetDensity() / (g / cm3) << " g/cm3"
+         << ", n_H2O=" << numberDensity * cm3 << " molecules/cm3"
+         << G4endl;
 }
 
 }  // namespace
@@ -90,12 +146,7 @@ DetectorConstruction::DetectorConstruction(G4VModularPhysicsList* ptr)
   fWorldSize = 0.;
   // and material
   G4NistManager* man = G4NistManager::Instance();
-  if (IsIcePhysicsEnabled()) {
-    fpWaterMaterial = man->FindOrBuildMaterial("G4_ICE");
-    if (!fpWaterMaterial) fpWaterMaterial = man->FindOrBuildMaterial("G4_WATER");
-  } else {
-    fpWaterMaterial = man->FindOrBuildMaterial("G4_WATER");
-  }
+  fpWaterMaterial = FindOrBuildDefaultTargetMaterial();
   fpWorldMaterial = man->FindOrBuildMaterial("G4_Galactic");
 }
 
@@ -116,13 +167,7 @@ void DetectorConstruction::DefineMaterials()
   // Some DNA models query G4_WATER internally even when the target is ice.
   // Ensure it is present in the material table to avoid null lookups.
   man->FindOrBuildMaterial("G4_WATER");
-  G4Material* H2O = nullptr;
-  if (IsIcePhysicsEnabled()) {
-    H2O = man->FindOrBuildMaterial("G4_ICE");
-  }
-  if (!H2O) {
-    H2O = man->FindOrBuildMaterial("G4_WATER");
-  }
+  G4Material* H2O = FindOrBuildDefaultTargetMaterial();
   G4Material* vacuum = man->FindOrBuildMaterial("G4_Galactic");
 
   /*
@@ -142,8 +187,7 @@ void DetectorConstruction::DefineMaterials()
     fpWorldMaterial = vacuum;
   }
 
-  // G4cout << "-> Density of water material (g/cm3)="
-  //  << fpWaterMaterial->GetDensity()/(g/cm/cm/cm) << G4endl;
+  PrintTargetMaterialSummary(fpWaterMaterial);
 
   G4cout << *(G4Material::GetMaterialTable()) << G4endl;
 }
@@ -156,13 +200,14 @@ DetectorConstruction::MaterialWithDensity(G4String name, G4double density)
   // Water is defined from NIST material database
   G4NistManager* man = G4NistManager::Instance();
 
-  G4Material * material = man->BuildMaterialWithNewDensity(name,
-   "G4_WATER", density);
+  G4Material* material = G4Material::GetMaterial(name, false);
+  if (!material) {
+    material = man->BuildMaterialWithNewDensity(name, "G4_WATER", density);
+  }
 
-   G4cout << "-> Density of water_modified material (g/cm3)="
-    << material->GetDensity()/(g/cm/cm/cm) << G4endl;
+  PrintTargetMaterialSummary(material);
 
- return material;
+  return material;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo....
@@ -228,14 +273,23 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 void DetectorConstruction::SetMaterial(const G4String& materialChoice)
 {
   G4Material* pttoMaterial = nullptr;
-  pttoMaterial = G4Material::GetMaterial(materialChoice, false);
-  if (!pttoMaterial) {
-    // Search the material by its name
-    pttoMaterial = G4NistManager::Instance()->FindOrBuildMaterial(materialChoice);
+  if (IsDefaultH2OAlias(materialChoice) &&
+      SelectedTargetPhase() != TargetPhase::Water) {
+    // A generic H2O selection in an ice run means the phase-default H2O
+    // material. This keeps existing macros phase-aware without rescaling
+    // microscopic cross-section tables.
+    pttoMaterial = FindOrBuildDefaultTargetMaterial();
+  } else {
+    pttoMaterial = G4Material::GetMaterial(materialChoice, false);
+    if (!pttoMaterial) {
+      // Search the material by its name
+      pttoMaterial = G4NistManager::Instance()->FindOrBuildMaterial(materialChoice);
+    }
   }
 
   if (pttoMaterial) {
     fpWaterMaterial = pttoMaterial;
+    PrintTargetMaterialSummary(fpWaterMaterial);
     if (fLogicIce) {
       fLogicIce->SetMaterial(fpWaterMaterial);
     }
