@@ -48,9 +48,12 @@ equation or physical event definition. If an adaptive integration still fails
 during a singular close encounter, the identical initial state is retried at
 `1e-12/1e-14`, then `1e-13/1e-15`. This changes no random draw, equation,
 boundary, or event definition. A finite endpoint with relative total-energy
-drift above `1e-3` is likewise retried and is never committed unless one of
-the identical integrations meets that numerical quality limit. This is a
-solver-accuracy check, not a new physical event definition.
+drift above `1e-3` is likewise retried at all three physical-time tolerances
+and then, if necessary, with the identical equations in the positive Sundman
+time parameter already used for singular close encounters. It is never
+committed unless an independent endpoint check meets the same numerical
+quality limit. This is a solver-accuracy check, not a new physical event
+definition.
 
 The exact previously worst production channel (1 keV/u, C0 projectile loss,
 `b=5` a.u.) was rerun for all 10,000 deterministic trajectories after this

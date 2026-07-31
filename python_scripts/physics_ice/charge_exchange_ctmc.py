@@ -1417,16 +1417,23 @@ def simulate_one_trajectory(
             if candidate_drift <= config.maximum_relative_energy_drift:
                 break
 
+        needs_regularized_retry = (
+            final_relative is None
+            or final_energy_drift
+            > config.maximum_relative_energy_drift
+        )
         if (
-            not had_finite_endpoint
+            needs_regularized_retry
             and config.backend == "numba"
             and integrate_relative_dop853_regularized is not None
         ):
             # Exceptionally eccentric microcanonical phases can drive an
-            # electron arbitrarily close to a Coulombic core.  Retry the
-            # identical trajectory in a positive Sundman time parameter.
-            # This changes only numerical parameterization, not the paper's
-            # Newtonian equations, potentials, initial state, or endpoint.
+            # electron arbitrarily close to a Coulombic core. If every
+            # physical-time endpoint is absent or fails the independent
+            # energy-conservation check, retry the identical trajectory in a
+            # positive Sundman time parameter. This changes only numerical
+            # parameterization, not the paper's Newtonian equations,
+            # potentials, initial state, acceptance limit, or endpoint.
             for integration_rtol, integration_atol in tolerance_pairs:
                 success, candidate, _, _ = (
                     integrate_relative_dop853_regularized(

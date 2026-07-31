@@ -178,16 +178,18 @@ RKF error controls.
 
 The normal trajectory path uses physical-time DOP853. If that integrator
 cannot cross an exceptional near-Coulomb encounter at any of its three
-disclosed tolerances, the identical initial phase is retried with the standard
-positive Sundman reparameterization `dt/ds = min(1, r_min)`, where `r_min` is
-the shortest instantaneous pair distance. This changes the independent
-integration variable, not Newton's equations, the Garvey potentials, or any
-event definition. To prevent long bound-orbit roundoff from consuming the
-energy budget, a common relative-velocity projection onto the initial
-Hamiltonian surface activates only when drift reaches one quarter of the
-configured final limit. The endpoint is still rejected unless an independent
-total-energy calculation satisfies the full configured limit. No failed
-trajectory is discarded or replaced by a new random phase.
+disclosed tolerances, or if all three finite endpoints fail the independent
+energy-conservation limit, the identical initial phase is retried with the
+standard positive Sundman reparameterization `dt/ds = min(1, r_min)`, where
+`r_min` is the shortest instantaneous pair distance. This changes the
+independent integration variable, not Newton's equations, the Garvey
+potentials, the random phase, the event definition, or the acceptance limit.
+To prevent long bound-orbit roundoff from consuming the energy budget, a
+common relative-velocity projection onto the initial Hamiltonian surface
+activates only when drift reaches one quarter of the configured final limit.
+The endpoint is still rejected unless an independent total-energy calculation
+satisfies the full configured limit. No failed trajectory is discarded or
+replaced by a new random phase.
 
 Luna et al., Physical Review A **93** (2016) 052705,
 [doi:10.1103/PhysRevA.93.052705](https://doi.org/10.1103/PhysRevA.93.052705),

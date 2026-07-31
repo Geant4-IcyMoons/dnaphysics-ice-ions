@@ -934,6 +934,65 @@ def test_excess_energy_drift_retries_identical_trajectory(
     np.testing.assert_array_equal(calls[0], calls[1])
 
 
+def test_excess_energy_drift_uses_identical_regularized_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    direct_states: list[np.ndarray] = []
+    regularized_states: list[np.ndarray] = []
+
+    def direct_integrator(
+        initial: np.ndarray,
+        *_: object,
+    ) -> tuple[bool, np.ndarray, int, int]:
+        direct_states.append(initial.copy())
+        return True, initial.copy(), 1, 0
+
+    def regularized_integrator(
+        initial: np.ndarray,
+        *_: object,
+    ) -> tuple[bool, np.ndarray, int, int]:
+        regularized_states.append(initial.copy())
+        return True, initial.copy(), 1, 0
+
+    # Initial energy, three physical-time endpoints outside the unchanged
+    # 1e-3 limit, then one accepted Sundman-reparameterized endpoint.
+    energies = iter((100.0, 100.2, 100.3, 100.15, 100.0001))
+    monkeypatch.setattr(
+        ctmc,
+        "integrate_relative_dop853",
+        direct_integrator,
+    )
+    monkeypatch.setattr(
+        ctmc,
+        "integrate_relative_dop853_regularized",
+        regularized_integrator,
+    )
+    monkeypatch.setattr(
+        ctmc,
+        "relative_three_body_energy",
+        lambda *_: next(energies),
+    )
+    config = dataclasses.replace(_config(), backend="numba")
+    _, success, drift = ctmc.simulate_one_trajectory(
+        energy_keV_u=1.0,
+        charge_state=0,
+        impact_parameter_au=0.0,
+        bound_to="target",
+        binding_eV=ctmc.WATER_ORBITALS[0].binding_eV,
+        start_separation_au=100.0,
+        minimum_integration_time_au=1.0,
+        config=config,
+        rng=np.random.default_rng(41),
+    )
+
+    assert success
+    assert drift == pytest.approx(1.0e-6)
+    assert len(direct_states) == 3
+    assert len(regularized_states) == 1
+    for state in direct_states + regularized_states:
+        np.testing.assert_array_equal(state, direct_states[0])
+
+
 def test_unconserved_finite_endpoint_is_not_accepted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -945,6 +1004,11 @@ def test_unconserved_finite_endpoint_is_not_accepted(
 
     energies = iter((100.0, 100.2, 100.3, 100.15))
     monkeypatch.setattr(ctmc, "integrate_relative_dop853", fake_integrator)
+    monkeypatch.setattr(
+        ctmc,
+        "integrate_relative_dop853_regularized",
+        None,
+    )
     monkeypatch.setattr(
         ctmc,
         "relative_three_body_energy",
