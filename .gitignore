@@ -24,3 +24,11 @@ cross_section_*.png
 corrected_*.png
 channel_cross_section_*.png
 stopping_power_*.png
+
+# CTMC scheduler logs and restart/debug artifacts
+*_ctmc.o*
+*_ctmc.e*
+pbs/logs/
+cross_sections/*_charge_exchange/*_ctmc_checkpoint*.npz
+cross_sections/*_charge_exchange/*_ctmc_failure*.json
+cross_sections/*_charge_exchange/.*.tmp*

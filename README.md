@@ -87,19 +87,31 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
   - Rebuilds differential and cumulated vib‑excitation cross‑section tables from `michaud_table2.csv` and `michaud_table3.csv`.
   - Outputs: `sigmadiff_excitationvib_e_michaud.dat`, `sigmadiff_cumulated_excitationvib_e_michaud_hp.dat`.
 
-- `physics_ice/generate_carbon_charge_exchange_ctmc.py`
-  - Generates charge-state-resolved C(q+) + H2O SC, TI, SL, and LI molecular cross sections with the Liamsuwan–Nikjoo CTMC/IEVM/IPM framework.
-  - Uses shared project constants and writes restartable tables under `cross_sections/carbon_charge_exchange/`.
-  - Defaults to a Numba-compiled, 12-relative-coordinate DOP853 kernel. `--backend scipy` retains the slower full-coordinate reference implementation for validation.
-  - Runs shorter high-energy trajectories first and keeps the process queue bounded, so checkpoints appear early without changing seeds or results.
-  - Displays synchronized `tqdm` bars for attempted trajectories and completed grid points; `--progress-interval` controls the worker update chunk.
-  - Inspect the production grid before launching it:
-
-    ```bash
-    python python_scripts/physics_ice/generate_carbon_charge_exchange_ctmc.py --dry-run
-    ```
-
-  - The 41-energy, 10,000-trajectory default represents about 1.65 billion trajectories and still benefits strongly from distributed HPC resources.
+- CTMC charge exchange for carbon, lithium, oxygen, and sulfur:
+  - `physics_ice/charge_exchange_ctmc.py` contains the shared CTMC/IEVM/IPM
+    engine; the four `generate_*_charge_exchange_ctmc.py` files contain
+    separate, immutable projectile definitions and entry points.
+  - `physics_ice/CHARGE_EXCHANGE_CTMC_PROVENANCE.md` documents every paper,
+    coefficient, physical definition, validity limit, and ice-density rule.
+    `physics_ice/CHARGE_EXCHANGE_CTMC_RUNBOOK.md` is the detailed C/Li/O/S
+    CPU, PBS, checkpoint/resume, and output guide.
+    `physics_ice/CARBON_CTMC_PARALLEL.md` retains the carbon-specific
+    validation and production history.
+  - The optimized Numba DOP853 backend uses process-level CPU parallelism,
+    deterministic per-trajectory random streams, bounded scheduling, and
+    parent-owned `tqdm` progress bars. A SciPy backend is retained as the
+    full-coordinate reference implementation.
+  - The four `pbs/generate_*_charge_exchange_ctmc.pbs` launchers support one
+    or many nodes through disjoint restartable shards. Initial separations
+    and impact-parameter cutoffs are mandatory convergence inputs because
+    unpublished values are never synthesized by the code.
+    `pbs/launch_charge_exchange_ctmc_example.sh` demonstrates validated,
+    array-limit-aware multi-node submission and a separate final merge.
+  - Outputs are microscopic cross sections per H2O molecule. A Geant4
+    table model must convert them to macroscopic interaction rates with the
+    selected material's H2O molecular density; amorphous and hexagonal ice
+    do not require separate CTMC tables. The C/Li/O/S table generators are
+    present, but their Geant4 runtime consumer is not yet implemented.
 
 - `plotting/plot_vibExcitation_channelwise_angular_distributions.py`
   - Visualizes angular PDFs per vib channel using Michaud γ(E) and a Henyey–Greenstein mapping.
