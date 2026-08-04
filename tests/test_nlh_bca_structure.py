@@ -56,6 +56,8 @@ def test_initial_unequilibrated_structure_is_diagnostic_only():
     structure = load_ice_structure(INITIAL_STRUCTURE, allow_unvalidated=True)
     assert structure.atom_count == 24_576
     assert structure.water_molecule_count == 8_192
+    # This committed GenIce input is a historical 273 K-density structure;
+    # Geant4 transport and newly generated 100 K structures use 0.9335 g/cm3.
     assert structure.density_g_cm3 == pytest.approx(0.917, rel=2.0e-12)
     assert structure.use_class == "diagnostic-only"
 

@@ -754,7 +754,7 @@ def main() -> None:
         default=None,
         help=(
             "Override density (g/cm^3) for all ice phases in computed curves. "
-            "If omitted, uses 0.94 for amorphous and 0.917 for hexagonal."
+            "If omitted, uses 0.94 for amorphous and 0.9335 for 100 K hexagonal ice."
         ),
     )
     parser.add_argument(

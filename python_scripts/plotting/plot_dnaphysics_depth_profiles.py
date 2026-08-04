@@ -25,6 +25,7 @@ from root_utils import resolve_root_paths
 from constants import (
     FONT_COURIER,
     FONTSIZE_24,
+    ICE_HEXAGONAL_DENSITY_G_CM3,
     DIAGNOSTIC_PLOTS_DIR,
     RC_BASE_ELASTIC,
     rcparams_with_fontsize,
@@ -122,7 +123,12 @@ def _z_edges_from_file(path: Path) -> np.ndarray:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Depth profiles from dnaphysics ROOT output.")
     ap.add_argument("--root", type=Path, default=Path("build/dna.root"), help="Path to dna.root")
-    ap.add_argument("--density-g-cm3", type=float, default=0.917, help="Ice density (g/cm^3)")
+    ap.add_argument(
+        "--density-g-cm3",
+        type=float,
+        default=ICE_HEXAGONAL_DENSITY_G_CM3,
+        help="Ice density (g/cm^3)",
+    )
     ap.add_argument("--n-per-bin", type=int, default=1000, help="Electrons per energy bin in the macro")
     ap.add_argument("--delta-e", type=float, default=None, help="Energy bin width (MeV). If omitted, inferred.")
     ap.add_argument("--z-range-file", type=Path, default=None,
