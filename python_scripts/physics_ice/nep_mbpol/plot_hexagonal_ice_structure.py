@@ -24,7 +24,6 @@ sys.path.insert(0, str(PHYSICS_ICE))
 
 from constants import (  # noqa: E402
     FONT_COURIER,
-    FONTSIZE_12,
     OUTPUT_DIR,
     RC_BASE_STANDARD,
     rcparams_with_fontsize,
@@ -40,6 +39,7 @@ PDF_PATH = OUTPUT_DIR / "hexagonal_ice_structure.pdf"
 # Full-width AASTeX figure*; compact enough for a two-column page.
 FIGURE_WIDTH_IN = 7.1
 FIGURE_HEIGHT_IN = 5.15
+FIGURE_FONT_SIZE = 8.
 
 OXYGEN_COLOR = "slategray"
 HYDROGEN_COLOR = "lightgray"
@@ -54,7 +54,7 @@ def _configure_style() -> None:
     plt.rcParams.update(
         rcparams_with_fontsize(
             RC_BASE_STANDARD,
-            FONTSIZE_12,
+            FIGURE_FONT_SIZE,
             overrides={
                 "pdf.fonttype": 42,
                 "ps.fonttype": 42,
@@ -156,7 +156,7 @@ def _panel_label(ax, label: str) -> None:
         transform=ax.transAxes,
         ha="left",
         va="top",
-        fontsize=float(FONTSIZE_12),
+        fontsize=FIGURE_FONT_SIZE,
         bbox={
             "facecolor": "white",
             "edgecolor": "none",
@@ -197,7 +197,7 @@ def _draw_scale_bar(
         "5 Å",
         ha="center",
         va="bottom",
-        fontsize=float(FONTSIZE_12),
+        fontsize=FIGURE_FONT_SIZE,
         zorder=10,
     )
 
@@ -225,7 +225,7 @@ def _draw_3d_scale_bar(ax, scene_span: float) -> None:
         transform=ax.transAxes,
         ha="center",
         va="bottom",
-        fontsize=float(FONTSIZE_12),
+        fontsize=FIGURE_FONT_SIZE,
         zorder=30,
     )
 
