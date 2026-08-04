@@ -1,0 +1,50 @@
+{
+  "model": "NEP-MB-pol",
+  "record": {
+    "doi": "10.5281/zenodo.15033656",
+    "url": "https://zenodo.org/records/15033656"
+  },
+  "runtime_files": [
+    {
+      "name": "GPUMD-v3.9.3.zip",
+      "size_bytes": 35737799,
+      "md5": "e9c7f3de78f5d60b25098ed659f0bb53",
+      "url": "https://zenodo.org/api/records/15033656/files/GPUMD-v3.9.3.zip/content"
+    },
+    {
+      "name": "03-Demo-MD.zip",
+      "size_bytes": 4336330,
+      "md5": "60e3ff7c7b6174df6121d1ede0f06bc4",
+      "url": "https://zenodo.org/api/records/15033656/files/03-Demo-MD.zip/content"
+    },
+    {
+      "name": "README-v1.md",
+      "size_bytes": 5510,
+      "md5": "786ff0716022153c2f1a7a0b510b16a7",
+      "url": "https://zenodo.org/api/records/15033656/files/README-v1.md/content"
+    }
+  ],
+  "pretrained_potential": {
+    "name": "model/nep-mbpol.nep.txt",
+    "source_member": "03-Demo-MD/CMD/Density/nep.txt",
+    "size_bytes": 113661,
+    "md5": "207b548850e505805762c88ee10b82c2",
+    "sha256": "70b5fa54c185bc75f0ae9cea408f7db77d5d021069c48b77966fc9a7d84eb4aa"
+  },
+  "structure_generator": {
+    "name": "GenIce2",
+    "version": "2.2.13.3",
+    "package": "genice2-2.2.13.3-py3-none-any.whl",
+    "size_bytes": 766826,
+    "sha256": "243311b2c09606dacc7100fc59966fae402c316e6ca60ceca11a10b8059e108b",
+    "url": "https://pypi.org/project/genice2/2.2.13.3/"
+  },
+  "optional_training_archive": {
+    "name": "01-NEP-MB-pol.zip",
+    "size_bytes": 1496872057,
+    "md5": "eaa838e5102293861846f9d0451941b5",
+    "url": "https://zenodo.org/api/records/15033656/files/01-NEP-MB-pol.zip/content",
+    "downloaded": false,
+    "reason": "Not required to run the published pretrained potential."
+  }
+}

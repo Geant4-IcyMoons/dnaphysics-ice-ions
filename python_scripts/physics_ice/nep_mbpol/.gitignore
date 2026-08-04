@@ -1,0 +1,6 @@
+downloads/
+upstream/
+build/
+.venv/
+__pycache__/
+*.out
