@@ -50,6 +50,16 @@ class CollisionResult:
     energy_conservation_error_ev: float
 
 
+@dataclass(frozen=True)
+class TwoBodyOutcome:
+    """Lab-frame outcome implied by one CM scattering angle."""
+
+    theta_projectile_lab_rad: float
+    recoil_energy_ev: float
+    projectile_out_energy_ev: float
+    energy_conservation_error_ev: float
+
+
 class NLHCollisionKernel:
     """Reusable collision solver for one projectile, target, and energy."""
 
@@ -71,14 +81,19 @@ class NLHCollisionKernel:
         self.kinematics = pair_kinematics(projectile, target, projectile_energy_ev)
         relative_energy = self.kinematics.relative_kinetic_energy_ev
         if relative_energy <= self.minimum_turning_potential_ev:
+            self.threshold_radius_angstrom = turning_threshold_radius_angstrom(
+                self.kinematics.projectile,
+                self.kinematics.target,
+                minimum_turning_potential_ev=self.minimum_turning_potential_ev,
+            )
             self.maximum_impact_parameter_angstrom = 0.0
         else:
-            threshold_radius = _radius_at_potential(
+            self.threshold_radius_angstrom = _radius_at_potential(
                 self.kinematics.projectile,
                 self.kinematics.target,
                 self.minimum_turning_potential_ev,
             )
-            self.maximum_impact_parameter_angstrom = threshold_radius * math.sqrt(
+            self.maximum_impact_parameter_angstrom = self.threshold_radius_angstrom * math.sqrt(
                 1.0 - self.minimum_turning_potential_ev / relative_energy
             )
 
@@ -191,10 +206,25 @@ def maximum_impact_parameter_angstrom(
     relative_energy = kinematics.relative_kinetic_energy_ev
     if relative_energy <= threshold:
         return 0.0
-    threshold_radius = _radius_at_potential(
-        kinematics.projectile, kinematics.target, threshold
+    threshold_radius = turning_threshold_radius_angstrom(
+        kinematics.projectile,
+        kinematics.target,
+        minimum_turning_potential_ev=threshold,
     )
     return threshold_radius * math.sqrt(1.0 - threshold / relative_energy)
+
+
+def turning_threshold_radius_angstrom(
+    projectile: str,
+    target: str,
+    *,
+    minimum_turning_potential_ev: float = DEFAULT_MINIMUM_TURNING_POTENTIAL_EV,
+) -> float:
+    """Radius at which the NLH potential equals the retained-domain boundary."""
+
+    threshold = _validate_turning_threshold(minimum_turning_potential_ev)
+    projectile_symbol, target_symbol = _validate_pair(projectile, target)
+    return _radius_at_potential(projectile_symbol, target_symbol, threshold)
 
 
 def hard_cross_section_angstrom2(
@@ -291,6 +321,42 @@ def _theta_cm(
     return min(math.pi, max(0.0, math.pi - 2.0 * half_orbit))
 
 
+def two_body_outcome_from_cm_angle(
+    kinematics: PairKinematics,
+    theta_cm_rad: float,
+) -> TwoBodyOutcome:
+    """Transform a CM angle using exact relativistic two-body kinematics."""
+
+    if not math.isfinite(theta_cm_rad) or not 0.0 <= theta_cm_rad <= math.pi:
+        raise ValueError("theta_cm_rad must be finite and lie in [0, pi].")
+    mass_1 = kinematics.projectile_mass_c2_ev
+    energy_1_cm = math.sqrt(mass_1 * mass_1 + kinematics.momentum_cm_ev_c**2)
+    transverse_momentum = kinematics.momentum_cm_ev_c * math.sin(theta_cm_rad)
+    longitudinal_momentum = kinematics.momentum_cm_ev_c * math.cos(theta_cm_rad)
+    longitudinal_lab = kinematics.gamma_cm * (
+        longitudinal_momentum + kinematics.beta_cm * energy_1_cm
+    )
+    theta_lab = math.atan2(abs(transverse_momentum), longitudinal_lab)
+    # For an initially stationary target, t=-2 m_target T_recoil and also
+    # t=-2 p_cm^2 (1-cos(theta_cm)). This avoids subtracting rest-mass-scale
+    # energies when the recoil is small.
+    recoil_energy = (
+        kinematics.momentum_cm_ev_c**2
+        * (1.0 - math.cos(theta_cm_rad))
+        / kinematics.target_mass_c2_ev
+    )
+    projectile_out_energy = kinematics.projectile_energy_ev - recoil_energy
+    conservation_error = kinematics.projectile_energy_ev - (
+        projectile_out_energy + recoil_energy
+    )
+    return TwoBodyOutcome(
+        theta_projectile_lab_rad=theta_lab,
+        recoil_energy_ev=recoil_energy,
+        projectile_out_energy_ev=projectile_out_energy,
+        energy_conservation_error_ev=conservation_error,
+    )
+
+
 def _solve_with_context(
     kinematics: PairKinematics,
     maximum_impact: float,
@@ -332,26 +398,7 @@ def _solve_with_context(
         quadrature_order,
     )
 
-    mass_1 = kinematics.projectile_mass_c2_ev
-    energy_1_cm = math.sqrt(mass_1 * mass_1 + kinematics.momentum_cm_ev_c**2)
-    transverse_momentum = kinematics.momentum_cm_ev_c * math.sin(theta_cm)
-    longitudinal_momentum = kinematics.momentum_cm_ev_c * math.cos(theta_cm)
-    longitudinal_lab = kinematics.gamma_cm * (
-        longitudinal_momentum + kinematics.beta_cm * energy_1_cm
-    )
-    theta_lab = math.atan2(abs(transverse_momentum), longitudinal_lab)
-    # For an initially stationary target, t=-2 m_target T_recoil and also
-    # t=-2 p_cm^2 (1-cos(theta_cm)).  This algebraically equivalent form avoids
-    # losing sub-eV recoils when subtracting two rest-mass-scale energies.
-    recoil_energy = (
-        kinematics.momentum_cm_ev_c**2
-        * (1.0 - math.cos(theta_cm))
-        / kinematics.target_mass_c2_ev
-    )
-    projectile_out_energy = kinematics.projectile_energy_ev - recoil_energy
-    conservation_error = kinematics.projectile_energy_ev - (
-        projectile_out_energy + recoil_energy
-    )
+    outcome = two_body_outcome_from_cm_angle(kinematics, theta_cm)
 
     return CollisionResult(
         projectile=kinematics.projectile,
@@ -362,10 +409,10 @@ def _solve_with_context(
         closest_approach_angstrom=closest_approach,
         turning_potential_ev=turning_potential,
         theta_cm_rad=theta_cm,
-        theta_projectile_lab_rad=theta_lab,
-        recoil_energy_ev=recoil_energy,
-        projectile_out_energy_ev=projectile_out_energy,
-        energy_conservation_error_ev=conservation_error,
+        theta_projectile_lab_rad=outcome.theta_projectile_lab_rad,
+        recoil_energy_ev=outcome.recoil_energy_ev,
+        projectile_out_energy_ev=outcome.projectile_out_energy_ev,
+        energy_conservation_error_ev=outcome.energy_conservation_error_ev,
     )
 
 

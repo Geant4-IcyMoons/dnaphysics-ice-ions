@@ -22,6 +22,8 @@ from bca import (  # noqa: E402
     hard_cross_section_angstrom2,
     maximum_impact_parameter_angstrom,
     solve_nlh_collision,
+    two_body_outcome_from_cm_angle,
+    turning_threshold_radius_angstrom,
 )
 
 
@@ -75,3 +77,29 @@ def test_below_published_nlh_domain_is_rejected():
         NLHCollisionKernel(
             "C", "O", 1.0e5, minimum_turning_potential_ev=9.999
         )
+
+
+def test_exact_hard_cross_section_formula_matches_kernel():
+    kernel = NLHCollisionKernel("S", "H", 1.0e3)
+    radius = turning_threshold_radius_angstrom("S", "H")
+    expected = math.pi * radius**2 * (
+        1.0
+        - kernel.minimum_turning_potential_ev
+        / kernel.kinematics.relative_kinetic_energy_ev
+    )
+    assert kernel.hard_cross_section_angstrom2 == pytest.approx(expected)
+
+
+def test_public_cm_transform_reproduces_collision_outcome():
+    kernel = NLHCollisionKernel("O", "H", 1.0e6)
+    collision = kernel.solve(0.37 * kernel.maximum_impact_parameter_angstrom)
+    transformed = two_body_outcome_from_cm_angle(
+        kernel.kinematics, collision.theta_cm_rad
+    )
+    assert transformed.theta_projectile_lab_rad == pytest.approx(
+        collision.theta_projectile_lab_rad
+    )
+    assert transformed.recoil_energy_ev == pytest.approx(collision.recoil_energy_ev)
+    assert transformed.projectile_out_energy_ev == pytest.approx(
+        collision.projectile_out_energy_ev
+    )

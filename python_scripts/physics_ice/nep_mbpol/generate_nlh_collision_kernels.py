@@ -12,10 +12,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from bca.config import (  # noqa: E402
+    DEFAULT_AXIS_RELATIVE_TOLERANCE,
+    DEFAULT_BASE_ENERGY_POINTS,
     DEFAULT_ENERGY_MAX_EV,
     DEFAULT_ENERGY_MIN_EV,
-    DEFAULT_ENERGY_POINTS,
-    DEFAULT_IMPACT_POINTS,
+    DEFAULT_MAX_ENERGY_POINTS,
+    DEFAULT_MAX_IMPACT_POINTS,
     DEFAULT_MINIMUM_TURNING_POTENTIAL_EV,
     DEFAULT_PROJECTILES,
     DEFAULT_QUADRATURE_ORDER,
@@ -29,8 +31,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--projectiles", nargs="+", default=DEFAULT_PROJECTILES)
     parser.add_argument("--energy-min-ev", type=float, default=DEFAULT_ENERGY_MIN_EV)
     parser.add_argument("--energy-max-ev", type=float, default=DEFAULT_ENERGY_MAX_EV)
-    parser.add_argument("--energy-points", type=int, default=DEFAULT_ENERGY_POINTS)
-    parser.add_argument("--impact-points", type=int, default=DEFAULT_IMPACT_POINTS)
+    parser.add_argument(
+        "--base-energy-points",
+        type=int,
+        default=DEFAULT_BASE_ENERGY_POINTS,
+        help="Initial logarithmic energy grid before adaptive refinement.",
+    )
+    parser.add_argument(
+        "--axis-relative-tolerance",
+        type=float,
+        default=DEFAULT_AXIS_RELATIVE_TOLERANCE,
+        help="Per-axis interpolation tolerance (default: 0.0025 = 0.25%%).",
+    )
+    parser.add_argument(
+        "--max-energy-points", type=int, default=DEFAULT_MAX_ENERGY_POINTS
+    )
+    parser.add_argument(
+        "--max-impact-points", type=int, default=DEFAULT_MAX_IMPACT_POINTS
+    )
     parser.add_argument(
         "--minimum-turning-potential-ev",
         type=float,
@@ -60,15 +78,21 @@ def main() -> None:
         projectiles=tuple(args.projectiles),
         energy_min_ev=args.energy_min_ev,
         energy_max_ev=args.energy_max_ev,
-        energy_points=args.energy_points,
-        impact_points=args.impact_points,
+        base_energy_points=args.base_energy_points,
+        axis_relative_tolerance=args.axis_relative_tolerance,
+        max_energy_points=args.max_energy_points,
+        max_impact_points=args.max_impact_points,
         minimum_turning_potential_ev=args.minimum_turning_potential_ev,
         quadrature_order=args.quadrature_order,
         workers=args.workers,
     )
     print(
-        f"Grid: {len(config.projectiles)} projectiles x 2 targets x "
-        f"{config.energy_points} energies x {config.impact_points} impact points"
+        f"Pairs: {len(config.projectiles)} projectiles x 2 targets; "
+        f"base energies: {config.base_energy_points}"
+    )
+    print(
+        f"Adaptive per-axis tolerance: {config.axis_relative_tolerance:.4g}; "
+        "energy and impact point counts are pair/kernel specific"
     )
     print(f"Workers: {config.workers}")
     print(

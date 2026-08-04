@@ -34,12 +34,22 @@ cut and not an energy-deposition threshold. Weak, distant scattering below
 the boundary is intentionally absent until a validated long-range
 projectile--ice interaction is supplied.
 
-The default C/O/S energy grid is 1 keV--100 MeV in **total projectile kinetic
-energy**, with 121 logarithmic energy points and 129 impact points uniform in
-collision area. The 1 keV floor keeps even the least favorable default pair,
-S--H, at approximately 30 eV center-of-mass energy. These are numerical
-defaults; publication tables still require energy-grid, impact-grid, and
-quadrature convergence studies.
+The default energy range is 1 keV--100 MeV in **total projectile kinetic
+energy**. The 1 keV floor keeps even the least favorable supported pair,
+S--H, just inside the 30 eV center-of-mass domain. Point counts are not fixed.
+The generator starts from 121 logarithmic energies and adaptively inserts
+pair-specific energies after direct quarter/midpoint/three-quarter checks. At
+every energy it independently refines the collision-area coordinate
+`q=(b/b_max)^2` wherever linear interpolation of the center-of-mass angle,
+followed by exact two-body kinematics, fails recoil, transport, or angular
+tests. The runtime reader must use this same interpolation contract; it must
+not interpolate angle and recoil as unrelated quantities.
+
+The per-axis tolerance is 0.25%, giving a nominal two-axis budget of 0.5%.
+Every output manifest records the actual point counts and maximum estimated
+errors. The hard-collision cross section is evaluated from the exact
+threshold formula and must not be interpolated through its onset. This avoids
+the S--H threshold error found in the original fixed-grid diagnostic.
 
 ## 1. Attest equilibrated structures
 
@@ -85,7 +95,7 @@ python3 generate_nlh_collision_kernels.py
 The output directory contains:
 
 - `nlh_collision_kernels.csv`: H/O collision geometry, angles, and recoil
-  energy on the energy/impact grid;
+  energy on pair- and energy-specific adaptive meshes;
 - `nlh_collision_kernels.manifest.json`: numerical configuration, physical
   scope, and excluded physics; and
 - `.checkpoints/<configuration hash>/`: restart blocks.
@@ -97,8 +107,10 @@ python3 generate_nlh_collision_kernels.py \
   --projectiles C \
   --energy-min-ev 10000 \
   --energy-max-ev 100000 \
-  --energy-points 3 \
-  --impact-points 9 \
+  --base-energy-points 3 \
+  --axis-relative-tolerance 0.05 \
+  --max-energy-points 32 \
+  --max-impact-points 256 \
   --quadrature-order 32 \
   --workers 2 \
   --output-directory collision_kernels_test
@@ -108,6 +120,20 @@ Do not install the CSV in Geant4 yet. It is the collision kernel consumed by
 the forthcoming structure-aware trajectory generator, not the final
 phase-specific macroscopic cross-section table.
 
+## 3. Reproduce the independent dense-reference benchmark
+
+The internal adaptive estimator is checked against direct solutions on a
+separate grid extending down to `q=10^-24`:
+
+```bash
+python3 benchmark_nlh_adaptive_kernels.py
+```
+
+The command tests H, He, C, O, and S against H and O at six energies spanning
+1 keV--100 MeV, uses ten workers, and fails with a nonzero status if any
+recoil, transport, or angular metric exceeds 0.5%. It writes the complete
+case table and summary under `collision_benchmarks/`.
+
 ## Tests
 
 ```bash
@@ -115,12 +141,15 @@ python3 -m pytest -q \
   ../../../tests/test_nlh_potential.py \
   ../../../tests/test_nlh_bca_scattering.py \
   ../../../tests/test_nlh_bca_structure.py \
+  ../../../tests/test_nlh_bca_adaptivity.py \
   ../../../tests/test_nlh_bca_tables.py
 ```
 
 The tests cover the published NLH evaluator, turning-potential boundary,
 monotonic deflection/recoil behavior, energy conservation, quadrature
-convergence, structure attestation, deterministic multiprocessing, and resume.
+convergence, adaptive discovery of the narrow high-energy head-on region,
+threshold energy refinement, structure attestation, deterministic
+multiprocessing, and resume.
 
 The underlying NLH references and corrected dataset are documented in
 `../nlh/README.md`.

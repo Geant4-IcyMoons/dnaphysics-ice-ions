@@ -24,3 +24,6 @@ cross_section_*.png
 corrected_*.png
 channel_cross_section_*.png
 stopping_power_*.png
+
+# Reproducible NLH kernel products and restart shards (too large for source control)
+python_scripts/physics_ice/nep_mbpol/collision_kernels*/

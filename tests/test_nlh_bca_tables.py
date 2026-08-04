@@ -21,8 +21,10 @@ def test_parallel_table_output_is_deterministic_and_resumable(tmp_path):
         projectiles=("C",),
         energy_min_ev=1.0e4,
         energy_max_ev=1.0e5,
-        energy_points=2,
-        impact_points=3,
+        base_energy_points=2,
+        axis_relative_tolerance=0.05,
+        max_energy_points=32,
+        max_impact_points=256,
         quadrature_order=32,
     )
     serial = KernelTableConfig(**common, workers=1)
