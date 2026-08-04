@@ -5,6 +5,12 @@ evolve atomistic water-ice structures. It is separate from the Geant4 runtime:
 the molecular-dynamics calculations will eventually generate projectile
 scattering/recoil tables that Geant4 can read.
 
+The next-stage collision infrastructure is under `bca/`. It validates and
+registers accepted equilibrated snapshots and generates restartable NLH H/O
+binary-collision kernels. See `bca/README.md` before using it: the present
+kernels are independent-atom prerequisites, not yet amorphous/hexagonal
+phase-resolved cross sections and not yet Geant4 runtime tables.
+
 ## Included locally
 
 - `model/nep-mbpol.nep.txt`: published pretrained NEP4 potential for O and H.
