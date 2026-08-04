@@ -230,6 +230,16 @@ run. Geant4 continues to use the shared 0.94 g/cm3 material density; the
 atomistic cell supplies structural information for separately validated
 projectile--H and projectile--O interactions.
 
+## NLH short-range projectile interactions
+
+The published pair-specific Nordlund--Lehtola--Hobler potentials required for
+H, He, C, O, and S projectiles against target H and O are included under
+`nlh/`. The evaluator supplies the screening function, pair energy, energy
+derivative, and radial force, and is regression-tested against the authors'
+reference implementation. See `nlh/README.md` for the formula, validity range,
+provenance, and the boundary between this completed pair-potential layer and
+the remaining species-aware trajectory coupling.
+
 Generate the full-width AAS paper figure (PDF plus 300-dpi PNG) with:
 
 ```bash
@@ -240,10 +250,11 @@ Generate the full-width AAS paper figure (PDF plus 300-dpi PNG) with:
 
 The pretrained file begins with `nep4 2 O H`; it models only interactions
 within the water target. It does **not** yet include H, He, C, O, or S
-projectiles. The next implementation stage must keep the projectile outside
-the water NEP descriptors and add separately validated projectile-H and
-projectile-O pair forces. Even an oxygen projectile needs a distinct role/type
-from an oxygen atom belonging to the ice.
+projectiles. The NLH module now supplies the separately validated short-range
+projectile--H and projectile--O pair forces, but the next implementation stage
+must keep the projectile outside the water NEP descriptors and add those
+forces to a species-aware trajectory runtime. Even an oxygen projectile needs
+a distinct role/type from an oxygen atom belonging to the ice.
 
 ## Provenance
 
@@ -252,5 +263,8 @@ from an oxygen atom belonging to the ice.
 - Zenodo record: <https://doi.org/10.5281/zenodo.15033656>
 - GPUMD installation documentation: <https://gpumd.org/installation.html>
 - GenIce2: <https://pypi.org/project/genice2/>
+- Nordlund, Lehtola, and Hobler, *Phys. Rev. A* **111**, 032818 (2025):
+  <https://doi.org/10.1103/PhysRevA.111.032818>
+- Corrected NLH open data: <https://doi.org/10.5281/zenodo.17302337>
 
 See `PROVENANCE.json` for exact archive names, sizes, URLs, and checksums.

@@ -46,5 +46,21 @@
     "url": "https://zenodo.org/api/records/15033656/files/01-NEP-MB-pol.zip/content",
     "downloaded": false,
     "reason": "Not required to run the published pretrained potential."
+  },
+  "nlh_repulsive_potentials": {
+    "paper_doi": "10.1103/PhysRevA.111.032818",
+    "open_data_doi": "10.5281/zenodo.17302337",
+    "record_url": "https://zenodo.org/records/17302337",
+    "source_archive": "nlh_potentials_opendata.tar.gz",
+    "source_archive_size_bytes": 14328980,
+    "source_archive_url": "https://zenodo.org/api/records/17302337/files/nlh_potentials_opendata.tar.gz/content",
+    "source_archive_sha256": "1cd68d15438747c50bef7f8941fd91bae5a996d9df0de0fff793f162c3b62984",
+    "source_member": "nlh/nlh_coeffs.dat",
+    "local_subset": "nlh/coefficients.csv",
+    "projectiles": ["H", "He", "C", "O", "S"],
+    "ice_target_atoms": ["H", "O"],
+    "unique_pair_count": 9,
+    "minimum_repulsive_fit_energy_ev": 10.0,
+    "preferred_accuracy_threshold_ev": 30.0
   }
 }
