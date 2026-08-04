@@ -95,7 +95,10 @@ python3 generate_nlh_collision_kernels.py
 The output directory contains:
 
 - `nlh_collision_kernels.csv`: H/O collision geometry, angles, and recoil
-  energy on pair- and energy-specific adaptive meshes;
+  kernels on pair- and energy-specific adaptive meshes. The CSV intentionally
+  stores only projectile, target, energy, area quantile, and CM angle. Impact
+  parameter, lab angle, recoil, and outgoing energy are exact derived
+  quantities and are not duplicated;
 - `nlh_collision_kernels.manifest.json`: numerical configuration, physical
   scope, and excluded physics; and
 - `.checkpoints/<configuration hash>/`: restart blocks.
@@ -131,8 +134,10 @@ python3 benchmark_nlh_adaptive_kernels.py
 
 The command tests H, He, C, O, and S against H and O at six energies spanning
 1 keV--100 MeV, uses ten workers, and fails with a nonzero status if any
-recoil, transport, or angular metric exceeds 0.5%. It writes the complete
-case table and summary under `collision_benchmarks/`.
+recoil, transport, angular, or quadrature metric exceeds 0.5%. The production
+96-point scattering quadrature is compared independently with 192 points. The
+command writes the complete case tables and summary under
+`collision_benchmarks/`.
 
 ## Tests
 

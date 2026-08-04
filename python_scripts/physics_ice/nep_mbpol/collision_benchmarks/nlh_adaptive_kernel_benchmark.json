@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "created_utc": "2026-08-04T13:04:51.161140+00:00",
+  "created_utc": "2026-08-04T13:43:19.033850+00:00",
   "accepted": true,
   "axis_relative_tolerance": 0.0025,
   "acceptance_tolerance": 0.005,
@@ -36,6 +36,10 @@
     "maximum_theta_cm_relative_error": 0.002167239416900557,
     "maximum_recoil_relative_error": 0.0022059565913146173
   },
+  "maximum_quadrature_errors": {
+    "theta_cm_max_error_over_pi": 1.1036065331224415e-09,
+    "maximum_recoil_relative_error": 0.00025793139025021006
+  },
   "adaptive_points": {
     "minimum": 18,
     "median": 161.5,
@@ -48,5 +52,6 @@
     "q_split": 0.01
   },
   "csv": "nlh_adaptive_kernel_benchmark.csv",
-  "energy_csv": "nlh_adaptive_energy_benchmark.csv"
+  "energy_csv": "nlh_adaptive_energy_benchmark.csv",
+  "quadrature_csv": "nlh_quadrature_benchmark.csv"
 }

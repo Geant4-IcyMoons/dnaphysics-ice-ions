@@ -37,7 +37,7 @@ from bca.config import (  # noqa: E402
 from bca.scattering import (  # noqa: E402
     NLHCollisionKernel,
     pair_kinematics,
-    two_body_outcome_from_cm_angle,
+    two_body_observables_from_cm_angles,
 )
 
 
@@ -66,6 +66,18 @@ class EnergyBenchmarkCase:
     adaptive_energy_points: int
     validation_points: int
     maximum_theta_cm_relative_error: float
+    maximum_recoil_relative_error: float
+
+
+@dataclass(frozen=True)
+class QuadratureBenchmarkCase:
+    projectile: str
+    target: str
+    projectile_energy_ev: float
+    production_order: int
+    reference_order: int
+    validation_points: int
+    theta_cm_max_error_over_pi: float
     maximum_recoil_relative_error: float
 
 
@@ -101,6 +113,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--quadrature-order", type=int, default=DEFAULT_QUADRATURE_ORDER
+    )
+    parser.add_argument(
+        "--reference-quadrature-order",
+        type=int,
+        help="Independent quadrature order (default: twice --quadrature-order).",
     )
     parser.add_argument(
         "--max-impact-points", type=int, default=DEFAULT_MAX_IMPACT_POINTS
@@ -183,19 +200,12 @@ def _run_case(task: tuple[object, ...]) -> BenchmarkCase:
     interpolated_theta = np.interp(
         reference_quantiles, mesh.area_quantiles, adaptive_theta
     )
-    interpolated_outcomes = [
-        two_body_outcome_from_cm_angle(kernel.kinematics, float(theta))
-        for theta in interpolated_theta
-    ]
-    interpolated_recoil = np.asarray(
-        [value.recoil_energy_ev for value in interpolated_outcomes]
+    interpolated_lab_theta, interpolated_recoil = (
+        two_body_observables_from_cm_angles(
+            kernel.kinematics, interpolated_theta
+        )
     )
-    interpolated_transport = np.asarray(
-        [
-            1.0 - math.cos(value.theta_projectile_lab_rad)
-            for value in interpolated_outcomes
-        ]
-    )
+    interpolated_transport = 1.0 - np.cos(interpolated_lab_theta)
     return BenchmarkCase(
         projectile=str(projectile),
         target=str(target),
@@ -323,13 +333,8 @@ def _run_energy_case(task: tuple[object, ...]) -> EnergyBenchmarkCase:
             probe_kinematics = pair_kinematics(
                 projectile, target, probe_energy
             )
-            predicted_recoil = np.asarray(
-                [
-                    two_body_outcome_from_cm_angle(
-                        probe_kinematics, float(theta)
-                    ).recoil_energy_ev
-                    for theta in predicted_theta
-                ]
+            _, predicted_recoil = two_body_observables_from_cm_angles(
+                probe_kinematics, predicted_theta
             )
             maximum_theta_error = max(
                 maximum_theta_error,
@@ -348,6 +353,76 @@ def _run_energy_case(task: tuple[object, ...]) -> EnergyBenchmarkCase:
         maximum_theta_cm_relative_error=maximum_theta_error,
         maximum_recoil_relative_error=maximum_recoil_error,
     )
+
+
+def _run_quadrature_case(task: tuple[object, ...]) -> QuadratureBenchmarkCase:
+    (
+        projectile,
+        target,
+        energy_ev,
+        production_order,
+        reference_order,
+        minimum_turning_potential_ev,
+    ) = task
+    projectile = str(projectile)
+    target = str(target)
+    energy_ev = float(energy_ev)
+    production = NLHCollisionKernel(
+        projectile,
+        target,
+        energy_ev,
+        minimum_turning_potential_ev=float(minimum_turning_potential_ev),
+        quadrature_order=int(production_order),
+    )
+    reference = NLHCollisionKernel(
+        projectile,
+        target,
+        energy_ev,
+        minimum_turning_potential_ev=float(minimum_turning_potential_ev),
+        quadrature_order=int(reference_order),
+    )
+    quantiles = np.unique(
+        np.concatenate(
+            (
+                np.asarray((0.0,)),
+                np.geomspace(1.0e-20, 1.0e-2, 24),
+                np.linspace(1.0e-2, 1.0, 25),
+            )
+        )
+    )
+    production_recoil, _, production_theta = _direct_values(
+        production, quantiles
+    )
+    reference_recoil, _, reference_theta = _direct_values(reference, quantiles)
+    return QuadratureBenchmarkCase(
+        projectile=projectile,
+        target=target,
+        projectile_energy_ev=energy_ev,
+        production_order=int(production_order),
+        reference_order=int(reference_order),
+        validation_points=len(quantiles),
+        theta_cm_max_error_over_pi=float(
+            np.max(np.abs(production_theta - reference_theta))
+        )
+        / math.pi,
+        maximum_recoil_relative_error=float(
+            np.max(np.abs(production_recoil / reference_recoil - 1.0))
+        ),
+    )
+
+
+def _parallel_cases(function, tasks, *, workers: int, description: str, unit: str):
+    results = []
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(function, task) for task in tasks]
+        for future in tqdm(
+            as_completed(futures),
+            total=len(futures),
+            unit=unit,
+            desc=description,
+        ):
+            results.append(future.result())
+    return results
 
 
 def main() -> None:
@@ -372,16 +447,13 @@ def main() -> None:
         for target in ICE_TARGETS
         for energy in energies
     ]
-    cases = []
-    with ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures = [executor.submit(_run_case, task) for task in tasks]
-        for future in tqdm(
-            as_completed(futures),
-            total=len(futures),
-            unit="case",
-            desc="Dense-reference benchmark",
-        ):
-            cases.append(future.result())
+    cases = _parallel_cases(
+        _run_case,
+        tasks,
+        workers=args.workers,
+        description="Dense-reference benchmark",
+        unit="case",
+    )
     cases.sort(key=lambda value: (value.projectile, value.target, value.projectile_energy_ev))
 
     energy_tasks = [
@@ -399,17 +471,47 @@ def main() -> None:
         for projectile in projectiles
         for target in ICE_TARGETS
     ]
-    energy_cases = []
-    with ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures = [executor.submit(_run_energy_case, task) for task in energy_tasks]
-        for future in tqdm(
-            as_completed(futures),
-            total=len(futures),
-            unit="pair",
-            desc="Independent energy benchmark",
-        ):
-            energy_cases.append(future.result())
+    energy_cases = _parallel_cases(
+        _run_energy_case,
+        energy_tasks,
+        workers=args.workers,
+        description="Independent energy benchmark",
+        unit="pair",
+    )
     energy_cases.sort(key=lambda value: (value.projectile, value.target))
+
+    reference_quadrature_order = (
+        args.reference_quadrature_order or 2 * args.quadrature_order
+    )
+    if reference_quadrature_order <= args.quadrature_order:
+        raise ValueError("Reference quadrature order must exceed production order.")
+    quadrature_tasks = [
+        (
+            projectile,
+            target,
+            energy,
+            args.quadrature_order,
+            reference_quadrature_order,
+            args.minimum_turning_potential_ev,
+        )
+        for projectile in projectiles
+        for target in ICE_TARGETS
+        for energy in energies
+    ]
+    quadrature_cases = _parallel_cases(
+        _run_quadrature_case,
+        quadrature_tasks,
+        workers=args.workers,
+        description="Quadrature benchmark",
+        unit="case",
+    )
+    quadrature_cases.sort(
+        key=lambda value: (
+            value.projectile,
+            value.target,
+            value.projectile_energy_ev,
+        )
+    )
 
     metrics = (
         "mean_recoil_relative_error",
@@ -430,9 +532,21 @@ def main() -> None:
             case.maximum_recoil_relative_error for case in energy_cases
         ),
     }
+    quadrature_maxima = {
+        "theta_cm_max_error_over_pi": max(
+            case.theta_cm_max_error_over_pi for case in quadrature_cases
+        ),
+        "maximum_recoil_relative_error": max(
+            case.maximum_recoil_relative_error for case in quadrature_cases
+        ),
+    }
     accepted = all(
         value <= args.acceptance_tolerance
-        for value in (*impact_maxima.values(), *energy_maxima.values())
+        for value in (
+            *impact_maxima.values(),
+            *energy_maxima.values(),
+            *quadrature_maxima.values(),
+        )
     )
     output = args.output_directory.expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -450,6 +564,15 @@ def main() -> None:
         )
         writer.writeheader()
         writer.writerows(asdict(case) for case in energy_cases)
+    quadrature_csv_path = output / "nlh_quadrature_benchmark.csv"
+    with quadrature_csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=asdict(quadrature_cases[0]).keys(),
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(asdict(case) for case in quadrature_cases)
     report = {
         "schema_version": 1,
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -462,6 +585,7 @@ def main() -> None:
         "case_count": len(cases),
         "maximum_impact_errors": impact_maxima,
         "maximum_energy_errors": energy_maxima,
+        "maximum_quadrature_errors": quadrature_maxima,
         "adaptive_points": {
             "minimum": min(case.adaptive_points for case in cases),
             "median": float(np.median([case.adaptive_points for case in cases])),
@@ -475,15 +599,17 @@ def main() -> None:
         },
         "csv": csv_path.name,
         "energy_csv": energy_csv_path.name,
+        "quadrature_csv": quadrature_csv_path.name,
     }
     report_path = output / "nlh_adaptive_kernel_benchmark.json"
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {csv_path}")
     print(f"Wrote {energy_csv_path}")
+    print(f"Wrote {quadrature_csv_path}")
     print(f"Wrote {report_path}")
     print(
         f"Accepted: {accepted}; impact maxima: {impact_maxima}; "
-        f"energy maxima: {energy_maxima}"
+        f"energy maxima: {energy_maxima}; quadrature maxima: {quadrature_maxima}"
     )
     if not accepted:
         raise SystemExit(1)

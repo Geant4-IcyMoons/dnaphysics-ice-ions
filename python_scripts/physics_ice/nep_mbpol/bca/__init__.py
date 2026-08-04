@@ -22,6 +22,7 @@ from .scattering import (
     pair_kinematics,
     solve_nlh_collision,
     two_body_outcome_from_cm_angle,
+    two_body_observables_from_cm_angles,
     turning_threshold_radius_angstrom,
 )
 from .structure import IceStructure, StructureValidationError, load_ice_structure
@@ -49,5 +50,6 @@ __all__ = [
     "pair_kinematics",
     "solve_nlh_collision",
     "two_body_outcome_from_cm_angle",
+    "two_body_observables_from_cm_angles",
     "turning_threshold_radius_angstrom",
 ]

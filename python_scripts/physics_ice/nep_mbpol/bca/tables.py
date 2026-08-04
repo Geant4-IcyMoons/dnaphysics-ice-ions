@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Iterable
 
@@ -30,27 +31,16 @@ from .config import (
     PUBLISHED_MINIMUM_TURNING_POTENTIAL_EV,
     canonical_element,
 )
-from .scattering import NLHCollisionKernel
+from .scattering import NLHCollisionKernel, turning_threshold_radius_angstrom
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 CSV_COLUMNS = (
     "projectile",
     "target",
     "projectile_energy_ev",
-    "relative_kinetic_energy_ev",
-    "minimum_turning_potential_ev",
-    "threshold_radius_angstrom",
-    "hard_cross_section_angstrom2",
-    "maximum_impact_parameter_angstrom",
     "area_quantile",
-    "impact_parameter_angstrom",
-    "closest_approach_angstrom",
-    "turning_potential_ev",
     "theta_cm_rad",
-    "theta_projectile_lab_rad",
-    "recoil_energy_ev",
-    "projectile_out_energy_ev",
 )
 
 
@@ -69,20 +59,34 @@ class KernelTableConfig:
 
     def __post_init__(self) -> None:
         canonical = tuple(canonical_element(value) for value in self.projectiles)
+        if not canonical:
+            raise ValueError("At least one projectile is required.")
         if len(set(canonical)) != len(canonical):
             raise ValueError("Projectiles must be unique.")
         object.__setattr__(self, "projectiles", canonical)
-        if self.energy_min_ev <= 0.0 or self.energy_max_ev <= self.energy_min_ev:
+        if (
+            not math.isfinite(self.energy_min_ev)
+            or not math.isfinite(self.energy_max_ev)
+            or self.energy_min_ev <= 0.0
+            or self.energy_max_ev <= self.energy_min_ev
+        ):
             raise ValueError("Require 0 < energy_min_ev < energy_max_ev.")
         if self.base_energy_points < 2:
             raise ValueError("base_energy_points must be at least two.")
-        if not 0.0 < self.axis_relative_tolerance < 0.1:
+        if (
+            not math.isfinite(self.axis_relative_tolerance)
+            or not 0.0 < self.axis_relative_tolerance < 0.1
+        ):
             raise ValueError("axis_relative_tolerance must lie between 0 and 0.1.")
         if self.max_energy_points < self.base_energy_points:
             raise ValueError("max_energy_points cannot be below base_energy_points.")
         if self.max_impact_points < 3:
             raise ValueError("max_impact_points must be at least three.")
-        if self.minimum_turning_potential_ev < PUBLISHED_MINIMUM_TURNING_POTENTIAL_EV:
+        if (
+            not math.isfinite(self.minimum_turning_potential_ev)
+            or self.minimum_turning_potential_ev
+            < PUBLISHED_MINIMUM_TURNING_POTENTIAL_EV
+        ):
             raise ValueError(
                 "The turning-potential threshold cannot be below the published "
                 "NLH domain."
@@ -127,12 +131,48 @@ def _json_checkpoint_valid(path: Path, config_hash: str) -> bool:
         return False
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-        return (
+        energies = np.asarray(value.get("energies_ev"), dtype=np.float64)
+        threshold_radius = float(value.get("threshold_radius_angstrom"))
+        errors = np.asarray(
+            (
+                value.get("maximum_theta_cm_relative_error"),
+                value.get("maximum_recoil_relative_error"),
+            ),
+            dtype=np.float64,
+        )
+        return bool(
             value.get("schema_version") == SCHEMA_VERSION
             and value.get("config_hash") == config_hash
+            and energies.ndim == 1
+            and len(energies) >= 2
+            and np.all(np.isfinite(energies))
+            and np.all(np.diff(energies) > 0.0)
+            and value.get("point_count") == len(energies)
+            and math.isfinite(threshold_radius)
+            and threshold_radius > 0.0
+            and np.all(np.isfinite(errors))
+            and np.all(errors >= 0.0)
         )
-    except (OSError, json.JSONDecodeError, AttributeError):
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, AttributeError):
         return False
+
+
+def _kernel_arrays_valid(
+    quantiles: np.ndarray, theta_cm_rad: np.ndarray
+) -> bool:
+    return bool(
+        quantiles.ndim == 1
+        and theta_cm_rad.shape == quantiles.shape
+        and len(quantiles) >= 2
+        and quantiles[0] == 0.0
+        and quantiles[-1] == 1.0
+        and np.all(np.isfinite(quantiles))
+        and np.all(np.isfinite(theta_cm_rad))
+        and np.all(np.diff(quantiles) > 0.0)
+        and np.all(np.diff(theta_cm_rad) < 0.0)
+        and np.all(theta_cm_rad >= 0.0)
+        and np.all(theta_cm_rad <= np.pi)
+    )
 
 
 def _npz_checkpoint_valid(path: Path, config_hash: str) -> bool:
@@ -140,9 +180,27 @@ def _npz_checkpoint_valid(path: Path, config_hash: str) -> bool:
         return False
     try:
         with np.load(path, allow_pickle=False) as values:
-            return (
+            quantiles = np.asarray(values["area_quantile"])
+            theta = np.asarray(values["theta_cm_rad"])
+            errors = np.asarray(
+                [
+                    values[name].item()
+                    for name in (
+                        "recoil_l1_relative_error",
+                        "transport_l1_relative_error",
+                        "theta_cm_l1_relative_error",
+                        "theta_cm_max_error_over_pi",
+                    )
+                ],
+                dtype=np.float64,
+            )
+            return bool(
                 int(values["schema_version"].item()) == SCHEMA_VERSION
                 and str(values["config_hash"].item()) == config_hash
+                and _kernel_arrays_valid(quantiles, theta)
+                and int(values["impact_point_count"].item()) == len(quantiles)
+                and np.all(np.isfinite(errors))
+                and np.all(errors >= 0.0)
             )
     except (OSError, ValueError, KeyError):
         return False
@@ -166,6 +224,11 @@ def _run_energy_task(task: _EnergyTask) -> str:
         "config_hash": config.config_hash,
         "projectile": task.projectile,
         "target": task.target,
+        "threshold_radius_angstrom": turning_threshold_radius_angstrom(
+            task.projectile,
+            task.target,
+            minimum_turning_potential_ev=config.minimum_turning_potential_ev,
+        ),
         "energies_ev": mesh.energies_ev.tolist(),
         "point_count": mesh.point_count,
         "maximum_theta_cm_relative_error": (
@@ -214,21 +277,6 @@ def _run_kernel_task(task: _KernelTask) -> str:
             target=np.asarray(task.target),
             energy_index=np.int64(task.energy_index),
             projectile_energy_ev=np.float64(task.energy_ev),
-            relative_kinetic_energy_ev=np.float64(
-                kernel.kinematics.relative_kinetic_energy_ev
-            ),
-            minimum_turning_potential_ev=np.float64(
-                config.minimum_turning_potential_ev
-            ),
-            threshold_radius_angstrom=np.float64(
-                kernel.threshold_radius_angstrom
-            ),
-            hard_cross_section_angstrom2=np.float64(
-                kernel.hard_cross_section_angstrom2
-            ),
-            maximum_impact_parameter_angstrom=np.float64(
-                kernel.maximum_impact_parameter_angstrom
-            ),
             impact_point_count=np.int64(mesh.point_count),
             recoil_l1_relative_error=np.float64(
                 mesh.recoil_l1_relative_error
@@ -246,25 +294,7 @@ def _run_kernel_task(task: _KernelTask) -> str:
                 mesh.validation_evaluations
             ),
             area_quantile=mesh.area_quantiles,
-            impact_parameter_angstrom=np.asarray(
-                [value.impact_parameter_angstrom for value in collisions]
-            ),
-            closest_approach_angstrom=np.asarray(
-                [value.closest_approach_angstrom for value in collisions]
-            ),
-            turning_potential_ev=np.asarray(
-                [value.turning_potential_ev for value in collisions]
-            ),
             theta_cm_rad=np.asarray([value.theta_cm_rad for value in collisions]),
-            theta_projectile_lab_rad=np.asarray(
-                [value.theta_projectile_lab_rad for value in collisions]
-            ),
-            recoil_energy_ev=np.asarray(
-                [value.recoil_energy_ev for value in collisions]
-            ),
-            projectile_out_energy_ev=np.asarray(
-                [value.projectile_out_energy_ev for value in collisions]
-            ),
         )
     temporary.replace(task.checkpoint_path)
     return str(task.checkpoint_path)
@@ -325,7 +355,9 @@ def _run_parallel(
 ) -> None:
     if not tasks:
         return
-    with ProcessPoolExecutor(max_workers=workers) as executor:
+    executor = ProcessPoolExecutor(max_workers=workers)
+    futures = []
+    try:
         futures = [executor.submit(function, task) for task in tasks]
         completed = as_completed(futures)
         if show_progress:
@@ -337,35 +369,63 @@ def _run_parallel(
             )
         for future in completed:
             future.result()
+    except BaseException:
+        for future in futures:
+            future.cancel()
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    else:
+        executor.shutdown(wait=True)
 
 
-def _write_csv(shards: Iterable[Path], destination: Path) -> int:
+def _write_csv(
+    shards: Iterable[Path], destination: Path
+) -> tuple[int, dict[str, object]]:
     temporary = destination.with_suffix(".tmp")
     row_count = 0
-    scalar_columns = CSV_COLUMNS[:8]
-    array_columns = CSV_COLUMNS[8:]
+    points = []
+    errors: dict[str, list[float]] = {
+        "recoil_l1_relative_error": [],
+        "transport_l1_relative_error": [],
+        "theta_cm_l1_relative_error": [],
+        "theta_cm_max_error_over_pi": [],
+    }
     with temporary.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
+        writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(CSV_COLUMNS)
         for shard in shards:
             with np.load(shard, allow_pickle=False) as values:
-                scalars = {name: values[name].item() for name in scalar_columns}
-                arrays = [values[name] for name in array_columns]
-                for row in zip(*arrays, strict=True):
+                projectile = str(values["projectile"].item())
+                target = str(values["target"].item())
+                energy = float(values["projectile_energy_ev"].item())
+                quantiles = np.asarray(values["area_quantile"])
+                theta = np.asarray(values["theta_cm_rad"])
+                if not _kernel_arrays_valid(quantiles, theta):
+                    raise RuntimeError(f"Invalid adaptive kernel checkpoint {shard}.")
+                points.append(len(quantiles))
+                for name in errors:
+                    errors[name].append(float(values[name].item()))
+                for quantile, angle in zip(quantiles, theta, strict=True):
                     writer.writerow(
                         [
-                            scalars["projectile"],
-                            scalars["target"],
-                            *(
-                                f"{float(scalars[name]):.17g}"
-                                for name in scalar_columns[2:]
-                            ),
-                            *(f"{float(value):.17g}" for value in row),
+                            projectile,
+                            target,
+                            f"{energy:.17g}",
+                            f"{float(quantile):.17g}",
+                            f"{float(angle):.17g}",
                         ]
                     )
                     row_count += 1
     temporary.replace(destination)
-    return row_count
+    summary = {
+        "minimum_points": min(points),
+        "median_points": float(np.median(points)),
+        "maximum_points": max(points),
+        "maximum_estimated_errors": {
+            name: max(values) for name, values in errors.items()
+        },
+    }
+    return row_count, summary
 
 
 def _sha256_file(path: Path) -> str:
@@ -374,29 +434,6 @@ def _sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def _impact_summary(shards: Iterable[Path]) -> dict[str, object]:
-    points = []
-    errors: dict[str, list[float]] = {
-        "recoil_l1_relative_error": [],
-        "transport_l1_relative_error": [],
-        "theta_cm_l1_relative_error": [],
-        "theta_cm_max_error_over_pi": [],
-    }
-    for shard in shards:
-        with np.load(shard, allow_pickle=False) as values:
-            points.append(int(values["impact_point_count"].item()))
-            for name in errors:
-                errors[name].append(float(values[name].item()))
-    return {
-        "minimum_points": min(points),
-        "median_points": float(np.median(points)),
-        "maximum_points": max(points),
-        "maximum_estimated_errors": {
-            name: max(values) for name, values in errors.items()
-        },
-    }
 
 
 def generate_kernel_tables(
@@ -463,13 +500,14 @@ def generate_kernel_tables(
         raise RuntimeError(f"Kernel generation left {len(missing)} invalid checkpoints.")
 
     csv_path = output / "nlh_collision_kernels.csv"
-    row_count = _write_csv(ordered_shards, csv_path)
+    row_count, impact_summary = _write_csv(ordered_shards, csv_path)
     energy_summary = [
         {
             key: record[key]
             for key in (
                 "projectile",
                 "target",
+                "threshold_radius_angstrom",
                 "point_count",
                 "maximum_theta_cm_relative_error",
                 "maximum_recoil_relative_error",
@@ -498,7 +536,7 @@ def generate_kernel_tables(
                 "validation of a piecewise-linear CM angle followed by exact "
                 "two-body recoil and lab-angle kinematics"
             ),
-            **_impact_summary(ordered_shards),
+            **impact_summary,
         },
         "interpolation_contract": {
             "impact_axis": (
@@ -522,6 +560,7 @@ def generate_kernel_tables(
             "interpolate sigma across the threshold"
         ),
         "row_count": row_count,
+        "csv_columns": list(CSV_COLUMNS),
         "csv": csv_path.name,
         "csv_sha256": _sha256_file(csv_path),
         "product_scope": (

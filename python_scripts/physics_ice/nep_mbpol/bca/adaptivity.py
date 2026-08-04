@@ -13,7 +13,7 @@ from .scattering import (
     NLHCollisionKernel,
     PairKinematics,
     pair_kinematics,
-    two_body_outcome_from_cm_angle,
+    two_body_observables_from_cm_angles,
 )
 
 
@@ -64,17 +64,12 @@ def _observables(result: CollisionResult) -> NDArray[np.float64]:
 
 
 def _observables_from_theta(
-    kinematics: PairKinematics, theta_cm_rad: float
+    kinematics: PairKinematics, theta_cm_rad: NDArray[np.float64]
 ) -> NDArray[np.float64]:
-    outcome = two_body_outcome_from_cm_angle(kinematics, theta_cm_rad)
-    return np.asarray(
-        (
-            outcome.recoil_energy_ev,
-            1.0 - math.cos(outcome.theta_projectile_lab_rad),
-            theta_cm_rad,
-        ),
-        dtype=np.float64,
+    theta_lab, recoil = two_body_observables_from_cm_angles(
+        kinematics, theta_cm_rad
     )
+    return np.stack((recoil, 1.0 - np.cos(theta_lab), theta_cm_rad), axis=-1)
 
 
 def _bulk_mark(values: NDArray[np.float64], fraction: float) -> set[int]:
@@ -141,14 +136,8 @@ def adaptive_impact_mesh(
             * (1.0 - _PROBE_FRACTIONS[None, :])
             + endpoint_values[1:, None, 2] * _PROBE_FRACTIONS[None, :]
         )
-        predicted = np.asarray(
-            [
-                [
-                    _observables_from_theta(kernel.kinematics, theta)
-                    for theta in interval
-                ]
-                for interval in predicted_theta
-            ]
+        predicted = _observables_from_theta(
+            kernel.kinematics, predicted_theta
         )
         absolute_error = np.abs(probe_values - predicted)
 
@@ -323,13 +312,8 @@ def adaptive_energy_mesh(
                 probe_kinematics = pair_kinematics(
                     projectile, target, float(probe_energy)
                 )
-                predicted_recoil = np.asarray(
-                    [
-                        two_body_outcome_from_cm_angle(
-                            probe_kinematics, float(theta)
-                        ).recoil_energy_ev
-                        for theta in predicted_theta
-                    ]
+                _, predicted_recoil = two_body_observables_from_cm_angles(
+                    probe_kinematics, predicted_theta
                 )
                 theta_error = float(
                     np.max(np.abs(predicted_theta / actual[:, 0] - 1.0))

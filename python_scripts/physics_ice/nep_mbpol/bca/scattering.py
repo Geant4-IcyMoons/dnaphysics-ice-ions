@@ -7,6 +7,7 @@ from functools import lru_cache
 import math
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 from nlh import potential_ev
 
@@ -121,6 +122,7 @@ def _validate_pair(projectile: str, target: str) -> tuple[str, str]:
     return projectile_symbol, target_symbol
 
 
+@lru_cache(maxsize=16384)
 def pair_kinematics(
     projectile: str, target: str, projectile_energy_ev: float
 ) -> PairKinematics:
@@ -174,6 +176,7 @@ def _raw_potential(distance: float, projectile: str, target: str) -> float:
     )
 
 
+@lru_cache(maxsize=None)
 def _radius_at_potential(projectile: str, target: str, energy_ev: float) -> float:
     """Invert the monotonic repulsive potential by bisection."""
 
@@ -183,8 +186,10 @@ def _radius_at_potential(projectile: str, target: str, energy_ev: float) -> floa
         upper *= 2.0
         if upper > 1.0e6:
             raise RuntimeError("Could not bracket the NLH potential radius.")
-    for _ in range(100):
+    for _ in range(80):
         middle = 0.5 * (lower + upper)
+        if middle == lower or middle == upper:
+            break
         if _raw_potential(middle, projectile, target) > energy_ev:
             lower = middle
         else:
@@ -264,8 +269,10 @@ def _turning_radius(
         upper *= 2.0
         if upper > 1.0e6:
             raise RuntimeError("Could not bracket the distance of closest approach.")
-    for _ in range(100):
+    for _ in range(80):
         middle = 0.5 * (lower + upper)
+        if middle == lower or middle == upper:
+            break
         if radial_function(middle) <= 0.0:
             lower = middle
         else:
@@ -355,6 +362,31 @@ def two_body_outcome_from_cm_angle(
         projectile_out_energy_ev=projectile_out_energy,
         energy_conservation_error_ev=conservation_error,
     )
+
+
+def two_body_observables_from_cm_angles(
+    kinematics: PairKinematics,
+    theta_cm_rad: ArrayLike,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Vectorized lab angles and recoil energies for CM-angle arrays."""
+
+    theta = np.asarray(theta_cm_rad, dtype=np.float64)
+    if np.any(~np.isfinite(theta)) or np.any(theta < 0.0) or np.any(theta > math.pi):
+        raise ValueError("All CM angles must be finite and lie in [0, pi].")
+    mass_1 = kinematics.projectile_mass_c2_ev
+    momentum = kinematics.momentum_cm_ev_c
+    energy_1_cm = math.sqrt(mass_1 * mass_1 + momentum * momentum)
+    transverse_momentum = momentum * np.sin(theta)
+    longitudinal_lab = kinematics.gamma_cm * (
+        momentum * np.cos(theta) + kinematics.beta_cm * energy_1_cm
+    )
+    theta_lab = np.arctan2(np.abs(transverse_momentum), longitudinal_lab)
+    recoil_energy = (
+        momentum * momentum
+        * (1.0 - np.cos(theta))
+        / kinematics.target_mass_c2_ev
+    )
+    return theta_lab, recoil_energy
 
 
 def _solve_with_context(

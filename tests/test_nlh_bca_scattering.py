@@ -23,6 +23,7 @@ from bca import (  # noqa: E402
     maximum_impact_parameter_angstrom,
     solve_nlh_collision,
     two_body_outcome_from_cm_angle,
+    two_body_observables_from_cm_angles,
     turning_threshold_radius_angstrom,
 )
 
@@ -103,3 +104,19 @@ def test_public_cm_transform_reproduces_collision_outcome():
     assert transformed.projectile_out_energy_ev == pytest.approx(
         collision.projectile_out_energy_ev
     )
+
+
+def test_vectorized_cm_transform_matches_scalar_transform():
+    kernel = NLHCollisionKernel("S", "O", 1.0e7)
+    theta = np.linspace(0.0, math.pi, 33)
+    theta_lab, recoil = two_body_observables_from_cm_angles(
+        kernel.kinematics, theta
+    )
+    scalar = [
+        two_body_outcome_from_cm_angle(kernel.kinematics, float(value))
+        for value in theta
+    ]
+    assert theta_lab == pytest.approx(
+        [value.theta_projectile_lab_rad for value in scalar]
+    )
+    assert recoil == pytest.approx([value.recoil_energy_ev for value in scalar])

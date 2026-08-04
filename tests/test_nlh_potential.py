@@ -26,6 +26,7 @@ from nlh import (
     screening_function,
     supported_projectile_target_pairs,
 )
+from nlh import potential as potential_module
 
 
 def test_all_requested_projectile_target_pairs_are_available():
@@ -90,6 +91,34 @@ def test_vector_evaluation_and_force_sign():
     assert np.all(np.diff(potential) < 0.0)
     assert np.all(derivative < 0.0)
     assert np.allclose(force, -derivative)
+
+
+@pytest.mark.parametrize("projectile,target", supported_projectile_target_pairs())
+def test_scalar_and_vector_potential_paths_are_identical(projectile, target):
+    distances = np.geomspace(0.02, 0.3, 17)
+    vector = potential_ev(
+        distances, projectile, target, enforce_fit_domain=False
+    )
+    scalar = np.asarray(
+        [
+            potential_ev(
+                float(distance),
+                projectile,
+                target,
+                enforce_fit_domain=False,
+            )
+            for distance in distances
+        ]
+    )
+    assert np.array_equal(scalar, vector)
+
+
+def test_scalar_fast_path_does_not_construct_numpy_component_arrays(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("scalar potential used the array evaluator")
+
+    monkeypatch.setattr(potential_module, "_raw_components", fail_if_called)
+    assert potential_ev(0.1, "C", "O") > 0.0
 
 
 def test_fit_domain_is_enforced_unless_diagnostics_are_explicit():

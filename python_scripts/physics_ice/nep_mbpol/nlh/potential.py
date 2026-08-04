@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from functools import lru_cache
+import math
 from pathlib import Path
 from typing import TypeAlias
 
@@ -130,6 +131,7 @@ def supported_projectile_target_pairs() -> tuple[tuple[str, str], ...]:
     )
 
 
+@lru_cache(maxsize=None)
 def get_coefficients(
     projectile: str | int, target: str | int
 ) -> NLHCoefficients:
@@ -238,6 +240,37 @@ def potential_ev(
     enforce_fit_domain: bool = True,
 ) -> ScalarOrArray:
     """Evaluate the repulsive pair potential V_NLH(r) in eV."""
+
+    if isinstance(distance_angstrom, (int, float, np.integer, np.floating)):
+        distance = float(distance_angstrom)
+        if not math.isfinite(distance) or distance <= 0.0:
+            raise ValueError(
+                "All internuclear distances must be finite and greater than zero."
+            )
+        coefficients = get_coefficients(projectile, target)
+        a_1, a_2, a_3 = coefficients.a
+        b_1, b_2, b_3 = coefficients.b_per_angstrom
+        phi = (
+            a_1 * math.exp(-b_1 * distance)
+            + a_2 * math.exp(-b_2 * distance)
+            + a_3 * math.exp(-b_3 * distance)
+        )
+        potential = (
+            COULOMB_EV_ANGSTROM
+            * coefficients.z1
+            * coefficients.z2
+            * phi
+            / distance
+        )
+        if enforce_fit_domain and potential < MINIMUM_FIT_ENERGY_EV:
+            raise NLHDomainError(
+                "NLH was evaluated below its published repulsive-fit domain: "
+                f"minimum V={potential:.6g} eV, required "
+                f"V>={MINIMUM_FIT_ENERGY_EV:g} eV. Use "
+                "enforce_fit_domain=False only for diagnostics; couple to a "
+                "validated near-equilibrium potential at larger separation."
+            )
+        return potential
 
     _, _, potential, _ = _raw_components(distance_angstrom, projectile, target)
     if enforce_fit_domain:
