@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #PBS -N nlh_hard
 #PBS -q medium
-#PBS -l select=1:ncpus=32:mem=8gb
+#PBS -l select=1:ncpus=64:mem=4gb
 #PBS -l walltime=02:00:00
 #PBS -j oe
 
@@ -85,10 +85,10 @@ case "${RUN_MODE}" in
         STRUCTURE_SEED="${STRUCTURE_SEED:-1000}"
         PROJECTILE="${PROJECTILE:-S}"
         ENERGY_EV="${ENERGY_EV:-100000000}"
-        ENERGY_LABEL="${ENERGY_LABEL:-100MeV}"
         ORIENTATION="${ORIENTATION:-c_axis}"
         MASTER_SEED="${MASTER_SEED:-900000}"
-        FIXED_TRAJECTORIES="${FIXED_TRAJECTORIES:-1000}"
+        FIXED_TRAJECTORIES="${FIXED_TRAJECTORIES:-10000}"
+        ENERGY_LABEL="${ENERGY_LABEL:-$("${PYTHON_BIN}" -c 'print(format(float(__import__("sys").argv[1]), ".12g").replace("+", "") + "eV")' "${ENERGY_EV}")}"
         OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${OUTPUT_ROOT}/pilot/seed${STRUCTURE_SEED}/${PROJECTILE}/${ORIENTATION}/${ENERGY_LABEL}}"
         ;;
     base_grid)
@@ -127,10 +127,6 @@ if [[ ! "${STRUCTURE_SEED}" =~ ^(1000|2000|3000)$ ]]; then
 fi
 if [[ ! " ${PROJECTILES[*]} " =~ " ${PROJECTILE} " ]]; then
     echo "Unsupported projectile: ${PROJECTILE}." >&2
-    exit 2
-fi
-if [[ ! "${ENERGY_EV}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    echo "ENERGY_EV must be a positive decimal value; got ${ENERGY_EV}." >&2
     exit 2
 fi
 if ! "${PYTHON_BIN}" -c 'import math, sys; value=float(sys.argv[1]); raise SystemExit(not (math.isfinite(value) and 1e3 <= value <= 1e8))' "${ENERGY_EV}"; then

@@ -225,10 +225,19 @@ Submit the default resource-calibration pilot from the repository root:
 qsub pbs/run_nlh_hard_collision_trajectories.pbs
 ```
 
-It runs 1,000 fixed S trajectories at 100 MeV along the ice-Ih c-axis through
+It runs 10,000 fixed S trajectories at 100 MeV along the ice-Ih c-axis through
 the accepted seed-1000 structure. This deliberately exercises the largest
 retained collision radii and a full 100-angstrom path. It is a performance and
 plumbing measurement, not a converged scientific product.
+
+Chemfarm calibration jobs 106873 and 106875 measured 1.27 GB for 32 workers
+and 2.42 GB for 64 workers, respectively. The 64-worker case completed 10,000
+trajectories in 19 s at 591 trajectories/s, so the launcher defaults to 64
+CPUs and 4 GB. Job 106876 measured 4.65 GB and 881 trajectories/s with 128
+workers: twice the allocation delivered only 1.49 times the throughput. The
+64-worker layout is therefore the better production-throughput default. Do
+not multiply host memory by an arbitrary amount per core; repeat the pilot
+after material changes to the structures, kernels, or worker memory layout.
 
 After sizing the CPU, memory, and wall-time request from that job, the initial
 hexagonal production matrix is:
