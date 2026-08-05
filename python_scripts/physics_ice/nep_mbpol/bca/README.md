@@ -102,9 +102,9 @@ python3 generate_nlh_collision_kernels.py
 ```
 
 On PBS, the repository launcher requests one 128-CPU, 32-GB allocation through
-the `idle` routing queue (which dispatches to `idlex`), pins threaded numerical
-libraries to one thread per worker, and generates all five supported projectile
-families:
+the `long` routing queue (which dispatches to `privatex`), pins threaded
+numerical libraries to one thread per worker, and generates all five supported
+projectile families:
 
 ```bash
 qsub pbs/generate_nlh_collision_kernels.pbs
