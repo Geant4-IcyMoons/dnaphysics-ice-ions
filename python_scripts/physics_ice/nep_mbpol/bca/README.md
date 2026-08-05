@@ -1,20 +1,22 @@
 # Phase-resolved elastic-collision infrastructure
 
-This package is the interface between equilibrated NEP-MB-pol ice snapshots
-and the future ion-trajectory calculation. It currently provides two
-validated prerequisites:
+This package connects equilibrated NEP-MB-pol ice snapshots to retained-domain
+NLH hard-collision trajectories. It provides:
 
 1. strict ingestion and provenance checking for periodic extended-XYZ ice
    snapshots; and
 2. independent-atom NLH collision kernels for projectiles H, He, C, O, and S
-   against the H and O nuclei in ice.
+   against the H and O nuclei in ice;
+3. a checksum-validated adaptive-kernel runtime reader; and
+4. periodic structure-aware sequencing of primary C, O, and S hard collisions,
+   including exact projectile deflection and emitted-recoil kinematics.
 
-It does **not** yet produce phase-resolved amorphous- or hexagonal-ice cross
-sections. That result requires the next structure-aware stage to propagate a
-projectile through the registered atomic coordinates, sequence binary
-collisions without double counting, sample orientations and independent
-snapshots, and validate the result against the independent-atom limit. The
-manifests label this limitation explicitly.
+The trajectory stage produces phase- and orientation-resolved **hard-event
+samples**, not a complete elastic cross section. Soft distant scattering,
+simultaneous many-atom forces, recoil-cascade reinsertion, lattice relaxation,
+electronic stopping, and charge exchange remain separate physics. Every run
+manifest states these exclusions and reports collisions for which another hard
+candidate overlaps the binary encounter.
 
 ## Physical definition of one kernel
 
@@ -119,11 +121,47 @@ python3 generate_nlh_collision_kernels.py \
   --output-directory collision_kernels_test
 ```
 
-Do not install the CSV in Geant4 yet. It is the collision kernel consumed by
-the forthcoming structure-aware trajectory generator, not the final
-phase-specific macroscopic cross-section table.
+Do not install the CSV directly in Geant4. It is the differential collision
+kernel consumed by the structure-aware trajectory generator, not a final total
+elastic cross-section table.
 
-## 3. Reproduce the independent dense-reference benchmark
+## 3. Run hard trajectories through an accepted ice cell
+
+The runtime requires the exact attested snapshot and its validation evidence.
+For a c-axis calculation through ice Ih:
+
+```bash
+python3 simulate_nlh_hard_collisions.py final_hexagonal_seed1000.xyz \
+  --projectile C \
+  --energy-ev 100000 \
+  --direction 0 0 1 \
+  --trajectories 1000 \
+  --path-length-angstrom 100
+```
+
+Repeat with `--projectile O` and `--projectile S`. Use
+`--isotropic-directions` only for an explicitly orientation-averaged target;
+it must not be described as an oriented single-crystal result. The default is
+ten worker processes. Trajectory seeds depend only on the master seed and
+trajectory index, so outputs are independent of worker count and completion
+order.
+
+The output directory contains:
+
+- `hard_collision_trajectories.csv`: initial/final projectile state and total
+  recoil energy for each history;
+- `hard_collision_events.csv`: target atom and periodic image, impact
+  parameter, incoming/outgoing directions, recoil direction and energy for
+  every retained hard event; and
+- `hard_collision_run.manifest.json`: exact structure/kernel provenance,
+  configuration, sampled hard rate, uncorrelated independent-atom reference,
+  ambiguity count, and excluded physics.
+
+`--allow-unvalidated` is restricted to plumbing tests with the committed
+initial Ih cell. Its manifest remains `diagnostic-only`; such a run is not a
+phase-resolved scientific result.
+
+## 4. Reproduce the independent dense-reference benchmark
 
 The internal adaptive estimator is checked against direct solutions on a
 separate grid extending down to `q=10^-24`:
@@ -147,14 +185,17 @@ python3 -m pytest -q \
   ../../../tests/test_nlh_bca_scattering.py \
   ../../../tests/test_nlh_bca_structure.py \
   ../../../tests/test_nlh_bca_adaptivity.py \
-  ../../../tests/test_nlh_bca_tables.py
+  ../../../tests/test_nlh_bca_tables.py \
+  ../../../tests/test_nlh_bca_runtime.py
 ```
 
 The tests cover the published NLH evaluator, turning-potential boundary,
 monotonic deflection/recoil behavior, energy conservation, quadrature
 convergence, adaptive discovery of the narrow high-energy head-on region,
 threshold energy refinement, structure attestation, deterministic
-multiprocessing, and resume.
+multiprocessing, resume, checksum-validated runtime interpolation, exact
+periodic images, search-window invariance, and structure-to-kernel collision
+sequencing.
 
 The underlying NLH references and corrected dataset are documented in
 `../nlh/README.md`.

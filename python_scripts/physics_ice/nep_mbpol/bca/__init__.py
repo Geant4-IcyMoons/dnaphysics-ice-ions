@@ -25,7 +25,17 @@ from .scattering import (
     two_body_observables_from_cm_angles,
     turning_threshold_radius_angstrom,
 )
+from .runtime import (
+    AdaptiveKernelTable,
+    KernelTableError,
+    RuntimeCollision,
+)
 from .structure import IceStructure, StructureValidationError, load_ice_structure
+from .trajectory import (
+    HardCollisionEvent,
+    HardTrajectoryResult,
+    PeriodicHardCollisionTransport,
+)
 
 __all__ = [
     "CollisionResult",
@@ -40,8 +50,14 @@ __all__ = [
     "DEFAULT_QUADRATURE_ORDER",
     "DEFAULT_WORKERS",
     "IceStructure",
+    "AdaptiveKernelTable",
+    "HardCollisionEvent",
+    "HardTrajectoryResult",
+    "KernelTableError",
     "NLHCollisionKernel",
     "PairKinematics",
+    "PeriodicHardCollisionTransport",
+    "RuntimeCollision",
     "TwoBodyOutcome",
     "StructureValidationError",
     "hard_cross_section_angstrom2",

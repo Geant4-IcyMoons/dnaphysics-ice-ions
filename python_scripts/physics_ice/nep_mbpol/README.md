@@ -2,14 +2,16 @@
 
 This directory contains the published NEP-MB-pol runtime needed to prepare and
 evolve atomistic water-ice structures. It is separate from the Geant4 runtime:
-the molecular-dynamics calculations will eventually generate projectile
-scattering/recoil tables that Geant4 can read.
+accepted snapshots now feed the retained-domain NLH hard-trajectory driver,
+whose validated outputs will subsequently supply Geant4 scattering/recoil
+tables.
 
-The next-stage collision infrastructure is under `bca/`. It validates and
-registers accepted equilibrated snapshots and generates restartable NLH H/O
-binary-collision kernels. See `bca/README.md` before using it: the present
-kernels are independent-atom prerequisites, not yet amorphous/hexagonal
-phase-resolved cross sections and not yet Geant4 runtime tables.
+The collision infrastructure is under `bca/`. It validates and registers
+accepted equilibrated snapshots, generates restartable NLH H/O binary-
+collision kernels, reads them with checksum and interpolation-contract checks,
+and sequences hard primary-projectile encounters through the periodic atomic
+coordinates. See `bca/README.md`: these are phase-resolved hard-event samples,
+not yet complete elastic cross sections or Geant4 runtime tables.
 
 ## Included locally
 
@@ -402,12 +404,16 @@ structural acceptance tests above have been completed.
 ## Current physics boundary
 
 The pretrained file begins with `nep4 2 O H`; it models only interactions
-within the water target. It does **not** yet include H, He, C, O, or S
-projectiles. The NLH module now supplies the separately validated short-range
-projectile--H and projectile--O pair forces, but the next implementation stage
-must keep the projectile outside the water NEP descriptors and add those
-forces to a species-aware trajectory runtime. Even an oxygen projectile needs
-a distinct role/type from an oxygen atom belonging to the ice.
+within the water target. Projectiles therefore remain separate from the water
+NEP descriptors. `simulate_nlh_hard_collisions.py` now links C, O, and S
+projectiles to target H/O atoms through the adaptive NLH hard kernels while
+retaining that distinction, including for an oxygen projectile.
+
+This driver intentionally holds the lattice fixed and returns target recoils
+as recorded secondaries. It does not reinsert them, evolve radiation damage,
+or supply the missing soft distant interaction. Those additions require
+separate validation and must not be inferred from the existence of the
+structure-aware hard driver.
 
 ## Provenance
 
