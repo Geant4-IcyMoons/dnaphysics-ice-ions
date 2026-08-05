@@ -38,6 +38,16 @@ G4double ParsePositiveDouble(const std::string& text, G4double fallback, const c
   return fallback;
 }
 
+long ParsePositiveLong(const std::string& text, long fallback, const char* label)
+{
+  char* end = nullptr;
+  const long value = std::strtol(text.c_str(), &end, 10);
+  if (end != text.c_str() && *end == '\0' && value > 0) return value;
+  G4cout << "### dnaphysics_proton Warning: invalid " << label << "='" << text
+         << "', using " << fallback << G4endl;
+  return fallback;
+}
+
 void ApplySourceAndRun(G4UImanager* ui,
                        const std::string& particle,
                        G4double eminMeV,
@@ -53,7 +63,14 @@ void ApplySourceAndRun(G4UImanager* ui,
     emaxMeV = tmp;
   }
 
-  ui->ApplyCommand("/gps/particle " + G4String(particle));
+  if (particle == "carbon") {
+    ui->ApplyCommand("/gps/particle ion");
+    // Fully stripped C-12 is the default primary. The NLH nuclear scattering
+    // kernel itself is charge-state independent.
+    ui->ApplyCommand("/gps/ion 6 12 6");
+  } else {
+    ui->ApplyCommand("/gps/particle " + G4String(particle));
+  }
   ui->ApplyCommand("/gps/number " + G4String(number));
   ui->ApplyCommand("/gps/pos/type Point");
   ui->ApplyCommand("/gps/pos/centre 0 0 -0.01 mm");
@@ -114,9 +131,10 @@ int main(int argc, char** argv)
   if (argc >= 8) sourceNumber = argv[7];
 
   for (auto& c : sourceParticle) c = static_cast<char>(std::tolower(c));
-  if (sourceParticle != "proton" && sourceParticle != "alpha") {
+  if (sourceParticle != "proton" && sourceParticle != "alpha" &&
+      sourceParticle != "carbon") {
     G4cerr << "### dnaphysics_proton Error: unsupported source particle '"
-           << sourceParticle << "'. Use proton or alpha." << G4endl;
+           << sourceParticle << "'. Use proton, alpha, or carbon." << G4endl;
     delete runManager;
     return 2;
   }
@@ -144,8 +162,11 @@ int main(int argc, char** argv)
   setenv("DNA_SOURCE_EMAX_MEV", sourceEmaxMeV.c_str(), 1);
   setenv("DNA_SOURCE_EVENTS", sourceEvents.c_str(), 1);
   setenv("DNA_SOURCE_NUMBER", sourceNumber.c_str(), 1);
+  if (sourceParticle == "carbon" && !std::getenv("DNA_ION_HARD_ELASTIC")) {
+    setenv("DNA_ION_HARD_ELASTIC", "1", 1);
+  }
 
-  G4cout << "Using proton/alpha ion physics list (DNA_PHYSICS="
+  G4cout << "Using proton/alpha/carbon ion physics list (DNA_PHYSICS="
          << phys_choice << ")" << G4endl;
   G4cout << "Source settings: particle=" << sourceParticle
          << ", energy=" << sourceEminValueMeV << "-" << sourceEmaxValueMeV << " MeV"
@@ -160,7 +181,14 @@ int main(int argc, char** argv)
   G4VisExecutive* visManager = nullptr;
   G4UImanager* UImanager = G4UImanager::GetUIpointer();
 
-  CLHEP::HepRandom::setTheSeed(std::time(nullptr));
+  const long fallbackSeed = static_cast<long>(std::time(nullptr));
+  const long randomSeed = ParsePositiveLong(
+      ReadEnvString("DNA_RANDOM_SEED", nullptr, std::to_string(fallbackSeed)),
+      fallbackSeed,
+      "DNA_RANDOM_SEED");
+  CLHEP::HepRandom::setTheSeed(randomSeed);
+  setenv("DNA_RANDOM_SEED", std::to_string(randomSeed).c_str(), 1);
+  G4cout << "Random seed: " << randomSeed << G4endl;
 
   if (nullptr == ui) {
     G4String command = "/control/execute ";

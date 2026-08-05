@@ -64,6 +64,7 @@
 #include "G4Material.hh"
 #include "G4DNAEmfietzoglou_iceProtonExcitationModel.hh"
 #include "G4DNAEmfietzoglou_iceProtonIonisationModel.hh"
+#include "G4DNANLHHardElastic.hh"
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -227,6 +228,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
   if (partDef == G4Electron::ElectronDefinition()) flagParticle = 1;
   if (partDef == G4Proton::ProtonDefinition()) flagParticle = 2;
   if (partDef == G4Alpha::AlphaDefinition()) flagParticle = 4;
+  if (partDef->GetAtomicNumber() == 6 && partDef->GetAtomicMass() == 12)
+    flagParticle = 7;
 
   G4DNAGenericIonsManager* instance = G4DNAGenericIonsManager::Instance();
   if (partDef == instance->GetIon("hydrogen")) flagParticle = 3;
@@ -393,6 +396,9 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
       flagProcess = 65;
   }
 
+  else if (flagParticle == 7 && processName == "DNANLHCarbonHardElastic")
+    flagProcess = 751;
+
   else if (processName == "GenericIon_G4DNAIonisation")
     flagProcess = 73;
   else if (processName == "msc")
@@ -518,24 +524,35 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
       // Avoid destructor-order crashes at shutdown by keeping this alive.
       emCal = new G4EmCalculator();
     }
-    G4double sigmaPerVol = emCal->ComputeCrossSectionPerVolume(
-      preStep->GetKineticEnergy(),
-      step->GetTrack()->GetParticleDefinition(),
-      processName,
-      preStep->GetMaterial());
+    G4double sigmaPerVol = 0.;
+    if (const auto* nlhProcess = dynamic_cast<const G4DNANLHHardElastic*>(
+          postStep->GetProcessDefinedStep())) {
+      sigmaPerVol = nlhProcess->MacroscopicCrossSection(
+        preStep->GetMaterial(), preStep->GetKineticEnergy());
+    } else {
+      sigmaPerVol = emCal->ComputeCrossSectionPerVolume(
+        preStep->GetKineticEnergy(),
+        step->GetTrack()->GetParticleDefinition(),
+        processName,
+        preStep->GetMaterial());
+    }
 
     // Convert to microscopic area by dividing by molecular number density
     // Default to -1 if density is not available
     G4double sigma_area_cm2 = -1.0;
     if (sigmaPerVol >= 0.) {
       auto* mat = preStep->GetMaterial();
-      auto* table = G4DNAMolecularMaterial::Instance()->GetNumMolPerVolTableFor(mat);
-      if (table != nullptr) {
-        G4double n_per_mm3 = (*table)[mat->GetIndex()]; // 1/mm^3
-        if (n_per_mm3 > 0.) {
-          G4double sigma_area_mm2 = sigmaPerVol / n_per_mm3; // mm^2
-          sigma_area_cm2 = sigma_area_mm2 / (cm*cm);        // cm^2
-        }
+      G4double n_per_mm3 = 0.;
+      if (processName == "DNANLHCarbonHardElastic") {
+        n_per_mm3 = G4DNANLHHardElastic::WaterMoleculeNumberDensity(mat);
+      } else {
+        auto* table =
+          G4DNAMolecularMaterial::Instance()->GetNumMolPerVolTableFor(mat);
+        if (table != nullptr) n_per_mm3 = (*table)[mat->GetIndex()];
+      }
+      if (n_per_mm3 > 0.) {
+        G4double sigma_area_mm2 = sigmaPerVol / n_per_mm3; // mm^2
+        sigma_area_cm2 = sigma_area_mm2 / (cm*cm);        // cm^2
       }
     }
 

@@ -137,9 +137,28 @@
   },
   "error_budget": {
     "per_axis_relative_tolerance": 0.0025,
-    "nominal_combined_two_axis_bound": 0.005
+    "nominal_combined_two_axis_bound": 0.005,
+    "interpretation": "numerical interpolation tolerance only; this is not a statement of physical accuracy, and NLH/DMol pair-potential uncertainty must be reported separately"
+  },
+  "physical_model_uncertainty": {
+    "pair_potential_rms_error_percent": [
+      {"projectile": "H", "target": "H", "above_30_ev": 1.32, "above_10_ev": 3.14},
+      {"projectile": "H", "target": "O", "above_30_ev": 4.8, "above_10_ev": 13.13},
+      {"projectile": "He", "target": "H", "above_30_ev": 1.02, "above_10_ev": 1.22},
+      {"projectile": "He", "target": "O", "above_30_ev": 4.22, "above_10_ev": 9.05},
+      {"projectile": "C", "target": "H", "above_30_ev": 3.56, "above_10_ev": 10.02},
+      {"projectile": "C", "target": "O", "above_30_ev": 9.51, "above_10_ev": 25.06},
+      {"projectile": "O", "target": "H", "above_30_ev": 4.8, "above_10_ev": 13.13},
+      {"projectile": "O", "target": "O", "above_30_ev": 9.8, "above_10_ev": 18.96},
+      {"projectile": "S", "target": "H", "above_30_ev": 4.5, "above_10_ev": 8.32},
+      {"projectile": "S", "target": "O", "above_30_ev": 8.75, "above_10_ev": 16.35}
+    ],
+    "interpretation": "published pair-fit RMS errors; separate from numerical interpolation error and not by themselves a bound on transport-observable uncertainty"
   },
   "hard_cross_section_evaluation": "evaluate exactly at runtime: sigma=pi*r_threshold^2*(1-V_threshold/E_cm) for E_cm>V_threshold, otherwise zero; do not interpolate sigma across the threshold",
+  "pure_water_ice_macroscopic_rate": "Sigma_P_hard=n_H2O*(2*sigma_PH_hard+sigma_PO_hard)",
+  "phase_orientation_decision_gate": "density-only phase scaling is permitted only if atomistic validation finds negligible amorphous-hexagonal and directional differences; otherwise a validated phase/orientation correction is required",
+  "htran_overlap_policy": "HTran is a complete H/He elastic treatment. NLH and HTran must not overlap; H/He require a validated energy handoff or explicit angular/impact-parameter partition before Geant4 release.",
   "row_count": 207689,
   "csv_columns": [
     "projectile",
@@ -155,7 +174,7 @@
     "amorphous/hexagonal structure-aware collision sequencing",
     "long-range weak scattering below the turning-potential threshold",
     "NEP-MB-pol post-collision lattice relaxation and damage evolution",
-    "Geant4 runtime table reader"
+    "Geant4 runtime table readers for projectiles other than carbon"
   ],
-  "publication_status": "adaptive infrastructure output; requires the independent dense-grid benchmark report and validated structure-aware transport stage"
+  "publication_status": "binary kernels passed the independent dense-grid numerical benchmark; the carbon Geant4 runtime passed deterministic implementation tests but remains atomistic_validation_pending"
 }

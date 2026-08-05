@@ -113,6 +113,19 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     do not require separate CTMC tables. The C/Li/O/S table generators are
     present, but their Geant4 runtime consumer is not yet implemented.
 
+- NLH hard elastic scattering for carbon-12:
+  - `G4DNANLHHardElastic` evaluates the 30 eV threshold-defined C--H/O cross
+    sections analytically and samples the checksum-linked adaptive angular
+    table from 1 keV to 100 MeV total energy.
+  - The pure-water macroscopic rate is
+    `n_H2O (2 sigma_CH^hard + sigma_CO^hard)`, so the selected material density
+    is applied once at runtime.
+  - The carbon process is currently `atomistic_validation_pending`; density-
+    only phase scaling is not released until amorphous/hexagonal and
+    directional decision-gate comparisons pass. See `proton-pipeline/README.md`
+    and
+    [`CARBON_HARD_COLLISION_VALIDATION.md`](python_scripts/physics_ice/nep_mbpol/CARBON_HARD_COLLISION_VALIDATION.md).
+
 - `plotting/plot_vibExcitation_channelwise_angular_distributions.py`
   - Visualizes angular PDFs per vib channel using Michaud γ(E) and a Henyey–Greenstein mapping.
 

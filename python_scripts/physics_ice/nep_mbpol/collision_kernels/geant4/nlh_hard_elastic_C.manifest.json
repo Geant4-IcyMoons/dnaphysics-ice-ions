@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "projectile": "C",
+  "release_status": "atomistic_validation_pending",
+  "projectile_mass_c2_ev": 11177929244.64,
+  "targets": [
+    {
+      "target": "H",
+      "target_mass_c2_ev": 938783075.1036639,
+      "threshold_radius_angstrom": 0.4502045931304042,
+      "energy_min_ev": 1000.0,
+      "energy_max_ev": 100000000.0,
+      "nlh_potential_rms_error_above_30_ev_percent": 3.56,
+      "nlh_potential_rms_error_above_10_ev_percent": 10.02
+    },
+    {
+      "target": "O",
+      "target_mass_c2_ev": 14899168657.634283,
+      "threshold_radius_angstrom": 0.6974539796141541,
+      "energy_min_ev": 1000.0,
+      "energy_max_ev": 100000000.0,
+      "nlh_potential_rms_error_above_30_ev_percent": 9.51,
+      "nlh_potential_rms_error_above_10_ev_percent": 25.06
+    }
+  ],
+  "minimum_turning_potential_ev": 30.0,
+  "energy_variable": "total projectile kinetic energy",
+  "table": "nlh_hard_elastic_C.dat",
+  "table_row_count": 40802,
+  "table_sha256": "176ff98c1edb7738c9c0f774c4f6f1eb8aad1bf35f9d5984e46ed923a93da98c",
+  "source_manifest": "../nlh_collision_kernels.manifest.json",
+  "source_manifest_sha256": "15dcc658e2442559df510cddd4f870b6871b8398971da53f3e267a6b25def43e",
+  "source_csv": "../nlh_collision_kernels.csv",
+  "source_csv_sha256": "a7152349687fe69db74b2075bc083d28a8e188e5708d58075b817faf3b2d4119",
+  "threshold_defined_cross_section": {
+    "expression": "sigma_Pt_hard(T_I)=pi*r_th,Pt^2*(1-V_min/E_cm,Pt) for E_cm,Pt>V_min; 0 otherwise",
+    "equivalent_expression": "sigma_Pt_hard=pi*b_max,Pt^2",
+    "runtime_rule": "evaluate analytically; never interpolate cross section"
+  },
+  "pure_water_ice_macroscopic_rate": "Sigma_P_hard=n_H2O*(2*sigma_PH_hard+sigma_PO_hard)",
+  "interpolation_contract": {
+    "impact_axis": "piecewise-linear theta_cm in q=(b/b_max)^2",
+    "energy_axis": "piecewise log-log theta_cm in total projectile energy",
+    "nominal_combined_relative_tolerance": 0.005,
+    "interpretation": "numerical angular/recoil-table interpolation tolerance only; not a statement of physical accuracy"
+  },
+  "physical_model_uncertainty": {
+    "nlh_pair_potential_rms_error_percent": {
+      "H": {
+        "rms_error_above_30_ev_percent": 3.56,
+        "rms_error_above_10_ev_percent": 10.02
+      },
+      "O": {
+        "rms_error_above_30_ev_percent": 9.51,
+        "rms_error_above_10_ev_percent": 25.06
+      }
+    },
+    "interpretation": "published pair-fit RMS errors are separate from numerical interpolation error and do not by themselves bound transport observable uncertainty"
+  },
+  "phase_orientation_decision_gate": "density-only phase scaling is permitted only if atomistic validation finds negligible amorphous-hexagonal and directional differences; otherwise a validated phase/orientation correction is required",
+  "htran_overlap_policy": "HTran is a complete H/He elastic treatment. NLH and HTran must not overlap; H/He require a validated energy handoff or explicit angular/impact-parameter partition before Geant4 release.",
+  "scope": "threshold-defined NLH carbon hard elastic scattering on independent H and O atoms in pure water ice",
+  "excluded_physics": [
+    "soft and attractive elastic scattering outside the retained NLH domain",
+    "electronic excitation and ionisation",
+    "charge exchange",
+    "secondary recoil cascades and lattice relaxation",
+    "phase/orientation correction pending the atomistic decision gate"
+  ]
+}

@@ -1,0 +1,12 @@
+# Carbon-12 NLH hard-elastic validation macro.
+# Runtime settings are supplied through DNA_* variables and CLI arguments.
+
+/control/verbose 1
+/run/verbose 1
+/event/verbose 0
+/tracking/verbose 0
+
+/dna/test/setLogMode minimal
+/dna/test/setIceSize 0.01 0.01 0.1 mm
+
+/run/initialize

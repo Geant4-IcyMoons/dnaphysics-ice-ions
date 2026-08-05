@@ -34,6 +34,16 @@ file(GLOB headers ${PROJECT_SOURCE_DIR}/include/*.hh)
 add_executable(dnaphysics dnaphysics.cc ${sources} ${headers})
 target_link_libraries(dnaphysics ${Geant4_LIBRARIES} )
 
+set(NLH_CARBON_DATA
+  ${PROJECT_SOURCE_DIR}/python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/nlh_hard_elastic_C.dat)
+set(NLH_CARBON_MANIFEST
+  ${PROJECT_SOURCE_DIR}/python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/nlh_hard_elastic_C.manifest.json)
+file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/nlh_data)
+configure_file(${NLH_CARBON_DATA} ${PROJECT_BINARY_DIR}/nlh_data/ COPYONLY)
+configure_file(${NLH_CARBON_MANIFEST} ${PROJECT_BINARY_DIR}/nlh_data/ COPYONLY)
+target_compile_definitions(
+  dnaphysics PRIVATE DNA_NLH_SOURCE_DATA_FILE="${NLH_CARBON_DATA}")
+
 #----------------------------------------------------------------------------
 # Copy all scripts to the build directory, i.e. the directory in which we
 # build dnaphysics. This is so that we can run the executable directly because it

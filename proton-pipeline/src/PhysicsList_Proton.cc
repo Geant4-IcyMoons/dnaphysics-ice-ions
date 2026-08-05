@@ -11,12 +11,15 @@
 #include "G4Alpha.hh"
 #include "G4DNAChargeDecrease.hh"
 #include "G4DNADingfelderChargeDecreaseModel.hh"
+#include "G4DNANLHHardElastic.hh"
 #include "G4DNAGenericIonsManager.hh"
 #include "G4DNAIonisation.hh"
 #include "G4DNAExcitation.hh"
 #include "G4DNAEmfietzoglou_iceProtonIonisationModel.hh"
 #include "G4DNAEmfietzoglou_iceProtonExcitationModel.hh"
 #include "G4Proton.hh"
+#include "G4IonConstructor.hh"
+#include "G4IonTable.hh"
 
 #include <cctype>
 #include <cstdlib>
@@ -89,6 +92,8 @@ PhysicsList_Proton::~PhysicsList_Proton() = default;
 void PhysicsList_Proton::ConstructParticle()
 {
   fEmPhysicsList->ConstructParticle();
+  G4IonConstructor ions;
+  ions.ConstructParticle();
 }
 
 void PhysicsList_Proton::ConstructProcess()
@@ -103,10 +108,12 @@ void PhysicsList_Proton::ConstructProcess()
     projectile = G4Proton::ProtonDefinition();
   } else if (sourceParticle == "alpha") {
     projectile = G4Alpha::AlphaDefinition();
+  } else if (sourceParticle == "carbon") {
+    projectile = G4IonTable::GetIonTable()->GetIon(6, 12, 0.);
   } else {
     G4ExceptionDescription description;
     description << "Unsupported source particle '" << sourceParticle
-                << "'. This pipeline supports proton or alpha.";
+                << "'. This pipeline supports proton, alpha, or carbon-12.";
     G4Exception("PhysicsList_Proton::ConstructProcess", "ionphysics001",
                 FatalException, description);
     return;
@@ -114,12 +121,12 @@ void PhysicsList_Proton::ConstructProcess()
 
   const G4bool enableExcitation =
       HasEnv("DNA_ION_ENABLE_EXCITATION")
-          ? ReadEnvFlag("DNA_ION_ENABLE_EXCITATION", true)
-          : ReadEnvFlag("DNA_PROTON_ENABLE_EXCITATION", true);
+          ? ReadEnvFlag("DNA_ION_ENABLE_EXCITATION", sourceParticle != "carbon")
+          : ReadEnvFlag("DNA_PROTON_ENABLE_EXCITATION", sourceParticle != "carbon");
   const G4bool enableIonisation =
       HasEnv("DNA_ION_ENABLE_IONISATION")
-          ? ReadEnvFlag("DNA_ION_ENABLE_IONISATION", true)
-          : ReadEnvFlag("DNA_PROTON_ENABLE_IONISATION", true);
+          ? ReadEnvFlag("DNA_ION_ENABLE_IONISATION", sourceParticle != "carbon")
+          : ReadEnvFlag("DNA_PROTON_ENABLE_IONISATION", sourceParticle != "carbon");
   const G4bool useBarkas =
       HasEnv("DNA_ION_BARKAS_DCS")
           ? ReadEnvFlag("DNA_ION_BARKAS_DCS", false)
@@ -129,10 +136,14 @@ void PhysicsList_Proton::ConstructProcess()
       HasEnv("DNA_ION_CHARGE_EXCHANGE")
           ? ReadEnvFlag("DNA_ION_CHARGE_EXCHANGE", false)
           : ReadEnvFlag("DNA_PROTON_ENABLE_CHARGE_EXCHANGE", false);
+  const G4bool enableHardElastic = ReadEnvFlag(
+      "DNA_ION_HARD_ELASTIC", sourceParticle == "carbon");
   G4double ionMin =
       HasEnv("DNA_ION_MIN_ENERGY_EV")
-          ? ReadEnvEnergyEV("DNA_ION_MIN_ENERGY_EV", 1.0e5 * eV)
-          : ReadEnvEnergyEV("DNA_PROTON_MIN_ENERGY_EV", 1.0e5 * eV);
+          ? ReadEnvEnergyEV("DNA_ION_MIN_ENERGY_EV",
+                            (sourceParticle == "carbon" ? 1.0e3 : 1.0e5) * eV)
+          : ReadEnvEnergyEV("DNA_PROTON_MIN_ENERGY_EV",
+                            (sourceParticle == "carbon" ? 1.0e3 : 1.0e5) * eV);
   G4double ionMax =
       HasEnv("DNA_ION_MAX_ENERGY_EV")
           ? ReadEnvEnergyEV("DNA_ION_MAX_ENERGY_EV", 1.0e8 * eV)
@@ -144,13 +155,54 @@ void PhysicsList_Proton::ConstructProcess()
     ionMax = 100. * MeV;
   }
 
+  if (sourceParticle == "carbon" && (enableExcitation || enableIonisation)) {
+    G4Exception("PhysicsList_Proton::ConstructProcess", "ionphysics002",
+                FatalException,
+                "The existing electronic excitation/ionisation models are "
+                "validated only for proton and alpha. Disable them for the "
+                "carbon hard-elastic run.");
+  }
+  if (sourceParticle == "carbon" && enableChargeExchange) {
+    G4Exception("PhysicsList_Proton::ConstructProcess", "ionphysics003",
+                FatalException,
+                "Dingfelder charge exchange does not support carbon. The "
+                "carbon charge-state process must be registered separately.");
+  }
+  if (sourceParticle == "carbon" && useBarkas) {
+    G4Exception("PhysicsList_Proton::ConstructProcess", "ionphysics004",
+                FatalException,
+                "DNA_ION_BARKAS_DCS selects proton/alpha electronic DCS "
+                "tables and is not part of the carbon NLH hard-elastic "
+                "model. Disable it for this carbon-only configuration.");
+  }
+  if (sourceParticle != "carbon" && enableHardElastic) {
+    G4Exception("PhysicsList_Proton::ConstructProcess", "ionphysics005",
+                FatalException,
+                "The released NLH Geant4 model is carbon-only. HTran is a "
+                "complete H/He elastic treatment; NLH cannot overlap it without "
+                "a validated handoff or angular/impact-parameter partition.");
+  }
+
   G4cout << "PhysicsList_Proton: " << sourceParticle << " ice DCS models"
          << " [excitation=" << (enableExcitation ? "on" : "off")
          << ", ionisation=" << (enableIonisation ? "on" : "off")
          << ", barkas_dcs=" << (useBarkas ? "on" : "off")
          << ", charge_exchange=" << (enableChargeExchange ? "on" : "off")
+         << ", nlh_hard_elastic=" << (enableHardElastic ? "on" : "off")
          << ", range=" << ionMin / MeV << "-" << ionMax / MeV
          << " MeV]" << G4endl;
+
+  if (enableHardElastic) {
+    G4cout << "PhysicsList_Proton: registering threshold-defined NLH hard "
+           << "elastic for " << projectile->GetParticleName()
+           << " [Z=" << projectile->GetAtomicNumber()
+           << ", A=" << projectile->GetAtomicMass() << "]." << G4endl;
+    if (!ph->RegisterProcess(new G4DNANLHHardElastic(), projectile)) {
+      G4Exception("PhysicsList_Proton::ConstructProcess", "ionphysics006",
+                  FatalException,
+                  "Could not register the carbon NLH hard-elastic process.");
+    }
+  }
 
   if (enableExcitation) {
     auto* excitation = new G4DNAExcitation(

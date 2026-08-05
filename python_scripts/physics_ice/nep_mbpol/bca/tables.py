@@ -32,6 +32,7 @@ from .config import (
     canonical_element,
 )
 from .scattering import NLHCollisionKernel, turning_threshold_radius_angstrom
+from nlh import get_coefficients
 
 
 SCHEMA_VERSION = 4
@@ -560,6 +561,32 @@ def generate_kernel_tables(
             "per_axis_relative_tolerance": config.axis_relative_tolerance,
             "nominal_combined_two_axis_bound": 2.0
             * config.axis_relative_tolerance,
+            "interpretation": (
+                "numerical interpolation tolerance only; this is not a statement "
+                "of physical accuracy, and NLH/DMol pair-potential uncertainty "
+                "must be reported separately"
+            ),
+        },
+        "physical_model_uncertainty": {
+            "pair_potential_rms_error_percent": [
+                {
+                    "projectile": projectile,
+                    "target": target,
+                    "above_30_ev": get_coefficients(
+                        projectile, target
+                    ).rms_error_above_30_ev_percent,
+                    "above_10_ev": get_coefficients(
+                        projectile, target
+                    ).rms_error_above_10_ev_percent,
+                }
+                for projectile in config.projectiles
+                for target in ICE_TARGETS
+            ],
+            "interpretation": (
+                "published pair-fit RMS errors; separate from numerical "
+                "interpolation error and not by themselves a bound on "
+                "transport-observable uncertainty"
+            ),
         },
         "hard_cross_section_evaluation": (
             "evaluate exactly at runtime: sigma=pi*r_threshold^2*"
@@ -577,7 +604,7 @@ def generate_kernel_tables(
             "amorphous/hexagonal structure-aware collision sequencing",
             "long-range weak scattering below the turning-potential threshold",
             "NEP-MB-pol post-collision lattice relaxation and damage evolution",
-            "Geant4 runtime table reader",
+            "Geant4 runtime table readers for projectiles other than carbon",
         ],
         "publication_status": (
             "adaptive infrastructure output; requires the independent dense-grid "

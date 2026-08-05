@@ -40,6 +40,10 @@ python_scripts/physics_ice/nep_mbpol/collision_kernels/*
 !python_scripts/physics_ice/nep_mbpol/collision_kernels/README.md
 !python_scripts/physics_ice/nep_mbpol/collision_kernels/nlh_collision_kernels.csv
 !python_scripts/physics_ice/nep_mbpol/collision_kernels/nlh_collision_kernels.manifest.json
+!python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/
+python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/*
+!python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/nlh_hard_elastic_C.dat
+!python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/nlh_hard_elastic_C.manifest.json
 
 # Restartable NLH trajectory products and scheduler logs.
 python_scripts/physics_ice/nep_mbpol/hard_collision_runs/

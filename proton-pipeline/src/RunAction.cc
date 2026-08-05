@@ -52,7 +52,8 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
+#include <cstdio>
+#include <dirent.h>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -148,23 +149,16 @@ std::string SelectIonisationDiffFile(const std::string& icePhase)
 
 void DeleteOldRootFiles(const std::string& baseName)
 {
-  namespace fs = std::filesystem;
-  std::error_code ec;
-  const fs::path cwd = fs::current_path(ec);
-  if (ec) return;
-  for (const auto& entry : fs::directory_iterator(cwd, ec)) {
-    if (ec || !entry.is_regular_file()) {
-      continue;
-    }
-    const fs::path p = entry.path();
-    if (p.extension() != ".root") {
-      continue;
-    }
-    const std::string name = p.filename().string();
-    if (name.rfind(baseName, 0) == 0) {
-      fs::remove(p, ec);
+  DIR* directory = opendir(".");
+  if (!directory) return;
+  while (dirent* entry = readdir(directory)) {
+    const std::string name(entry->d_name);
+    if (name.rfind(baseName, 0) == 0 && name.size() >= 5 &&
+        name.compare(name.size() - 5, 5, ".root") == 0) {
+      std::remove(name.c_str());
     }
   }
+  closedir(directory);
 }
 }
 
@@ -414,6 +408,7 @@ void RunAction::BeginOfRunAction(const G4Run*)
                      : ReadEnvString("DNA_SOURCE_PARTICLE"));
     appendConfig("source_emin_MeV", ReadEnvString("DNA_SOURCE_EMIN_MEV"));
     appendConfig("source_emax_MeV", ReadEnvString("DNA_SOURCE_EMAX_MEV"));
+    appendConfig("random_seed", ReadEnvString("DNA_RANDOM_SEED"));
     const bool barkasDcs = HasEnv("DNA_ION_BARKAS_DCS")
                                ? ReadEnvFlag("DNA_ION_BARKAS_DCS", false)
                                : ReadEnvFlag(
@@ -431,6 +426,16 @@ void RunAction::BeginOfRunAction(const G4Run*)
                  chargeExchange ? "G4DNADingfelder" : "disabled");
     appendConfig("charge_exchange_target_parameterization",
                  chargeExchange ? "liquid_water_H2O_density_scaled" : "n/a");
+    appendConfig("nlh_hard_elastic",
+                 ReadEnvFlag("DNA_ION_HARD_ELASTIC", false) ? "on" : "off");
+    appendConfig("nlh_hard_elastic_scope",
+                 ReadEnvFlag("DNA_ION_HARD_ELASTIC", false)
+                     ? "threshold_defined_carbon_H_O"
+                     : "n/a");
+    appendConfig("nlh_allow_validation_pending",
+                 ReadEnvFlag("DNA_NLH_ALLOW_VALIDATION_PENDING", false)
+                     ? "yes"
+                     : "no");
   }
 
   // Clear any previous step logs so this run starts fresh

@@ -104,6 +104,9 @@ void TrackingAction::PreUserTrackingAction(const G4Track* aTrack)
 
   if (partDef == G4Alpha::AlphaDefinition()) flagParticle = 4;
 
+  if (partDef->GetAtomicNumber() == 6 && partDef->GetAtomicMass() == 12)
+    flagParticle = 7;
+
   G4DNAGenericIonsManager* instance;
   instance = G4DNAGenericIonsManager::Instance();
 

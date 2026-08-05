@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #PBS -N nlh_hard
-#PBS -q medium
+#PBS -q idlex
 #PBS -l select=1:ncpus=64:mem=4gb
 #PBS -l walltime=02:00:00
 #PBS -j oe
@@ -19,6 +19,16 @@
 # One base-grid element is one structure, projectile, orientation, and energy.
 # It samples adaptively to the driver's 0.5% simultaneous confidence target.
 # Repeating an identical element resumes checksum-verified trajectory batches.
+# The carbon-only hexagonal decision-gate subset has 54 elements:
+#
+#   qsub -v RUN_MODE=carbon_base_grid -J 0-53 \
+#       pbs/run_nlh_hard_collision_trajectories.pbs
+#
+# Before that matrix, calibrate its statistical cost with the 18-case carbon
+# endpoint pilot (three structures, three directions, 1 keV and 100 MeV):
+#
+#   qsub -v RUN_MODE=carbon_variance_pilot -J 0-17 \
+#       pbs/run_nlh_hard_collision_trajectories.pbs
 
 set -euo pipefail
 umask 002
@@ -78,6 +88,10 @@ ENERGY_LABELS=(1keV 10keV 100keV 1MeV 10MeV 100MeV)
 STRUCTURE_SEEDS=(1000 2000 3000)
 ORIENTATIONS=(c_axis basal_a_axis isotropic)
 BASE_CASE_COUNT=$((${#PROJECTILES[@]} * ${#ENERGIES_EV[@]} * ${#STRUCTURE_SEEDS[@]} * ${#ORIENTATIONS[@]}))
+CARBON_CASE_COUNT=$((${#ENERGIES_EV[@]} * ${#STRUCTURE_SEEDS[@]} * ${#ORIENTATIONS[@]}))
+CARBON_PILOT_ENERGIES_EV=(1000 100000000)
+CARBON_PILOT_ENERGY_LABELS=(1keV 100MeV)
+CARBON_PILOT_CASE_COUNT=$((${#CARBON_PILOT_ENERGIES_EV[@]} * ${#STRUCTURE_SEEDS[@]} * ${#ORIENTATIONS[@]}))
 
 case "${RUN_MODE}" in
     pilot)
@@ -115,8 +129,52 @@ case "${RUN_MODE}" in
         OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${OUTPUT_ROOT}/hexagonal_ih_100K/base_grid/seed${STRUCTURE_SEED}/${PROJECTILE}/${ORIENTATION}/${ENERGY_LABEL}}"
         FIXED_TRAJECTORIES="${FIXED_TRAJECTORIES:-}"
         ;;
+    carbon_variance_pilot)
+        ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-}}"
+        if [[ ! "${ARRAY_INDEX}" =~ ^[0-9]+$ || "${ARRAY_INDEX}" -ge "${CARBON_PILOT_CASE_COUNT}" ]]; then
+            echo "RUN_MODE=carbon_variance_pilot requires PBS array index 0-$((CARBON_PILOT_CASE_COUNT - 1)); got ${ARRAY_INDEX:-unset}." >&2
+            exit 2
+        fi
+        CASE_INDEX="${ARRAY_INDEX}"
+        remainder="${ARRAY_INDEX}"
+        energy_index=$((remainder % ${#CARBON_PILOT_ENERGIES_EV[@]}))
+        remainder=$((remainder / ${#CARBON_PILOT_ENERGIES_EV[@]}))
+        orientation_index=$((remainder % ${#ORIENTATIONS[@]}))
+        structure_index=$((remainder / ${#ORIENTATIONS[@]}))
+        STRUCTURE_SEED="${STRUCTURE_SEEDS[structure_index]}"
+        PROJECTILE="C"
+        ENERGY_EV="${CARBON_PILOT_ENERGIES_EV[energy_index]}"
+        ENERGY_LABEL="${CARBON_PILOT_ENERGY_LABELS[energy_index]}"
+        ORIENTATION="${ORIENTATIONS[orientation_index]}"
+        MASTER_SEED="${MASTER_SEED:-$((1900000 + ARRAY_INDEX))}"
+        OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${OUTPUT_ROOT}/hexagonal_ih_100K/carbon_gate/variance_pilot/seed${STRUCTURE_SEED}/${ORIENTATION}/${ENERGY_LABEL}}"
+        # This fixed sample is a variance/throughput measurement, not a
+        # convergence claim. The full-matrix sample sizes are derived from it.
+        FIXED_TRAJECTORIES="${FIXED_TRAJECTORIES:-100000}"
+        ;;
+    carbon_base_grid)
+        ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-}}"
+        if [[ ! "${ARRAY_INDEX}" =~ ^[0-9]+$ || "${ARRAY_INDEX}" -ge "${CARBON_CASE_COUNT}" ]]; then
+            echo "RUN_MODE=carbon_base_grid requires PBS array index 0-$((CARBON_CASE_COUNT - 1)); got ${ARRAY_INDEX:-unset}." >&2
+            exit 2
+        fi
+        CASE_INDEX="${ARRAY_INDEX}"
+        remainder="${ARRAY_INDEX}"
+        energy_index=$((remainder % ${#ENERGIES_EV[@]}))
+        remainder=$((remainder / ${#ENERGIES_EV[@]}))
+        orientation_index=$((remainder % ${#ORIENTATIONS[@]}))
+        structure_index=$((remainder / ${#ORIENTATIONS[@]}))
+        STRUCTURE_SEED="${STRUCTURE_SEEDS[structure_index]}"
+        PROJECTILE="C"
+        ENERGY_EV="${ENERGIES_EV[energy_index]}"
+        ENERGY_LABEL="${ENERGY_LABELS[energy_index]}"
+        ORIENTATION="${ORIENTATIONS[orientation_index]}"
+        MASTER_SEED="${MASTER_SEED:-$((2000000 + ARRAY_INDEX))}"
+        OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${OUTPUT_ROOT}/hexagonal_ih_100K/carbon_gate/seed${STRUCTURE_SEED}/${ORIENTATION}/${ENERGY_LABEL}}"
+        FIXED_TRAJECTORIES="${FIXED_TRAJECTORIES:-}"
+        ;;
     *)
-        echo "RUN_MODE must be pilot or base_grid; got ${RUN_MODE}." >&2
+        echo "RUN_MODE must be pilot, base_grid, carbon_variance_pilot, or carbon_base_grid; got ${RUN_MODE}." >&2
         exit 2
         ;;
 esac
@@ -165,6 +223,12 @@ esac
 trajectory_args=()
 if [[ -n "${FIXED_TRAJECTORIES}" ]]; then
     trajectory_args=(--trajectories "${FIXED_TRAJECTORIES}")
+else
+    trajectory_args=(
+        --minimum-trajectories "${MINIMUM_TRAJECTORIES:-1000}"
+        --maximum-trajectories "${MAXIMUM_TRAJECTORIES:-1024000}"
+        --statistical-relative-tolerance "${STATISTICAL_RELATIVE_TOLERANCE:-0.005}"
+    )
 fi
 
 export OMP_NUM_THREADS=1
@@ -193,7 +257,7 @@ echo "Repository: ${REPO_ROOT}"
 echo "Commit: $(git rev-parse HEAD)"
 echo "Host: $(hostname)"
 echo "Run mode: ${RUN_MODE}"
-echo "Case index: ${CASE_INDEX} / $((BASE_CASE_COUNT - 1))"
+echo "Case index: ${CASE_INDEX}"
 echo "Structure seed: ${STRUCTURE_SEED}"
 echo "Projectile: ${PROJECTILE}"
 echo "Energy: ${ENERGY_EV} eV"
@@ -202,6 +266,11 @@ echo "Monte Carlo seed: ${MASTER_SEED}"
 echo "Allocated CPUs: ${ALLOCATED_CPUS}"
 echo "Workers: ${WORKERS}"
 echo "Fixed trajectories: ${FIXED_TRAJECTORIES:-adaptive}"
+if [[ -z "${FIXED_TRAJECTORIES}" ]]; then
+    echo "Adaptive minimum trajectories: ${MINIMUM_TRAJECTORIES:-1000}"
+    echo "Adaptive maximum trajectories: ${MAXIMUM_TRAJECTORIES:-1024000}"
+    echo "Monte Carlo relative tolerance: ${STATISTICAL_RELATIVE_TOLERANCE:-0.005}"
+fi
 echo "Output directory: ${OUTPUT_DIRECTORY}"
 echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf 'Command:'
