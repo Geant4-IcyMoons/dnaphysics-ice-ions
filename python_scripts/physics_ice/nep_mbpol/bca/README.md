@@ -86,6 +86,12 @@ The reader selects the last frame by default. Use `--frame N` to register a
 specific frame. `--allow-unvalidated` exists only for checking the plumbing;
 it marks every such entry `diagnostic-only`.
 
+The accepted 100 K ice-Ih replicas are already attested under
+`../structures/hexagonal_ih_100K_experimental/`. Their portable
+`collision_structures.json` registry points to the three gzip-compressed final
+snapshots, and the checksummed evidence is under its `validation/` directory.
+The XYZ reader supports both plain and `.gz` inputs.
+
 ## 2. Generate reusable pair kernels
 
 The production default uses ten worker processes and restartable per-energy

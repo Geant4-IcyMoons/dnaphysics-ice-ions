@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "dynamics_completed_validation_pending",
+  "status": "validated_collision_ready",
   "model": "classical NEP-MB-pol ice Ih at the experimental 100 K cell",
   "protocol": "FIRE minimization; 1 ns NVT equilibration; 1 ns NVT sampling",
   "ensemble": "nvt_nhc_fixed_experimental_cell",
@@ -82,10 +82,18 @@
       "sampling_mean_normal_stress_sd_gpa": 0.016500251
     }
   ],
-  "required_validation": [
-    "ice-Ih oxygen-oxygen radial distribution",
-    "Bragg and crystalline-order retention",
-    "hydrogen-bond network and proton disorder",
-    "cross-replica structural agreement"
-  ]
+  "validation": {
+    "completed_utc": "2026-08-05T08:21:44.872037+00:00",
+    "decision": "accepted",
+    "collision_ready": true,
+    "protocol": "../../HEXAGONAL_ICE_VALIDATION.md",
+    "report": "validation/hexagonal_ih_100K_validation.json",
+    "report_sha256": "c384df5fc813b905828c4b6e52c81afaa775cac720aeb3c6c3bbf17697ca2c25",
+    "collision_registry": "collision_structures.json",
+    "all_sampling_frames_chill_plus_hexagonal_fraction": 1.0,
+    "all_sampling_frames_pass_bernal_fowler_rules": true,
+    "all_expected_ih_reflections_are_local_maxima": true,
+    "all_three_replicas_have_no_resolved_thermodynamic_drift": true,
+    "all_three_proton_configurations_are_distinct": true
+  }
 }

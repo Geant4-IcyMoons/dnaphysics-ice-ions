@@ -398,8 +398,13 @@ cell makes the density exact by construction.
 The three compact completed final snapshots and their checksummed run summary
 are versioned under
 `structures/hexagonal_ih_100K_experimental/`. Full trajectories and scheduler
-logs remain unversioned. The manifest retains `validation_pending` until the
-structural acceptance tests above have been completed.
+logs remain unversioned. Their manifest and collision registry record the
+completed structural acceptance decision.
+
+The reproducible decision procedure, published definitions, commands, and
+acceptance boundary are specified in `HEXAGONAL_ICE_VALIDATION.md`; run its
+`validate_hexagonal_ice.py` implementation before attesting any snapshot as a
+collision input.
 
 ## Current physics boundary
 

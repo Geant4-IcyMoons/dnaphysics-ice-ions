@@ -1,4 +1,4 @@
-# Completed 100 K ice-Ih candidate snapshots
+# Validated 100 K ice-Ih collision structures
 
 This directory preserves the compact final snapshots from the three completed
 NEP-MB-pol/GPUMD preparation runs. Each system contains 8,192 water molecules
@@ -21,11 +21,25 @@ records both compressed and uncompressed checksums, lineage, run completion
 times, and thermodynamic summaries. `preview_seed1000.png` is a visualization
 only and is not simulation input.
 
-These are completed **candidate** structures, not yet accepted collision
-targets. Their numerical dynamics completed successfully, but the required
-ice-Ih RDF, Bragg/order, hydrogen-bond-network, and cross-replica validation is
-still pending. Do not change that status merely because the target density is
-exact by construction.
+The three structures passed the documented acceptance protocol in
+`../../HEXAGONAL_ICE_VALIDATION.md`. Across all 30 sampling frames, CHILL+
+classified 100% of molecules as bulk ice Ih, both Bernal--Fowler rules held
+exactly, and all seven tested low-order Ih reflections were local
+reciprocal-space maxima. No thermodynamic drift was resolved after a Holm
+familywise correction, the three proton configurations are distinct, and all
+lineage checks passed. The complete numerical record is under `validation/`;
+`collision_structures.json` registers all three snapshots as production
+collision inputs.
 
-Reference: Rottger et al. (2012), corrected H2O and D2O ice-Ih lattice
-polynomials, <https://doi.org/10.1107/S0108768111046908>.
+The exact 0.9334742974 g/cm3 density is an imposed experimental-cell input,
+not independent validation evidence. The archived GPUMD restart headers have
+limited decimal precision and therefore report 0.9334748 g/cm3 when reparsed;
+the full-precision sampling trajectories and preparation record retain the
+paper-derived cell. This sub-part-per-million serialization difference does
+not alter the accepted phase or topology.
+
+Primary definitions and provenance are Rottger et al. (2012),
+<https://doi.org/10.1107/S0108768111046908>; Nguyen and Molinero (2015),
+<https://doi.org/10.1021/jp510289t>; Bernal and Fowler (1933),
+<https://doi.org/10.1063/1.1749327>; and Kuhs and Lehmann (1983),
+<https://doi.org/10.1021/j100244a063>.

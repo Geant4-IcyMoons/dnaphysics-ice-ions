@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -48,13 +49,19 @@ def main() -> None:
         )
         for path in args.structures
     ]
+    output = args.output.expanduser().resolve()
+    records = []
+    for structure in structures:
+        record = structure.manifest_record()
+        record["path"] = os.path.relpath(structure.source_path, output.parent)
+        records.append(record)
     registry = {
         "schema_version": 1,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "all_collision_ready": all(item.collision_ready for item in structures),
-        "structures": [item.manifest_record() for item in structures],
+        "path_base": "directory containing this registry",
+        "structures": records,
     }
-    output = args.output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(".tmp")
     temporary.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")

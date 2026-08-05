@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gzip
 import hashlib
 import json
 from pathlib import Path
 import shlex
-from typing import TextIO
+from typing import Iterator, TextIO
 
 import numpy as np
 from numpy.typing import NDArray
@@ -17,6 +18,17 @@ from .config import AVOGADRO_MOL_MINUS_ONE, WATER_MOLAR_MASS_G_MOL
 
 class StructureValidationError(ValueError):
     """Raised when a structure is not suitable for collision calculations."""
+
+
+@dataclass(frozen=True)
+class XYZFrame:
+    """One parsed frame from a GPUMD or extended-XYZ trajectory."""
+
+    species: NDArray[np.str_]
+    positions_angstrom: NDArray[np.float64]
+    lattice_angstrom: NDArray[np.float64]
+    pbc: tuple[bool, bool, bool]
+    frame_index: int
 
 
 @dataclass(frozen=True)
@@ -198,6 +210,35 @@ def _read_frame(
     return species, positions, lattice, pbc  # type: ignore[return-value]
 
 
+def _open_text(path: Path) -> TextIO:
+    if path.suffix.lower() == ".gz":
+        return gzip.open(path, mode="rt", encoding="utf-8")
+    return path.open(encoding="utf-8")
+
+
+def iter_xyz_frames(path: str | Path) -> Iterator[XYZFrame]:
+    """Yield every frame from a plain or gzip-compressed XYZ trajectory."""
+
+    source = Path(path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    with _open_text(source) as handle:
+        frame_index = 0
+        while True:
+            parsed = _read_frame(handle, source, frame_index)
+            if parsed is None:
+                break
+            species, positions, lattice, pbc = parsed
+            yield XYZFrame(
+                species=species,
+                positions_angstrom=positions,
+                lattice_angstrom=lattice,
+                pbc=pbc,
+                frame_index=frame_index,
+            )
+            frame_index += 1
+
+
 def _load_metadata(path: Path, metadata_path: Path | None) -> dict[str, object]:
     candidate = metadata_path or path.with_suffix(".json")
     if not candidate.is_file():
@@ -232,26 +273,22 @@ def load_ice_structure(
     if frame_index < -1:
         raise ValueError("frame_index must be -1 (last) or a non-negative integer.")
 
-    selected = None
-    selected_index = -1
-    with source.open(encoding="utf-8") as handle:
-        index = 0
-        while True:
-            frame = _read_frame(handle, source, index)
-            if frame is None:
-                break
-            if frame_index == -1 or frame_index == index:
-                selected = frame
-                selected_index = index
-            if frame_index == index:
-                break
-            index += 1
+    selected: XYZFrame | None = None
+    for frame in iter_xyz_frames(source):
+        if frame_index == -1 or frame.frame_index == frame_index:
+            selected = frame
+        if frame.frame_index == frame_index:
+            break
     if selected is None:
         raise StructureValidationError(
             f"{source}: requested frame {frame_index} was not found."
         )
 
-    species, positions, lattice, pbc = selected
+    species = selected.species
+    positions = selected.positions_angstrom
+    lattice = selected.lattice_angstrom
+    pbc = selected.pbc
+    selected_index = selected.frame_index
     if set(species.tolist()) != {"H", "O"}:
         raise StructureValidationError("An ice target must contain only H and O atoms.")
     oxygen_count = int(np.count_nonzero(species == "O"))

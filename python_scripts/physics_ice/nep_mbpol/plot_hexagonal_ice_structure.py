@@ -24,9 +24,12 @@ PHYSICS_ICE = HERE.parent
 sys.path.insert(0, str(PHYSICS_ICE))
 
 from constants import (  # noqa: E402
+    AASTEX_FULL_WIDTH_IN,
     FONT_COURIER,
     OUTPUT_DIR,
+    PAPER_FONTSIZE,
     RC_BASE_STANDARD,
+    THREE_PANEL_ROW_HEIGHT_IN,
     rcparams_with_fontsize,
 )
 
@@ -35,11 +38,6 @@ STRUCTURE_PATH = (
     HERE / "structures" / "ice_ih_8x8x8_seed1000_initial.xyz"
 )
 PNG_PATH = OUTPUT_DIR / "hexagonal_ice_structure.png"
-
-# Full-width AASTeX figure* with three equal panels in one row.
-FIGURE_WIDTH_IN = 7.1
-FIGURE_HEIGHT_IN = 5.15 / 2.0
-FIGURE_FONT_SIZE = 8.
 
 OXYGEN_COLOR = "slategray"
 HYDROGEN_COLOR = "lightgray"
@@ -50,11 +48,16 @@ NETWORK_COLOR = "lightgray"
 def _configure_style() -> None:
     plt.rcParams["font.family"] = FONT_COURIER
     plt.rcParams["mathtext.rm"] = FONT_COURIER
+    plt.rcParams["mathtext.it"] = f"{FONT_COURIER}:italic"
+    plt.rcParams["mathtext.bf"] = f"{FONT_COURIER}:bold"
+    plt.rcParams["mathtext.cal"] = FONT_COURIER
+    plt.rcParams["mathtext.sf"] = FONT_COURIER
+    plt.rcParams["mathtext.tt"] = FONT_COURIER
     plt.rcParams["mathtext.fontset"] = "custom"
     plt.rcParams.update(
         rcparams_with_fontsize(
             RC_BASE_STANDARD,
-            FIGURE_FONT_SIZE,
+            PAPER_FONTSIZE,
             overrides={
                 "savefig.dpi": 300,
             },
@@ -154,7 +157,7 @@ def _panel_label(ax, label: str) -> None:
         transform=ax.transAxes,
         ha="left",
         va="top",
-        fontsize=FIGURE_FONT_SIZE,
+        fontsize=PAPER_FONTSIZE,
         bbox={
             "facecolor": "white",
             "edgecolor": "none",
@@ -197,7 +200,7 @@ def _draw_scale_bar(
         "5 Å",
         ha="center",
         va="bottom",
-        fontsize=FIGURE_FONT_SIZE,
+        fontsize=PAPER_FONTSIZE,
         zorder=10,
     )
 
@@ -225,7 +228,7 @@ def _draw_3d_scale_bar(ax, scene_span: float) -> None:
         transform=ax.transAxes,
         ha="center",
         va="bottom",
-        fontsize=FIGURE_FONT_SIZE,
+        fontsize=PAPER_FONTSIZE,
         zorder=30,
     )
 
@@ -305,7 +308,9 @@ def plot_hexagonal_ice_structure(
     covalent = _covalent_segments(molecules)
     network = _nearest_oxygen_segments(oxygen)
 
-    fig = plt.figure(figsize=(FIGURE_WIDTH_IN, FIGURE_HEIGHT_IN))
+    fig = plt.figure(
+        figsize=(AASTEX_FULL_WIDTH_IN, THREE_PANEL_ROW_HEIGHT_IN)
+    )
     grid = fig.add_gridspec(
         1,
         3,

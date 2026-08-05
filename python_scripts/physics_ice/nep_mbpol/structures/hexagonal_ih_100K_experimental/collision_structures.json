@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-08-05T08:22:47.589473+00:00",
+  "all_collision_ready": true,
+  "path_base": "directory containing this registry",
+  "structures": [
+    {
+      "path": "seed1000_final.xyz.gz",
+      "sha256": "723081661f108a32478ec20b10ed3a64a74528c76ba0f5ec1cb7fcbb1fc700ee",
+      "frame_index": 0,
+      "phase": "hexagonal ice Ih, 100 K, experimental cell",
+      "state": "equilibrated and structurally validated for collision sampling",
+      "collision_ready": true,
+      "use_class": "production-input",
+      "atoms": 24576,
+      "water_molecules": 8192,
+      "density_g_cm3": 0.9334748312550061,
+      "volume_angstrom3": 262529.09709239425,
+      "lattice_angstrom": [
+        [
+          71.945,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          62.3062,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          58.566
+        ]
+      ]
+    },
+    {
+      "path": "seed2000_final.xyz.gz",
+      "sha256": "931a565be218a44a81cec8ce599d38a4aa665f69649383d45550d0945b2fe162",
+      "frame_index": 0,
+      "phase": "hexagonal ice Ih, 100 K, experimental cell",
+      "state": "equilibrated and structurally validated for collision sampling",
+      "collision_ready": true,
+      "use_class": "production-input",
+      "atoms": 24576,
+      "water_molecules": 8192,
+      "density_g_cm3": 0.9334748312550061,
+      "volume_angstrom3": 262529.09709239425,
+      "lattice_angstrom": [
+        [
+          71.945,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          62.3062,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          58.566
+        ]
+      ]
+    },
+    {
+      "path": "seed3000_final.xyz.gz",
+      "sha256": "649cb8442657c7feaecc7b17d19f61c2048dc39832c895976d0270ace5ce9dc0",
+      "frame_index": 0,
+      "phase": "hexagonal ice Ih, 100 K, experimental cell",
+      "state": "equilibrated and structurally validated for collision sampling",
+      "collision_ready": true,
+      "use_class": "production-input",
+      "atoms": 24576,
+      "water_molecules": 8192,
+      "density_g_cm3": 0.9334748312550061,
+      "volume_angstrom3": 262529.09709239425,
+      "lattice_angstrom": [
+        [
+          71.945,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          62.3062,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          58.566
+        ]
+      ]
+    }
+  ]
+}

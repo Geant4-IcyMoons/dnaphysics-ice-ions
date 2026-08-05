@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -99,3 +100,32 @@ def test_attestation_must_match_exact_file(tmp_path):
     )
     with pytest.raises(StructureValidationError, match="exact file sha256"):
         load_ice_structure(trajectory)
+
+
+def test_gzip_xyz_is_parsed_and_attested(tmp_path):
+    trajectory = tmp_path / "accepted.xyz"
+    _small_trajectory(trajectory)
+    compressed = tmp_path / "accepted.xyz.gz"
+    with trajectory.open("rb") as source, gzip.open(compressed, "wb") as target:
+        target.write(source.read())
+    report = tmp_path / "report.json"
+    report.write_text("{}\n", encoding="utf-8")
+    compressed.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "phase": "test ice",
+                "collision_ready": True,
+                "sha256": hashlib.sha256(compressed.read_bytes()).hexdigest(),
+                "validation_reports": [
+                    {
+                        "path": report.name,
+                        "sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    structure = load_ice_structure(compressed)
+    assert structure.frame_index == 1
+    assert structure.collision_ready

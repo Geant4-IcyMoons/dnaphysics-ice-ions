@@ -41,7 +41,10 @@ ELSEPA_MUFFIN_TOTAL = CROSS_SECTIONS_DIR / "sigma_elastic_e_elsepa_muffin.dat"
 ELSEPA_MUFFIN_CDF = CROSS_SECTIONS_DIR / "sigmadiff_cumulated_elastic_e_elsepa_muffin.dat"
 
 # --- Plot styles ---
-FONT_COURIER = "Courier"
+# Nimbus Mono PS is the installed, metrically compatible Courier family used
+# for paper figures on the cluster.  Using its registered Matplotlib name
+# avoids silently falling back to an unrelated proportional sans-serif font.
+FONT_COURIER = "Nimbus Mono PS"
 FONT_DEJAVU_SANS = "DejaVu Sans"
 HFONT_COURIER = {"fontname": FONT_COURIER}
 HFONT_DEJAVU_SANS = {"fontname": FONT_DEJAVU_SANS}
@@ -50,6 +53,11 @@ FONTSIZE_12 = 12
 FONTSIZE_16 = 16
 FONTSIZE_18 = 18
 FONTSIZE_24 = 24
+
+# Shared full-width, three-panel paper-figure geometry.
+AASTEX_FULL_WIDTH_IN = 7.1
+THREE_PANEL_ROW_HEIGHT_IN = 5.15 / 2.0
+PAPER_FONTSIZE = 8.0
 
 RC_BASE_STANDARD = {
     "axes.linewidth": 1.5,
