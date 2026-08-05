@@ -138,10 +138,16 @@ def pair_kinematics(
     momentum_lab = math.sqrt(projectile_energy_ev * (projectile_energy_ev + 2.0 * mass_1))
     s = mass_1 * mass_1 + mass_2 * mass_2 + 2.0 * mass_2 * energy_1_lab
     sqrt_s = math.sqrt(s)
-    lambda_value = (s - (mass_1 + mass_2) ** 2) * (s - (mass_1 - mass_2) ** 2)
-    momentum_cm = math.sqrt(max(0.0, lambda_value)) / (2.0 * sqrt_s)
+    # For a stationary target, the Kallen expression reduces exactly to this
+    # form.  It avoids subtracting nearly equal rest-mass-scale quantities at
+    # low projectile energy.
+    momentum_cm = mass_2 * momentum_lab / sqrt_s
     beta_cm = momentum_lab / (energy_1_lab + mass_2)
     gamma_cm = 1.0 / math.sqrt(1.0 - beta_cm * beta_cm)
+    relative_kinetic_energy = (
+        2.0 * mass_2 * projectile_energy_ev
+        / (sqrt_s + mass_1 + mass_2)
+    )
     return PairKinematics(
         projectile=projectile_symbol,
         target=target_symbol,
@@ -149,7 +155,7 @@ def pair_kinematics(
         projectile_mass_c2_ev=mass_1,
         target_mass_c2_ev=mass_2,
         invariant_mass_c2_ev=sqrt_s,
-        relative_kinetic_energy_ev=sqrt_s - mass_1 - mass_2,
+        relative_kinetic_energy_ev=relative_kinetic_energy,
         momentum_cm_ev_c=momentum_cm,
         beta_cm=beta_cm,
         gamma_cm=gamma_cm,
@@ -352,6 +358,17 @@ def two_body_outcome_from_cm_angle(
         * (1.0 - math.cos(theta_cm_rad))
         / kinematics.target_mass_c2_ev
     )
+    energy_tolerance = 1.0e-12 * max(1.0, kinematics.projectile_energy_ev)
+    if not (
+        -energy_tolerance
+        <= recoil_energy
+        <= kinematics.projectile_energy_ev + energy_tolerance
+    ):
+        raise RuntimeError("Two-body recoil energy lies outside physical bounds.")
+    if recoil_energy <= energy_tolerance:
+        recoil_energy = 0.0
+    elif recoil_energy >= kinematics.projectile_energy_ev - energy_tolerance:
+        recoil_energy = kinematics.projectile_energy_ev
     projectile_out_energy = kinematics.projectile_energy_ev - recoil_energy
     conservation_error = kinematics.projectile_energy_ev - (
         projectile_out_energy + recoil_energy
@@ -385,6 +402,21 @@ def two_body_observables_from_cm_angles(
         momentum * momentum
         * (1.0 - np.cos(theta))
         / kinematics.target_mass_c2_ev
+    )
+    energy_tolerance = 1.0e-12 * max(1.0, kinematics.projectile_energy_ev)
+    if np.any(recoil_energy < -energy_tolerance) or np.any(
+        recoil_energy > kinematics.projectile_energy_ev + energy_tolerance
+    ):
+        raise RuntimeError("Two-body recoil energy lies outside physical bounds.")
+    recoil_energy = np.where(
+        recoil_energy <= energy_tolerance,
+        0.0,
+        np.where(
+            recoil_energy
+            >= kinematics.projectile_energy_ev - energy_tolerance,
+            kinematics.projectile_energy_ev,
+            recoil_energy,
+        ),
     )
     return theta_lab, recoil_energy
 

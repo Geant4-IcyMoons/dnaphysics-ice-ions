@@ -35,6 +35,7 @@ from .scattering import NLHCollisionKernel, turning_threshold_radius_angstrom
 
 
 SCHEMA_VERSION = 4
+NUMERICAL_IMPLEMENTATION_VERSION = 2
 CSV_COLUMNS = (
     "projectile",
     "target",
@@ -101,7 +102,11 @@ class KernelTableConfig:
         numerical_configuration = asdict(self)
         numerical_configuration.pop("workers")
         encoded = json.dumps(
-            {"schema_version": SCHEMA_VERSION, **numerical_configuration},
+            {
+                "schema_version": SCHEMA_VERSION,
+                "numerical_implementation_version": NUMERICAL_IMPLEMENTATION_VERSION,
+                **numerical_configuration,
+            },
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
@@ -221,6 +226,7 @@ def _run_energy_task(task: _EnergyTask) -> str:
     )
     record = {
         "schema_version": SCHEMA_VERSION,
+        "numerical_implementation_version": NUMERICAL_IMPLEMENTATION_VERSION,
         "config_hash": config.config_hash,
         "projectile": task.projectile,
         "target": task.target,
@@ -518,6 +524,7 @@ def generate_kernel_tables(
     ]
     manifest = {
         "schema_version": SCHEMA_VERSION,
+        "numerical_implementation_version": NUMERICAL_IMPLEMENTATION_VERSION,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "config_hash": config.config_hash,
         "configuration": asdict(config),

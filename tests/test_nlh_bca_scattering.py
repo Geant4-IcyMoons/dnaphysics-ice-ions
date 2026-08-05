@@ -120,3 +120,17 @@ def test_vectorized_cm_transform_matches_scalar_transform():
         [value.theta_projectile_lab_rad for value in scalar]
     )
     assert recoil == pytest.approx([value.recoil_energy_ev for value in scalar])
+
+
+@pytest.mark.parametrize("energy_ev", (1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e8))
+def test_equal_mass_head_on_outcome_respects_exact_energy_bounds(energy_ev):
+    kernel = NLHCollisionKernel("H", "H", energy_ev)
+    scalar = two_body_outcome_from_cm_angle(kernel.kinematics, math.pi)
+    _, vector_recoil = two_body_observables_from_cm_angles(
+        kernel.kinematics, np.asarray((math.pi,))
+    )
+
+    assert scalar.recoil_energy_ev == kernel.kinematics.projectile_energy_ev
+    assert scalar.projectile_out_energy_ev == 0.0
+    assert scalar.energy_conservation_error_ev == 0.0
+    assert vector_recoil[0] == kernel.kinematics.projectile_energy_ev
