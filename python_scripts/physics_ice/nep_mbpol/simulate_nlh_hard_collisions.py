@@ -45,6 +45,7 @@ from bca.trajectory import (  # noqa: E402
 
 _WORKER_TRANSPORT: PeriodicHardCollisionTransport | None = None
 _WORKER_STRUCTURE: IceStructure | None = None
+TRAJECTORY_IMPLEMENTATION_VERSION = 1
 
 
 def parse_args() -> argparse.Namespace:
@@ -406,6 +407,7 @@ def _run_signature(
 ) -> tuple[str, dict[str, object]]:
     configuration: dict[str, object] = {
         "schema_version": 1,
+        "trajectory_implementation_version": TRAJECTORY_IMPLEMENTATION_VERSION,
         "structure_sha256": structure.source_sha256,
         "structure_frame_index": structure.frame_index,
         "kernel_csv_sha256": kernels.csv_sha256,
@@ -604,6 +606,7 @@ def _write_manifest(
     sampled_rate = total_events / total_path if total_path > 0.0 else 0.0
     manifest = {
         "schema_version": 2,
+        "trajectory_implementation_version": TRAJECTORY_IMPLEMENTATION_VERSION,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "configuration_signature": signature,
         "structure": structure.manifest_record(),

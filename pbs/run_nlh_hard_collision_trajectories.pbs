@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+#PBS -N nlh_hard
+#PBS -q medium
+#PBS -l select=1:ncpus=32:mem=8gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+# Run restart-safe, structure-aware NLH hard-collision trajectories through
+# the three attested 100 K ice-Ih snapshots. The safe default is one fixed-size
+# worst-case pilot:
+#
+#   qsub pbs/run_nlh_hard_collision_trajectories.pbs
+#
+# After calibrating resources, submit the 270-case base matrix with:
+#
+#   qsub -v RUN_MODE=base_grid -J 0-269 \
+#       pbs/run_nlh_hard_collision_trajectories.pbs
+#
+# One base-grid element is one structure, projectile, orientation, and energy.
+# It samples adaptively to the driver's 0.5% simultaneous confidence target.
+# Repeating an identical element resumes checksum-verified trajectory batches.
+
+set -euo pipefail
+umask 002
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -f "${PBS_O_WORKDIR}/python_scripts/physics_ice/nep_mbpol/simulate_nlh_hard_collisions.py" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+cd "${REPO_ROOT}"
+
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+SIMULATOR="${NEP_DIR}/simulate_nlh_hard_collisions.py"
+STRUCTURE_DIR="${NEP_DIR}/structures/hexagonal_ih_100K_experimental"
+KERNELS="${KERNELS:-${NEP_DIR}/collision_kernels}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-${NEP_DIR}/hard_collision_runs}"
+RUN_MODE="${RUN_MODE:-pilot}"
+CONDA_ENV="${CONDA_ENV:-yoffe_venv}"
+CONDA_SH="${CONDA_SH:-/apps01/apps/anaconda3-2022.10/etc/profile.d/conda.sh}"
+
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+    USER_ENV_PYTHON="${HOME}/.conda/envs/${CONDA_ENV}/bin/python"
+    if [[ -x "${USER_ENV_PYTHON}" ]]; then
+        PYTHON_BIN="${USER_ENV_PYTHON}"
+    else
+        # shellcheck disable=SC1090
+        source "${CONDA_SH}"
+        conda activate "${CONDA_ENV}"
+        PYTHON_BIN="$(command -v python)"
+    fi
+fi
+
+if [[ ! -f "${SIMULATOR}" || ! -x "${PYTHON_BIN}" ]]; then
+    echo "Missing trajectory simulator or Python interpreter." >&2
+    exit 2
+fi
+
+if [[ -n "${PBS_NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${PBS_NCPUS}"
+elif [[ -n "${NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${NCPUS}"
+else
+    ALLOCATED_CPUS="$("${PYTHON_BIN}" -c 'import os; print(len(os.sched_getaffinity(0)))')"
+fi
+WORKERS="${WORKERS:-${ALLOCATED_CPUS}}"
+if [[ ! "${WORKERS}" =~ ^[1-9][0-9]*$ || "${WORKERS}" -gt "${ALLOCATED_CPUS}" ]]; then
+    echo "WORKERS must be an integer between 1 and ${ALLOCATED_CPUS}; got ${WORKERS}." >&2
+    exit 2
+fi
+
+PROJECTILES=(H He C O S)
+ENERGIES_EV=(1000 10000 100000 1000000 10000000 100000000)
+ENERGY_LABELS=(1keV 10keV 100keV 1MeV 10MeV 100MeV)
+STRUCTURE_SEEDS=(1000 2000 3000)
+ORIENTATIONS=(c_axis basal_a_axis isotropic)
+BASE_CASE_COUNT=$((${#PROJECTILES[@]} * ${#ENERGIES_EV[@]} * ${#STRUCTURE_SEEDS[@]} * ${#ORIENTATIONS[@]}))
+
+case "${RUN_MODE}" in
+    pilot)
+        CASE_INDEX="pilot"
+        STRUCTURE_SEED="${STRUCTURE_SEED:-1000}"
+        PROJECTILE="${PROJECTILE:-S}"
+        ENERGY_EV="${ENERGY_EV:-100000000}"
+        ENERGY_LABEL="${ENERGY_LABEL:-100MeV}"
+        ORIENTATION="${ORIENTATION:-c_axis}"
+        MASTER_SEED="${MASTER_SEED:-900000}"
+        FIXED_TRAJECTORIES="${FIXED_TRAJECTORIES:-1000}"
+        OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${OUTPUT_ROOT}/pilot/seed${STRUCTURE_SEED}/${PROJECTILE}/${ORIENTATION}/${ENERGY_LABEL}}"
+        ;;
+    base_grid)
+        ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-}}"
+        if [[ ! "${ARRAY_INDEX}" =~ ^[0-9]+$ || "${ARRAY_INDEX}" -ge "${BASE_CASE_COUNT}" ]]; then
+            echo "RUN_MODE=base_grid requires PBS array index 0-$((BASE_CASE_COUNT - 1)); got ${ARRAY_INDEX:-unset}." >&2
+            exit 2
+        fi
+        CASE_INDEX="${ARRAY_INDEX}"
+        remainder="${ARRAY_INDEX}"
+        energy_index=$((remainder % ${#ENERGIES_EV[@]}))
+        remainder=$((remainder / ${#ENERGIES_EV[@]}))
+        orientation_index=$((remainder % ${#ORIENTATIONS[@]}))
+        remainder=$((remainder / ${#ORIENTATIONS[@]}))
+        projectile_index=$((remainder % ${#PROJECTILES[@]}))
+        remainder=$((remainder / ${#PROJECTILES[@]}))
+        structure_index="${remainder}"
+        STRUCTURE_SEED="${STRUCTURE_SEEDS[structure_index]}"
+        PROJECTILE="${PROJECTILES[projectile_index]}"
+        ENERGY_EV="${ENERGIES_EV[energy_index]}"
+        ENERGY_LABEL="${ENERGY_LABELS[energy_index]}"
+        ORIENTATION="${ORIENTATIONS[orientation_index]}"
+        MASTER_SEED="${MASTER_SEED:-$((1000000 + ARRAY_INDEX))}"
+        OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${OUTPUT_ROOT}/hexagonal_ih_100K/base_grid/seed${STRUCTURE_SEED}/${PROJECTILE}/${ORIENTATION}/${ENERGY_LABEL}}"
+        FIXED_TRAJECTORIES="${FIXED_TRAJECTORIES:-}"
+        ;;
+    *)
+        echo "RUN_MODE must be pilot or base_grid; got ${RUN_MODE}." >&2
+        exit 2
+        ;;
+esac
+
+if [[ ! "${STRUCTURE_SEED}" =~ ^(1000|2000|3000)$ ]]; then
+    echo "STRUCTURE_SEED must be 1000, 2000, or 3000; got ${STRUCTURE_SEED}." >&2
+    exit 2
+fi
+if [[ ! " ${PROJECTILES[*]} " =~ " ${PROJECTILE} " ]]; then
+    echo "Unsupported projectile: ${PROJECTILE}." >&2
+    exit 2
+fi
+if [[ ! "${ENERGY_EV}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "ENERGY_EV must be a positive decimal value; got ${ENERGY_EV}." >&2
+    exit 2
+fi
+if ! "${PYTHON_BIN}" -c 'import math, sys; value=float(sys.argv[1]); raise SystemExit(not (math.isfinite(value) and 1e3 <= value <= 1e8))' "${ENERGY_EV}"; then
+    echo "ENERGY_EV must lie in the kernel range 1000-100000000 eV; got ${ENERGY_EV}." >&2
+    exit 2
+fi
+if [[ ! "${MASTER_SEED}" =~ ^[0-9]+$ ]]; then
+    echo "MASTER_SEED must be a non-negative integer; got ${MASTER_SEED}." >&2
+    exit 2
+fi
+if [[ -n "${FIXED_TRAJECTORIES}" && ( ! "${FIXED_TRAJECTORIES}" =~ ^[0-9]+$ || "${FIXED_TRAJECTORIES}" -lt 2 ) ]]; then
+    echo "FIXED_TRAJECTORIES must be empty or an integer of at least two." >&2
+    exit 2
+fi
+
+STRUCTURE="${STRUCTURE_DIR}/seed${STRUCTURE_SEED}_final.xyz.gz"
+METADATA="${STRUCTURE_DIR}/seed${STRUCTURE_SEED}_final.xyz.json"
+for required in "${STRUCTURE}" "${METADATA}" "${KERNELS}/nlh_collision_kernels.manifest.json"; do
+    if [[ ! -f "${required}" ]]; then
+        echo "Required production input is missing: ${required}" >&2
+        exit 2
+    fi
+done
+
+orientation_args=()
+case "${ORIENTATION}" in
+    c_axis) orientation_args=(--direction 0 0 1) ;;
+    basal_a_axis) orientation_args=(--direction 1 0 0) ;;
+    isotropic) orientation_args=(--isotropic-directions) ;;
+    *)
+        echo "ORIENTATION must be c_axis, basal_a_axis, or isotropic; got ${ORIENTATION}." >&2
+        exit 2
+        ;;
+esac
+
+trajectory_args=()
+if [[ -n "${FIXED_TRAJECTORIES}" ]]; then
+    trajectory_args=(--trajectories "${FIXED_TRAJECTORIES}")
+fi
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export PYTHONHASHSEED=0
+export PYTHONUNBUFFERED=1
+
+cmd=(
+    "${PYTHON_BIN}" -u "${SIMULATOR}"
+    "${STRUCTURE}"
+    --metadata "${METADATA}"
+    --kernels "${KERNELS}"
+    --projectile "${PROJECTILE}"
+    --energy-ev "${ENERGY_EV}"
+    --path-length-angstrom "${PATH_LENGTH_ANGSTROM:-100}"
+    --seed "${MASTER_SEED}"
+    --workers "${WORKERS}"
+    --output-directory "${OUTPUT_DIRECTORY}"
+    "${orientation_args[@]}"
+    "${trajectory_args[@]}"
+)
+
+echo "Repository: ${REPO_ROOT}"
+echo "Commit: $(git rev-parse HEAD)"
+echo "Host: $(hostname)"
+echo "Run mode: ${RUN_MODE}"
+echo "Case index: ${CASE_INDEX} / $((BASE_CASE_COUNT - 1))"
+echo "Structure seed: ${STRUCTURE_SEED}"
+echo "Projectile: ${PROJECTILE}"
+echo "Energy: ${ENERGY_EV} eV"
+echo "Orientation: ${ORIENTATION}"
+echo "Monte Carlo seed: ${MASTER_SEED}"
+echo "Allocated CPUs: ${ALLOCATED_CPUS}"
+echo "Workers: ${WORKERS}"
+echo "Fixed trajectories: ${FIXED_TRAJECTORIES:-adaptive}"
+echo "Output directory: ${OUTPUT_DIRECTORY}"
+echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'Command:'
+printf ' %q' "${cmd[@]}"
+printf '\n'
+
+if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    exit 0
+elif [[ "${DRY_RUN:-0}" != "0" ]]; then
+    echo "DRY_RUN must be 0 or 1; got ${DRY_RUN}." >&2
+    exit 2
+fi
+
+"${cmd[@]}"
+echo "Completed UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

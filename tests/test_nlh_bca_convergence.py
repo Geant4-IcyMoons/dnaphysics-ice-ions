@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -64,6 +65,28 @@ def test_trajectory_cli_accepts_light_projectiles(monkeypatch, projectile) -> No
         ],
     )
     assert simulator.parse_args().projectile == projectile
+
+
+def test_run_signature_rejects_obsolete_numerical_checkpoints() -> None:
+    args = SimpleNamespace(
+        projectile="C",
+        energy_ev=1.0e5,
+        path_length_angstrom=100.0,
+        isotropic_directions=False,
+        seed=1000,
+        search_window_angstrom=4.0,
+        max_collisions=10_000,
+    )
+    structure = SimpleNamespace(source_sha256="structure", frame_index=0)
+    kernels = SimpleNamespace(csv_sha256="kernels")
+
+    _, configuration = simulator._run_signature(
+        args, structure, kernels, (0.0, 0.0, 1.0)
+    )
+
+    assert configuration["trajectory_implementation_version"] == (
+        simulator.TRAJECTORY_IMPLEMENTATION_VERSION
+    )
 
 
 def test_doubling_schedule_is_bounded_and_batch_aligned() -> None:

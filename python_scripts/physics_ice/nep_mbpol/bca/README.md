@@ -217,6 +217,36 @@ The output directory contains:
 initial Ih cell. Its manifest remains `diagnostic-only`; such a run is not a
 phase-resolved scientific result.
 
+### PBS pilot and hexagonal base matrix
+
+Submit the default resource-calibration pilot from the repository root:
+
+```bash
+qsub pbs/run_nlh_hard_collision_trajectories.pbs
+```
+
+It runs 1,000 fixed S trajectories at 100 MeV along the ice-Ih c-axis through
+the accepted seed-1000 structure. This deliberately exercises the largest
+retained collision radii and a full 100-angstrom path. It is a performance and
+plumbing measurement, not a converged scientific product.
+
+After sizing the CPU, memory, and wall-time request from that job, the initial
+hexagonal production matrix is:
+
+```bash
+qsub -v RUN_MODE=base_grid -J 0-269 \
+    pbs/run_nlh_hard_collision_trajectories.pbs
+```
+
+The 270 elements are the Cartesian product of three attested structures, five
+projectiles, three orientations (c-axis, basal a-axis, and isotropic), and six
+base energies (1, 10, and 100 keV; 1, 10, and 100 MeV). Each element uses
+adaptive trajectory sampling, deterministic seeds, and configuration-hashed
+checkpoints. The base energies are the first structure-resolved sampling grid,
+not an assertion that six energies resolve the final energy dependence.
+Independent intermediate-energy runs must be added until the final reduced
+observables meet their documented energy-interpolation criterion.
+
 ## 4. Reproduce the independent dense-reference benchmark
 
 The internal adaptive estimator is checked against direct solutions on a
