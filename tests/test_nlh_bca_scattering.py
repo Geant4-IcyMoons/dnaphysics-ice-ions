@@ -134,3 +134,15 @@ def test_equal_mass_head_on_outcome_respects_exact_energy_bounds(energy_ev):
     assert scalar.projectile_out_energy_ev == 0.0
     assert scalar.energy_conservation_error_ev == 0.0
     assert vector_recoil[0] == kernel.kinematics.projectile_energy_ev
+
+
+def test_small_positive_recoil_is_not_rounded_to_zero():
+    kinematics = NLHCollisionKernel("H", "H", 1.0e8).kinematics
+    theta_cm_rad = 1.0e-6
+    scalar = two_body_outcome_from_cm_angle(kinematics, theta_cm_rad)
+    _, vector_recoil = two_body_observables_from_cm_angles(
+        kinematics, np.asarray((theta_cm_rad,))
+    )
+
+    assert scalar.recoil_energy_ev > 0.0
+    assert vector_recoil[0] == pytest.approx(scalar.recoil_energy_ev)

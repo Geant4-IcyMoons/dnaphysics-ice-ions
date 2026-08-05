@@ -35,7 +35,7 @@ from .scattering import NLHCollisionKernel, turning_threshold_radius_angstrom
 
 
 SCHEMA_VERSION = 4
-NUMERICAL_IMPLEMENTATION_VERSION = 2
+NUMERICAL_IMPLEMENTATION_VERSION = 3
 CSV_COLUMNS = (
     "projectile",
     "target",

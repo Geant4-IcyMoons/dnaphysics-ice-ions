@@ -365,7 +365,7 @@ def two_body_outcome_from_cm_angle(
         <= kinematics.projectile_energy_ev + energy_tolerance
     ):
         raise RuntimeError("Two-body recoil energy lies outside physical bounds.")
-    if recoil_energy <= energy_tolerance:
+    if recoil_energy <= 0.0:
         recoil_energy = 0.0
     elif recoil_energy >= kinematics.projectile_energy_ev - energy_tolerance:
         recoil_energy = kinematics.projectile_energy_ev
@@ -409,7 +409,7 @@ def two_body_observables_from_cm_angles(
     ):
         raise RuntimeError("Two-body recoil energy lies outside physical bounds.")
     recoil_energy = np.where(
-        recoil_energy <= energy_tolerance,
+        recoil_energy <= 0.0,
         0.0,
         np.where(
             recoil_energy
