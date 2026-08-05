@@ -101,9 +101,10 @@ checkpoints:
 python3 generate_nlh_collision_kernels.py
 ```
 
-On PBS, the repository launcher uses one 256-CPU, 512-GB `idlex` allocation,
-pins threaded numerical libraries to one thread per worker, and generates all
-five supported projectile families:
+On PBS, the repository launcher requests one 256-CPU, 512-GB allocation through
+the `idle` routing queue (which dispatches to `idlex`), pins threaded numerical
+libraries to one thread per worker, and generates all five supported projectile
+families:
 
 ```bash
 qsub pbs/generate_nlh_collision_kernels.pbs
