@@ -101,10 +101,10 @@ checkpoints:
 python3 generate_nlh_collision_kernels.py
 ```
 
-On PBS, the repository launcher requests one 128-CPU, 32-GB allocation through
-the `long` routing queue (which dispatches to `privatex`), pins threaded
-numerical libraries to one thread per worker, and generates all five supported
-projectile families:
+On PBS, the repository launcher requests one 32-CPU, 8-GB allocation through
+the `medium` routing queue (which dispatches to `privatex`), pins threaded
+numerical libraries to one thread per worker, generates all five supported
+projectile families, and then runs the independent dense-reference benchmark:
 
 ```bash
 qsub pbs/generate_nlh_collision_kernels.pbs

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #PBS -N nlh_kernels
-#PBS -q long
-#PBS -l select=1:ncpus=128:mem=32gb
-#PBS -l walltime=500:00:00
+#PBS -q medium
+#PBS -l select=1:ncpus=32:mem=8gb
+#PBS -l walltime=01:00:00
 #PBS -j oe
 
 # Generate the restartable adaptive NLH kernels for H, He, C, O, and S
@@ -10,7 +10,8 @@
 #
 #   qsub pbs/generate_nlh_collision_kernels.pbs
 #
-# Rerunning the same submission resumes checksum-compatible checkpoints.
+# Rerunning the same submission resumes checksum-compatible checkpoints. The
+# independent dense-grid benchmark runs after the kernel products by default.
 
 set -euo pipefail
 umask 002
@@ -28,6 +29,8 @@ cd "${REPO_ROOT}"
 NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
 GENERATOR="${NEP_DIR}/generate_nlh_collision_kernels.py"
 OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${NEP_DIR}/collision_kernels}"
+BENCHMARK_DIRECTORY="${BENCHMARK_DIRECTORY:-${NEP_DIR}/collision_benchmarks}"
+RUN_BENCHMARK="${RUN_BENCHMARK:-1}"
 CONDA_ENV="${CONDA_ENV:-yoffe_venv}"
 CONDA_SH="${CONDA_SH:-/apps01/apps/anaconda3-2022.10/etc/profile.d/conda.sh}"
 
@@ -82,11 +85,27 @@ echo "Python: ${PYTHON_BIN}"
 echo "Allocated CPUs: ${ALLOCATED_CPUS}"
 echo "Workers: ${WORKERS}"
 echo "Output directory: ${OUTPUT_DIRECTORY}"
+echo "Run benchmark: ${RUN_BENCHMARK}"
 echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf 'Command:'
 printf ' %q' "${cmd[@]}"
 printf '\n'
 
 "${cmd[@]}"
+
+if [[ "${RUN_BENCHMARK}" == "1" ]]; then
+    benchmark_cmd=(
+        "${PYTHON_BIN}" -u "${NEP_DIR}/benchmark_nlh_adaptive_kernels.py"
+        --workers "${WORKERS}"
+        --output-directory "${BENCHMARK_DIRECTORY}"
+    )
+    printf 'Benchmark command:'
+    printf ' %q' "${benchmark_cmd[@]}"
+    printf '\n'
+    "${benchmark_cmd[@]}"
+elif [[ "${RUN_BENCHMARK}" != "0" ]]; then
+    echo "RUN_BENCHMARK must be 0 or 1; got ${RUN_BENCHMARK}." >&2
+    exit 2
+fi
 
 echo "Completed UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
