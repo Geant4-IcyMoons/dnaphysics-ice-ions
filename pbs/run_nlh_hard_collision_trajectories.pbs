@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 #PBS -N nlh_hard
-#PBS -q idlex
+#PBS -q idle
 #PBS -l select=1:ncpus=64:mem=4gb
 #PBS -l walltime=02:00:00
 #PBS -j oe
+
+# `idle` is the submit-side routing queue; PBS places these jobs in the
+# route-only `idlex` execution queue.
 
 # Run restart-safe, structure-aware NLH hard-collision trajectories through
 # the three attested 100 K ice-Ih snapshots. The safe default is one fixed-size
