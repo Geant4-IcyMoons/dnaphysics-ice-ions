@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Propagate hard C/O/S trajectories through an explicit periodic ice cell."""
+"""Propagate hard H/He/C/O/S trajectories through periodic explicit ice."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from tqdm.auto import tqdm
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from bca.config import DEFAULT_WORKERS  # noqa: E402
+from bca.config import DEFAULT_PROJECTILES, DEFAULT_WORKERS  # noqa: E402
 from bca.convergence import (  # noqa: E402
     DEFAULT_MAXIMUM_TRAJECTORIES,
     DEFAULT_MINIMUM_TRAJECTORIES,
@@ -57,7 +57,9 @@ def parse_args() -> argparse.Namespace:
         default=HERE / "collision_kernels",
         help="Kernel directory or nlh_collision_kernels.manifest.json.",
     )
-    parser.add_argument("--projectile", choices=("C", "O", "S"), required=True)
+    parser.add_argument(
+        "--projectile", choices=DEFAULT_PROJECTILES, required=True
+    )
     parser.add_argument("--energy-ev", type=float, required=True)
     parser.add_argument(
         "--trajectories",

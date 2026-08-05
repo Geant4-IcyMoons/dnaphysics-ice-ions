@@ -34,7 +34,7 @@ ELEMENT_ALIASES = {
     "sulphur": "S",
 }
 
-DEFAULT_PROJECTILES = ("C", "O", "S")
+DEFAULT_PROJECTILES = ("H", "He", "C", "O", "S")
 ICE_TARGETS = ("H", "O")
 
 # These are numerical defaults, not additional physical fit parameters.  The

@@ -25,6 +25,7 @@ from bca.convergence import (  # noqa: E402
     merge_statistics,
     simultaneous_critical_value,
 )
+import simulate_nlh_hard_collisions as simulator  # noqa: E402
 
 
 def _statistics(scale: float = 0.001) -> dict[str, RatioStatistics]:
@@ -46,6 +47,23 @@ def _statistics(scale: float = 0.001) -> dict[str, RatioStatistics]:
             transport, collision_count
         )
     return result
+
+
+@pytest.mark.parametrize("projectile", ("H", "He"))
+def test_trajectory_cli_accepts_light_projectiles(monkeypatch, projectile) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "simulate_nlh_hard_collisions.py",
+            "ice.xyz",
+            "--projectile",
+            projectile,
+            "--energy-ev",
+            "1000",
+        ],
+    )
+    assert simulator.parse_args().projectile == projectile
 
 
 def test_doubling_schedule_is_bounded_and_batch_aligned() -> None:

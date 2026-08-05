@@ -19,6 +19,10 @@ if str(NEP_MBPOL) not in sys.path:
 from bca.tables import KernelTableConfig, generate_kernel_tables  # noqa: E402
 
 
+def test_default_kernel_product_includes_light_and_heavy_projectiles():
+    assert KernelTableConfig().projectiles == ("H", "He", "C", "O", "S")
+
+
 def test_parallel_table_output_is_deterministic_and_resumable(tmp_path):
     common = dict(
         projectiles=("C",),

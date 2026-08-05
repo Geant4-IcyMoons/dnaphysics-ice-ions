@@ -405,9 +405,10 @@ structural acceptance tests above have been completed.
 
 The pretrained file begins with `nep4 2 O H`; it models only interactions
 within the water target. Projectiles therefore remain separate from the water
-NEP descriptors. `simulate_nlh_hard_collisions.py` now links C, O, and S
+NEP descriptors. `simulate_nlh_hard_collisions.py` links H, He, C, O, and S
 projectiles to target H/O atoms through the adaptive NLH hard kernels while
-retaining that distinction, including for an oxygen projectile.
+retaining that distinction, including when projectile and target are the same
+element.
 
 This driver intentionally holds the lattice fixed and returns target recoils
 as recorded secondaries. It does not reinsert them, evolve radiation damage,

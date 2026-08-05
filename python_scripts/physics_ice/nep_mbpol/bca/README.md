@@ -8,7 +8,8 @@ NLH hard-collision trajectories. It provides:
 2. independent-atom NLH collision kernels for projectiles H, He, C, O, and S
    against the H and O nuclei in ice;
 3. a checksum-validated adaptive-kernel runtime reader; and
-4. periodic structure-aware sequencing of primary C, O, and S hard collisions,
+4. periodic structure-aware sequencing of primary H, He, C, O, and S hard
+   collisions,
    including exact projectile deflection and emitted-recoil kinematics.
 
 The trajectory stage produces phase- and orientation-resolved **hard-event
@@ -138,7 +139,9 @@ python3 simulate_nlh_hard_collisions.py final_hexagonal_seed1000.xyz \
   --path-length-angstrom 100
 ```
 
-Repeat with `--projectile O` and `--projectile S`. Use
+Repeat with `--projectile H`, `He`, `O`, and `S`. `H` and `He` are the
+proton/helium-projectile entries; the dominant-isotope masses are used, and the
+short-range nuclear potential is charge-state independent. Use
 `--isotropic-directions` only for an explicitly orientation-averaged target;
 it must not be described as an oriented single-crystal result. The default is
 ten worker processes. Trajectory seeds depend only on the master seed and

@@ -29,37 +29,50 @@ from bca.structure import IceStructure  # noqa: E402
 from bca.trajectory import PeriodicHardCollisionTransport  # noqa: E402
 
 
-def _kernel_product(directory: Path) -> Path:
+def _kernel_product(
+    directory: Path, projectiles: tuple[str, ...] = ("C",)
+) -> Path:
     energies = (10_000.0, 100_000.0)
     quantiles = (0.0, 0.25, 0.75, 1.0)
     csv_path = directory / "nlh_collision_kernels.csv"
     rows: list[tuple[object, ...]] = []
     pair_records = []
-    for target in ("H", "O"):
-        pair_records.append(
-            {
-                "projectile": "C",
-                "target": target,
-                "threshold_radius_angstrom": turning_threshold_radius_angstrom(
-                    "C", target, minimum_turning_potential_ev=30.0
-                ),
-                "point_count": len(energies),
-                "maximum_theta_cm_relative_error": 0.0,
-                "maximum_recoil_relative_error": 0.0,
-                "validation_evaluations": 0,
-            }
-        )
-        for energy in energies:
-            kernel = NLHCollisionKernel(
-                "C", target, energy, minimum_turning_potential_ev=30.0
+    for projectile in projectiles:
+        for target in ("H", "O"):
+            pair_records.append(
+                {
+                    "projectile": projectile,
+                    "target": target,
+                    "threshold_radius_angstrom": turning_threshold_radius_angstrom(
+                        projectile, target, minimum_turning_potential_ev=30.0
+                    ),
+                    "point_count": len(energies),
+                    "maximum_theta_cm_relative_error": 0.0,
+                    "maximum_recoil_relative_error": 0.0,
+                    "validation_evaluations": 0,
+                }
             )
-            for quantile in quantiles:
-                collision = kernel.solve(
-                    kernel.maximum_impact_parameter_angstrom * math.sqrt(quantile)
+            for energy in energies:
+                kernel = NLHCollisionKernel(
+                    projectile,
+                    target,
+                    energy,
+                    minimum_turning_potential_ev=30.0,
                 )
-                rows.append(
-                    ("C", target, energy, quantile, collision.theta_cm_rad)
-                )
+                for quantile in quantiles:
+                    collision = kernel.solve(
+                        kernel.maximum_impact_parameter_angstrom
+                        * math.sqrt(quantile)
+                    )
+                    rows.append(
+                        (
+                            projectile,
+                            target,
+                            energy,
+                            quantile,
+                            collision.theta_cm_rad,
+                        )
+                    )
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(
@@ -76,7 +89,7 @@ def _kernel_product(directory: Path) -> Path:
     manifest = {
         "schema_version": 4,
         "configuration": {
-            "projectiles": ["C"],
+            "projectiles": list(projectiles),
             "minimum_turning_potential_ev": 30.0,
         },
         "energy_mesh": {"pairs": pair_records},
@@ -149,6 +162,31 @@ def test_periodic_transport_links_structure_to_kernel(tmp_path):
     assert event.target_image == (1, 0, 0)
     assert event.path_distance_angstrom == pytest.approx(0.4, abs=1.0e-12)
     assert event.impact_parameter_angstrom == pytest.approx(0.0, abs=1.0e-12)
+    assert event.projectile_energy_out_ev + event.recoil_energy_ev == pytest.approx(
+        event.projectile_energy_in_ev, abs=1.0e-10
+    )
+    assert np.linalg.norm(event.recoil_direction) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("projectile", ("H", "He"))
+def test_periodic_transport_supports_proton_and_helium_projectiles(
+    tmp_path, projectile
+):
+    table = AdaptiveKernelTable(_kernel_product(tmp_path, (projectile,)))
+    transport = PeriodicHardCollisionTransport(_structure(), table)
+    result = transport.trace(
+        projectile,
+        10_000.0,
+        (9.8, 5.0, 5.0),
+        (1.0, 0.0, 0.0),
+        1.0,
+        rng=np.random.default_rng(2025),
+        max_collisions=1,
+    )
+    assert result.projectile == projectile
+    assert len(result.events) == 1
+    event = result.events[0]
+    assert event.target == "O"
     assert event.projectile_energy_out_ev + event.recoil_energy_ev == pytest.approx(
         event.projectile_energy_in_ev, abs=1.0e-10
     )
