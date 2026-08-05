@@ -135,7 +135,6 @@ python3 simulate_nlh_hard_collisions.py final_hexagonal_seed1000.xyz \
   --projectile C \
   --energy-ev 100000 \
   --direction 0 0 1 \
-  --trajectories 1000 \
   --path-length-angstrom 100
 ```
 
@@ -146,6 +145,38 @@ ten worker processes. Trajectory seeds depend only on the master seed and
 trajectory index, so outputs are independent of worker count and completion
 order.
 
+If `--trajectories` is omitted, production sampling is adaptive. Independent
+histories are added in restartable batches of 1,000 and assessed after
+1,000, 2,000, 4,000, ... histories, up to 1,024,000 by default. Sampling stops
+only when the asymptotic 95% simultaneous relative confidence half-width is at
+most 0.5% for the hard-event rate, hard nuclear stopping, hard transport rate,
+mean recoil energy per collision, and mean `1-cos(theta_lab)` per collision. The
+trajectory is the independent statistical unit, so collisions correlated
+along one history are not falsely counted as independent. Student-t ratio
+intervals use a Bonferroni correction over all five observables and every
+scheduled look, preventing interim checks from weakening the stated
+confidence level.
+
+Every completed batch is checksum-protected below
+`.trajectory_checkpoints/<configuration hash>/`; rerunning the same command
+resumes without repeating finished trajectories. Reaching the maximum without
+passing all gates writes the diagnostic outputs and exits nonzero. Use an
+explicit fixed count only for plumbing or an externally controlled study:
+
+```bash
+python3 simulate_nlh_hard_collisions.py final_hexagonal_seed1000.xyz \
+  --projectile C \
+  --energy-ev 100000 \
+  --isotropic-directions \
+  --trajectories 1000
+```
+
+The 0.5% Monte Carlo gate is separate from the adaptive collision-kernel
+interpolation budget. It certifies normalization and first energy/angular
+moments, not rare tails or a binned angular/recoil CDF. Those distributions
+require a separate confidence-band test when the final Geant4 reducer is
+added.
+
 The output directory contains:
 
 - `hard_collision_trajectories.csv`: initial/final projectile state and total
@@ -155,7 +186,7 @@ The output directory contains:
   every retained hard event; and
 - `hard_collision_run.manifest.json`: exact structure/kernel provenance,
   configuration, sampled hard rate, uncorrelated independent-atom reference,
-  ambiguity count, and excluded physics.
+  ambiguity count, statistical intervals, and excluded physics.
 
 `--allow-unvalidated` is restricted to plumbing tests with the committed
 initial Ih cell. Its manifest remains `diagnostic-only`; such a run is not a
@@ -185,6 +216,7 @@ python3 -m pytest -q \
   ../../../tests/test_nlh_bca_scattering.py \
   ../../../tests/test_nlh_bca_structure.py \
   ../../../tests/test_nlh_bca_adaptivity.py \
+  ../../../tests/test_nlh_bca_convergence.py \
   ../../../tests/test_nlh_bca_tables.py \
   ../../../tests/test_nlh_bca_runtime.py
 ```
@@ -195,7 +227,9 @@ convergence, adaptive discovery of the narrow high-energy head-on region,
 threshold energy refinement, structure attestation, deterministic
 multiprocessing, resume, checksum-validated runtime interpolation, exact
 periodic images, search-window invariance, and structure-to-kernel collision
-sequencing.
+sequencing. The trajectory sampler additionally tests its simultaneous
+confidence correction, clustered ratio uncertainty, adaptive schedule, and
+restart statistics.
 
 The underlying NLH references and corrected dataset are documented in
 `../nlh/README.md`.

@@ -415,6 +415,14 @@ or supply the missing soft distant interaction. Those additions require
 separate validation and must not be inferred from the existence of the
 structure-aware hard driver.
 
+Production trajectory sampling is convergence-controlled independently of the
+adaptive collision-kernel mesh. With no fixed `--trajectories` argument, the
+driver adds deterministic, restartable batches until asymptotic 95%
+simultaneous confidence half-widths for the hard rate, nuclear stopping, and
+first energy/angular moments are all at most 0.5%, or exits nonzero at the
+configured limit. See `bca/README.md` for the statistical contract and its
+explicit exclusion of distribution-tail convergence.
+
 ## Provenance
 
 - Xu et al., *NEP-MB-pol: A unified machine-learned framework for fast and
