@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #PBS -N nlh_kernels
 #PBS -q idle
-#PBS -l select=1:ncpus=256:mem=64gb
+#PBS -l select=1:ncpus=128:mem=32gb
 #PBS -l walltime=500:00:00
 #PBS -j oe
 
