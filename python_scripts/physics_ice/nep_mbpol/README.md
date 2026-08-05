@@ -73,22 +73,27 @@ provenance/validation record. The
 structure is an initial hydrogen-disordered crystal and must still be relaxed
 and equilibrated with `model/nep-mbpol.nep.txt` on a GPU node.
 
-## Cluster workflow: low-density amorphous ice
+## Cluster workflow: candidate low-density amorphous ice
 
 The project constant
-`ICE_AMORPHOUS_DENSITY_G_CM3 = 0.94` represents low-density amorphous ice
-(LDA). Density fixes the macroscopic state but does not make a molecular
-configuration amorphous. Do not obtain the amorphous target by randomly moving
+`ICE_AMORPHOUS_DENSITY_G_CM3 = 0.94` is the experimental reference density for
+low-density amorphous ice (LDA), not a volume constraint for this preparation.
+Every stage is NPT at 0.1 MPa, so the cell volume and density evolve. The final
+density is a prediction to validate, together with the structure; it must not
+be imposed by rescaling. Do not obtain the amorphous target by randomly moving
 atoms or by simply rescaling ice Ih. The crystalline memory must be erased in
 a liquid state, followed by a controlled quench and structural validation.
 
-The reference cooling path below follows the literature rationale of
-equilibrating liquid water at 240 K and cooling it to 80 K at 10 K/ns near
-ambient pressure (Giovambattista et al., 2024,
-<https://doi.org/10.1038/s42004-024-01117-2>). That paper used q-TIP4P/F, not
-NEP-MB-pol. Consequently, the cooling path is a literature-supported starting
-protocol whose output must be validated with NEP-MB-pol; it must not be
-presented as a previously published NEP-MB-pol LDA recipe.
+The 240--80 K cooling segment follows Eltareb, Lopez, and Giovambattista
+(Commun. Chem. 7, 36, 2024,
+<https://doi.org/10.1038/s42004-024-01117-2>): three independent equilibrated
+q-TIP4P/F liquids at 240 K were cooled isobarically at 10 K/ns using OpenMM, a
+PILE thermostat, and a Monte Carlo barostat. This project instead uses
+NEP-MB-pol and GPUMD's `npt_ber` integrator. Its added 350 K melt, 350--240 K
+ramp, 240 K hold, and final 80 K hold make the complete 20 ns trajectory an
+adapted protocol. Its outputs are candidate LDA configurations until all
+acceptance tests below pass; this must not be presented as a published
+NEP-MB-pol LDA recipe.
 
 ### 1. Check out and build on the NVIDIA node
 
@@ -152,31 +157,46 @@ cd "${run_dir}"
 Place the following in `run.in`. GPUMD uses femtoseconds for time and GPa for
 pressure. At a 0.2 fs step, the 240--80 K quench contains 80 million steps,
 which is 16 ns and therefore 10 K/ns. The pressure `0.0001` GPa is 0.1 MPa.
+The three dump commands are repeated because GPUMD defines them as
+non-propagating: each applies only to the next `run` block.
 
 ```text
 potential       nep.txt
 time_step       0.2
-velocity        350
-dump_thermo     10000
-dump_exyz       5000000 0 0
-dump_restart    500000
+# Use the replica's recorded structure seed here (1000, 2000, or 3000).
+velocity        350 seed 1000
 
 # Melt ice Ih for 1 ns at 350 K and 0.1 MPa.
 ensemble        npt_ber 350 350 200 0.0001 10.0 2000
+dump_thermo     10000
+dump_exyz       5000000 0 0
+dump_restart    500000
 run             5000000
 
 # Bring the liquid to 240 K over 1 ns, then hold for 1 ns.
 ensemble        npt_ber 350 240 200 0.0001 10.0 2000
+dump_thermo     10000
+dump_exyz       5000000 0 0
+dump_restart    500000
 run             5000000
 ensemble        npt_ber 240 240 200 0.0001 10.0 2000
+dump_thermo     10000
+dump_exyz       5000000 0 0
+dump_restart    500000
 run             5000000
 
-# Literature-reference LDA quench: 240 K to 80 K at 10 K/ns.
+# Literature-derived cooling segment: 240 K to 80 K at 10 K/ns.
 ensemble        npt_ber 240 80 200 0.0001 10.0 2000
+dump_thermo     10000
+dump_exyz       5000000 0 0
+dump_restart    500000
 run             80000000
 
 # Hold the resulting glass at 80 K and 0.1 MPa for 1 ns.
 ensemble        npt_ber 80 80 200 0.0001 10.0 2000
+dump_thermo     10000
+dump_exyz       5000000 0 0
+dump_restart    500000
 run             5000000
 ```
 
@@ -186,12 +206,48 @@ Run it with the scheduler's normal single-GPU wrapper:
 /absolute/path/to/GPUMD-v3.9.3/src/gpumd > gpumd.log 2>&1
 ```
 
-Submit the three seeds as independent jobs. The trajectory is sequential and
-cannot be divided among GPUs, but the independent seeds can run concurrently.
+Submit the three seeds as independent jobs. GPUMD supports distributing one
+trajectory over several GPUs, but its documentation recommends more than about
+100,000 atoms per GPU for good efficiency. This 24,576-atom cell should
+therefore use one GPU per seed, with independent seeds running concurrently.
 `restart.xyz` is overwritten every 100 ps and is the recovery point after a
 wall-time interruption. Preserve the temperature reached at interruption when
 constructing a continuation input; do not restart the entire cooling ramp from
 240 K.
+
+### PBS launcher on Chemfarm
+
+The repository PBS script requests one 48 GB GPU, four CPU cores, and 8 GB of
+host RAM per independent seed. It compiles an architecture-matched GPUMD binary
+in compute-node scratch, so compilation does not run on the login node. Submit
+all three documented seeds as an array:
+
+```bash
+cd /work/yoffegid/dnaphysics-ice-ions
+qsub -J 0-2 pbs/run_nep_mbpol_amorphous.pbs
+```
+
+The array indices map to structure and velocity seeds 1000, 2000, and 3000;
+the launcher renders and records a distinct `velocity 350 seed N` command in
+each replica's `run.in`. The `ps` private GPU node
+has eight GPUs, so all three can run concurrently on one node when it is
+available. Use one trajectory per GPU: the 24,576-atom cell is below GPUMD's
+roughly 100,000-atoms-per-GPU threshold for efficient multi-GPU domain
+decomposition.
+
+The private launcher requests 500 hours. For the public GPU queue, whose
+current maximum is 120 hours, override the queue and wall time at submission:
+
+```bash
+qsub -q gpuq -l walltime=120:00:00 -J 0-2 \
+    pbs/run_nep_mbpol_amorphous.pbs
+```
+
+Eight GB is a conservative initial host-memory request for this cell and also
+covers compilation. After the first completed or deliberately short benchmark,
+inspect `resources_used.mem` with `qstat -fx JOB_ID`; reduce it to 4 GB only if
+the measured peak leaves a comfortable margin. PBS `mem` is host RAM, not the
+48 GB memory attached to the requested GPU.
 
 ### 4. Acceptance tests
 
@@ -230,11 +286,102 @@ run. Geant4 continues to use the shared 0.94 g/cm3 material density; the
 atomistic cell supplies structural information for separately validated
 projectile--H and projectile--O interactions.
 
-Generate the full-width AAS paper figure (PDF plus 300-dpi PNG) with:
+Generate the full-width, 300-dpi PNG paper figure with:
 
 ```bash
 .venv/bin/python plot_hexagonal_ice_structure.py
 ```
+
+To render an equilibrated GPUMD restart without replacing the initial-cell
+figure, select the structure and a distinct output stem:
+
+```bash
+.venv/bin/python plot_hexagonal_ice_structure.py \
+    --structure runs/hexagonal_ih_80K_seed1000/restart.xyz \
+    --output-stem ../output/hexagonal_ice_equilibrated_80K_seed1000
+```
+
+## Classical 80 K ice-Ih equilibration
+
+Hexagonal ice uses a separate preparation from the amorphous melt--quench.
+The same three GenIce2 cells are relaxed at fixed cell with GPUMD's FIRE
+minimizer and then evolved for 1 ns of equilibration plus 1 ns of sampling at
+80 K and 0.1 MPa. Orthorhombic NPT control lets the two basal dimensions and
+the c-axis dimension respond independently. This is a project preparation
+protocol, not a published NEP-MB-pol ice-Ih recipe.
+
+Structure and velocity seeds are explicitly paired as 1000, 2000, and 3000.
+The trajectory snapshots include velocities and are written every 100 ps;
+thermodynamic data are written every 2 ps and the restart is refreshed every
+100 ps. Run the three independent replicas concurrently with one GPU each:
+
+```bash
+cd /work/yoffegid/dnaphysics-ice-ions
+qsub -J 0-2 pbs/run_nep_mbpol_hexagonal.pbs
+```
+
+On the public GPU queue:
+
+```bash
+qsub -q gpuq -l walltime=48:00:00 -J 0-2 \
+    pbs/run_nep_mbpol_hexagonal.pbs
+```
+
+The job creates `DYNAMICS_COMPLETED` and `VALIDATION_PENDING`; completion of
+the numerical trajectory does not itself accept the model. Before recoil use,
+check stationarity of temperature, energy, pressure, volume, density, and cell
+dimensions over the sampling block; verify the expected ice-Ih O--O RDF and
+Bragg pattern; confirm that proton disorder and the hydrogen-bond network are
+valid; and compare the three replicas. Classical NEP-MB-pol dynamics at 80 K
+does not explicitly represent nuclear quantum effects, which must remain a
+stated limitation of this preparation.
+
+## Bulk ice Ih at the experimental 100 K density
+
+For the 100 K bulk-space-ice target, use a fully periodic cell with no vacuum
+gap.  The experimental cell is defined from the corrected H2O ice-Ih
+polynomial coefficients in Table 1 of Rottger et al. (2012),
+<https://doi.org/10.1107/S0108768111046908>.  At 100 K their unit-cell-volume
+fit gives 128.188109 A3 and hence 0.933474297 g/cm3 for four H2O molecules.
+Their independent lattice fits give `a = 4.49648151 A` and
+`c = 7.32062320 A`.  Because independently fitted polynomials are not exactly
+geometrically consistent, the preparation enforces the volume fit and retains
+the fitted `c/a` ratio.  The resulting 24,576-atom orthorhombic box is
+71.94499804 x 62.30619598 x 58.56603887 A.
+
+Each completed 80 K replica supplies a relaxed ice-Ih configuration.  The
+preparation script preserves its fractional coordinates while mapping it into
+the experimental 100 K cell, discards the old velocities, and records the
+source checksum and all paper coefficients in JSON.  GPUMD then performs a
+fixed-cell FIRE relaxation, 1 ns of NVT equilibration, and 1 ns of NVT
+sampling at 100 K with an explicit velocity seed.  NVT preserves the
+experimental density; the resulting pressure is a diagnostic of the
+NEP-MB-pol/experimental-cell mismatch, not a reason to resize the cell.
+
+Submit the three replicas on one GPU each without altering the completed 80 K
+runs:
+
+```bash
+cd /work/yoffegid/dnaphysics-ice-ions
+qsub -q gpuq -N nep_ih_100K -l walltime=48:00:00 \
+    -v HEXAGONAL_PROTOCOL=100K_EXPERIMENTAL -J 0-2 \
+    pbs/run_nep_mbpol_hexagonal.pbs
+```
+
+Outputs are written to
+`runs/hexagonal_ih_100K_experimental_seed{1000,2000,3000}`.  Each directory
+contains `experimental_cell.json`, which makes the density transformation
+reproducible.  As for the 80 K preparation, `DYNAMICS_COMPLETED` means only
+that GPUMD finished.  Accept the structures for recoil work only after the
+sampling block has stable temperature, energy, and stress; ice-Ih RDF and
+Bragg order are retained; and the three replicas agree.  The fixed periodic
+cell makes the density exact by construction.
+
+The three compact completed final snapshots and their checksummed run summary
+are versioned under
+`structures/hexagonal_ih_100K_experimental/`. Full trajectories and scheduler
+logs remain unversioned. The manifest retains `validation_pending` until the
+structural acceptance tests above have been completed.
 
 ## Current physics boundary
 
@@ -252,5 +399,7 @@ from an oxygen atom belonging to the ice.
 - Zenodo record: <https://doi.org/10.5281/zenodo.15033656>
 - GPUMD installation documentation: <https://gpumd.org/installation.html>
 - GenIce2: <https://pypi.org/project/genice2/>
+- Rottger et al., corrected H2O and D2O ice-Ih lattice polynomials:
+  <https://doi.org/10.1107/S0108768111046908>
 
 See `PROVENANCE.json` for exact archive names, sizes, URLs, and checksums.

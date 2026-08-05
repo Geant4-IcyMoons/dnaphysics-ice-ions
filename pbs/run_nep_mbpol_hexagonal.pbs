@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+#PBS -N nep_ih_80K
+#PBS -q gpuq_private
+#PBS -l select=1:ncpus=4:ngpus=1:mem=8gb:node_type=gpu48gb
+#PBS -l walltime=48:00:00
+#PBS -j oe
+
+# One PBS array element prepares one independent proton-disordered ice-Ih
+# replica. The default is the original 80 K NPT protocol. Submit all three
+# documented seeds with:
+#
+#   qsub -J 0-2 pbs/run_nep_mbpol_hexagonal.pbs
+#
+# Array indices 0, 1, and 2 map both structure and velocity seeds to 1000,
+# 2000, and 3000. The fixed experimental 100 K protocol is selected with:
+#
+#   qsub -N nep_ih_100K -v HEXAGONAL_PROTOCOL=100K_EXPERIMENTAL \
+#       -J 0-2 pbs/run_nep_mbpol_hexagonal.pbs
+#
+# A public-queue submission can override the queue on qsub.
+
+set -euo pipefail
+umask 002
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -d "${PBS_O_WORKDIR}/python_scripts/physics_ice/nep_mbpol" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+GPUMD_SOURCE="${NEP_DIR}/upstream/GPUMD-v3.9.3/src"
+POTENTIAL="${NEP_DIR}/model/nep-mbpol.nep.txt"
+CUDA_MODULE="${CUDA_MODULE:-cuda/12.6}"
+HEXAGONAL_PROTOCOL="${HEXAGONAL_PROTOCOL:-80K_NPT}"
+
+if [[ -z "${SEED:-}" ]]; then
+    ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-}}"
+    case "${ARRAY_INDEX}" in
+        0) SEED=1000 ;;
+        1) SEED=2000 ;;
+        2) SEED=3000 ;;
+        *)
+            echo "Set SEED, or submit this script with -J 0-2." >&2
+            exit 2
+            ;;
+    esac
+fi
+if [[ ! "${SEED}" =~ ^[0-9]+$ ]]; then
+    echo "SEED must be a non-negative integer; got: ${SEED}" >&2
+    exit 2
+fi
+
+case "${HEXAGONAL_PROTOCOL}" in
+    80K_NPT)
+        RUN_INPUT="${RUN_INPUT:-${NEP_DIR}/inputs/hexagonal_ih_80K_equilibrate.in}"
+        # These are generic, unequilibrated proton-disordered ice-Ih cells.
+        # The suffix records their other use as amorphous-workflow inputs; no
+        # melting occurs in this protocol.
+        INITIAL_MODEL="${INITIAL_MODEL:-${NEP_DIR}/structures/ice_ih_8x8x8_seed${SEED}_melt_start.xyz}"
+        RUN_DIR="${RUN_DIR:-${NEP_DIR}/runs/hexagonal_ih_80K_seed${SEED}}"
+        TARGET_TEMPERATURE_K=80
+        MODEL_PREPARATION=copy
+        PROTOCOL_NAME=classical_nep_mbpol_candidate_ice_ih_80K_2ns
+        ENSEMBLE_NAME=npt_ber_orthorhombic
+        ;;
+    100K_EXPERIMENTAL)
+        RUN_INPUT="${RUN_INPUT:-${NEP_DIR}/inputs/hexagonal_ih_100K_experimental_density.in}"
+        SOURCE_RUN="${NEP_DIR}/runs/hexagonal_ih_80K_seed${SEED}"
+        INITIAL_MODEL="${INITIAL_MODEL:-${SOURCE_RUN}/restart.xyz}"
+        SOURCE_COMPLETION_MARKER="${SOURCE_RUN}/DYNAMICS_COMPLETED"
+        CELL_PREPARER="${NEP_DIR}/prepare_hexagonal_ice_experimental_cell.py"
+        RUN_DIR="${RUN_DIR:-${NEP_DIR}/runs/hexagonal_ih_100K_experimental_seed${SEED}}"
+        TARGET_TEMPERATURE_K=100
+        MODEL_PREPARATION=experimental_cell
+        PROTOCOL_NAME=classical_nep_mbpol_ice_ih_100K_experimental_cell_2ns
+        ENSEMBLE_NAME=nvt_nhc_fixed_experimental_cell
+        ;;
+    *)
+        echo "Unknown HEXAGONAL_PROTOCOL: ${HEXAGONAL_PROTOCOL}" >&2
+        echo "Use 80K_NPT or 100K_EXPERIMENTAL." >&2
+        exit 2
+        ;;
+esac
+
+for required in "${GPUMD_SOURCE}/makefile" "${POTENTIAL}" "${RUN_INPUT}" "${INITIAL_MODEL}"; do
+    if [[ ! -f "${required}" ]]; then
+        echo "Required file is missing: ${required}" >&2
+        exit 2
+    fi
+done
+if [[ "${MODEL_PREPARATION}" == experimental_cell ]]; then
+    for required in "${SOURCE_COMPLETION_MARKER}" "${CELL_PREPARER}"; do
+        if [[ ! -f "${required}" ]]; then
+            echo "Required file is missing: ${required}" >&2
+            exit 2
+        fi
+    done
+    command -v python3 >/dev/null
+fi
+if [[ "$(grep -Fc '@VELOCITY_SEED@' "${RUN_INPUT}")" -ne 1 ]]; then
+    echo "Run-input template must contain exactly one @VELOCITY_SEED@ token: ${RUN_INPUT}" >&2
+    exit 2
+fi
+
+mkdir -p "${RUN_DIR}"
+if [[ -e "${RUN_DIR}/DYNAMICS_COMPLETED" ]]; then
+    echo "Seed ${SEED} dynamics are already complete: ${RUN_DIR}"
+    exit 0
+fi
+if [[ -e "${RUN_DIR}/thermo.out" || -e "${RUN_DIR}/restart.xyz" || -e "${RUN_DIR}/gpumd.log" ]]; then
+    echo "Refusing to overwrite an incomplete run in ${RUN_DIR}." >&2
+    exit 2
+fi
+
+if ! type module >/dev/null 2>&1; then
+    # shellcheck disable=SC1091
+    source /etc/profile.d/modules.sh
+fi
+module load "${CUDA_MODULE}"
+command -v nvcc >/dev/null
+command -v nvidia-smi >/dev/null
+
+SCRATCH_PARENT="${TMPDIR:-/tmp/${USER}/${PBS_JOBID:-nep-ih}}"
+BUILD_DIR="${SCRATCH_PARENT}/gpumd-v3.9.3-src"
+mkdir -p "${SCRATCH_PARENT}"
+cp -a "${GPUMD_SOURCE}" "${BUILD_DIR}"
+
+MAKE_JOBS="${PBS_NCPUS:-4}"
+if [[ ! "${MAKE_JOBS}" =~ ^[1-9][0-9]*$ || "${MAKE_JOBS}" -gt 4 ]]; then
+    MAKE_JOBS=4
+fi
+
+echo "Repository: ${REPO_ROOT}"
+echo "Structure seed: ${SEED}"
+echo "Velocity seed: ${SEED}"
+echo "Hexagonal protocol: ${HEXAGONAL_PROTOCOL}"
+echo "Run directory: ${RUN_DIR}"
+echo "CUDA module: ${CUDA_MODULE}"
+echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-scheduler-managed}"
+nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader
+
+# Build the supplied GPUMD v3.9.3 source directly (without USE_TABLE) for the
+# allocated GPU. Node-local compilation avoids login-node work and job races.
+make -C "${BUILD_DIR}" clean >/dev/null
+make -C "${BUILD_DIR}" -j "${MAKE_JOBS}" gpumd \
+    CFLAGS='-std=c++14 -O3 -arch=native' \
+    >"${RUN_DIR}/build.log" 2>&1
+test -x "${BUILD_DIR}/gpumd"
+
+if [[ "${MODEL_PREPARATION}" == experimental_cell ]]; then
+    python3 "${CELL_PREPARER}" \
+        --input "${INITIAL_MODEL}" \
+        --output "${RUN_DIR}/model.xyz" \
+        --metadata "${RUN_DIR}/experimental_cell.json" \
+        --temperature-k "${TARGET_TEMPERATURE_K}"
+else
+    cp "${INITIAL_MODEL}" "${RUN_DIR}/model.xyz"
+fi
+cp "${POTENTIAL}" "${RUN_DIR}/nep.txt"
+sed "s/@VELOCITY_SEED@/${SEED}/" "${RUN_INPUT}" >"${RUN_DIR}/run.in"
+if ! grep -Eq "^velocity[[:space:]]+${TARGET_TEMPERATURE_K}[[:space:]]+seed[[:space:]]+${SEED}[[:space:]]*$" \
+    "${RUN_DIR}/run.in"; then
+    echo "Failed to render the explicit velocity seed in ${RUN_DIR}/run.in." >&2
+    exit 2
+fi
+
+{
+    echo "structure_seed=${SEED}"
+    echo "velocity_seed=${SEED}"
+    echo "job_id=${PBS_JOBID:-not-set}"
+    echo "host=$(hostname)"
+    echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "cuda_module=${CUDA_MODULE}"
+    echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-scheduler-managed}"
+    echo "initial_model=${INITIAL_MODEL}"
+    echo "protocol=${PROTOCOL_NAME}"
+    echo "target_temperature_k=${TARGET_TEMPERATURE_K}"
+    echo "ensemble=${ENSEMBLE_NAME}"
+    if [[ "${HEXAGONAL_PROTOCOL}" == 80K_NPT ]]; then
+        echo "target_pressure_gpa=0.0001"
+    else
+        echo "cell_constraint=Rottger_2012_H2O_ice_Ih_100K_volume_and_c_over_a"
+        echo "cell_reference_doi=10.1107/S0108768111046908"
+        echo "vacuum=false"
+    fi
+    echo "minimizer=fire"
+    echo "validation_status=pending"
+    sha256sum "${RUN_DIR}/model.xyz" "${RUN_DIR}/nep.txt" "${RUN_DIR}/run.in"
+    if [[ -f "${RUN_DIR}/experimental_cell.json" ]]; then
+        sha256sum "${RUN_DIR}/experimental_cell.json"
+    fi
+    nvidia-smi --query-gpu=name,uuid,memory.total,compute_cap,driver_version \
+        --format=csv,noheader
+} >"${RUN_DIR}/provenance.txt"
+
+cd "${RUN_DIR}"
+"${BUILD_DIR}/gpumd" >gpumd.log 2>&1
+
+test -s restart.xyz
+test -s thermo.out
+test -s dump.xyz
+{
+    echo "dynamics_completed_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    sha256sum restart.xyz thermo.out dump.xyz
+} >>provenance.txt
+touch DYNAMICS_COMPLETED
+touch VALIDATION_PENDING

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 from pathlib import Path
 import sys
@@ -34,11 +35,10 @@ STRUCTURE_PATH = (
     HERE / "structures" / "ice_ih_8x8x8_seed1000_initial.xyz"
 )
 PNG_PATH = OUTPUT_DIR / "hexagonal_ice_structure.png"
-PDF_PATH = OUTPUT_DIR / "hexagonal_ice_structure.pdf"
 
-# Full-width AASTeX figure*; compact enough for a two-column page.
+# Full-width AASTeX figure* with three equal panels in one row.
 FIGURE_WIDTH_IN = 7.1
-FIGURE_HEIGHT_IN = 5.15
+FIGURE_HEIGHT_IN = 5.15 / 2.0
 FIGURE_FONT_SIZE = 8.
 
 OXYGEN_COLOR = "slategray"
@@ -56,8 +56,6 @@ def _configure_style() -> None:
             RC_BASE_STANDARD,
             FIGURE_FONT_SIZE,
             overrides={
-                "pdf.fonttype": 42,
-                "ps.fonttype": 42,
                 "savefig.dpi": 300,
             },
         )
@@ -170,6 +168,8 @@ def _panel_label(ax, label: str) -> None:
 def _format_panel_frame(ax) -> None:
     ax.set_xticks([])
     ax.set_yticks([])
+    ax.set_box_aspect(1.0)
+    ax.set_anchor("C")
     ax.set_facecolor("white")
     for spine in ax.spines.values():
         spine.set_visible(True)
@@ -293,9 +293,12 @@ def _draw_projection(
     _draw_scale_bar(ax, x_limits, y_limits)
 
 
-def plot_hexagonal_ice_structure() -> tuple[Path, Path]:
+def plot_hexagonal_ice_structure(
+    structure_path: Path = STRUCTURE_PATH,
+    png_path: Path = PNG_PATH,
+) -> Path:
     _configure_style()
-    species, positions, lattice = _load_gpumd_xyz(STRUCTURE_PATH)
+    species, positions, lattice = _load_gpumd_xyz(structure_path)
     molecules, oxygen, hydrogen = _representative_volume(
         species, positions, lattice
     )
@@ -304,17 +307,15 @@ def plot_hexagonal_ice_structure() -> tuple[Path, Path]:
 
     fig = plt.figure(figsize=(FIGURE_WIDTH_IN, FIGURE_HEIGHT_IN))
     grid = fig.add_gridspec(
-        2,
-        2,
-        width_ratios=(2.0, 1.0),
-        height_ratios=(1.0, 1.0),
+        1,
+        3,
+        width_ratios=(1.0, 1.0, 1.0),
         wspace=0.035,
-        hspace=0.045,
     )
-    frame_a = fig.add_subplot(grid[:, 0])
-    ax_a = fig.add_subplot(grid[:, 0], projection="3d")
+    frame_a = fig.add_subplot(grid[0, 0])
+    ax_a = fig.add_subplot(grid[0, 0], projection="3d")
     ax_b = fig.add_subplot(grid[0, 1])
-    ax_c = fig.add_subplot(grid[1, 1])
+    ax_c = fig.add_subplot(grid[0, 2])
 
     _format_panel_frame(frame_a)
     frame_a.set_xlim(0.0, 1.0)
@@ -412,18 +413,40 @@ def plot_hexagonal_ice_structure() -> tuple[Path, Path]:
         columnspacing=1.6,
         handletextpad=0.45,
     )
-    fig.subplots_adjust(left=0.012, right=0.995, bottom=0.08, top=0.97)
+    fig.subplots_adjust(left=0.012, right=0.995, bottom=0.16, top=0.97)
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(PNG_PATH, dpi=300, facecolor="white")
-    fig.savefig(PDF_PATH, facecolor="white")
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(png_path, dpi=300, facecolor="white")
     plt.close(fig)
 
+    print(f"Structure: {structure_path}")
     print(f"Representative volume: {len(molecules)} H2O molecules")
-    print(f"Saved: {PNG_PATH}")
-    print(f"Saved: {PDF_PATH}")
-    return PNG_PATH, PDF_PATH
+    print(f"Saved: {png_path}")
+    return png_path
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Render a representative volume of a GPUMD ice-Ih cell."
+    )
+    parser.add_argument(
+        "--structure",
+        type=Path,
+        default=STRUCTURE_PATH,
+        help="GPUMD extended-XYZ structure or restart file.",
+    )
+    parser.add_argument(
+        "--output-stem",
+        type=Path,
+        default=PNG_PATH.with_suffix(""),
+        help="Output path without the .png suffix.",
+    )
+    return parser
 
 
 if __name__ == "__main__":
-    plot_hexagonal_ice_structure()
+    arguments = build_parser().parse_args()
+    plot_hexagonal_ice_structure(
+        structure_path=arguments.structure,
+        png_path=arguments.output_stem.with_suffix(".png"),
+    )

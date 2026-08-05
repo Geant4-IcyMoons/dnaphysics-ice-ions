@@ -121,6 +121,13 @@ from constants import (
     CARBON_CTMC_SEED,
     CARBON_CTMC_TRAJECTORIES,
     CARBON_CTMC_WORKERS,
+    CTMC_ADAPTIVE_AXIS_RELATIVE_TOLERANCE,
+    CTMC_ADAPTIVE_COMBINED_RELATIVE_TOLERANCE,
+    CTMC_ADAPTIVE_MAX_ENERGY_LEVELS,
+    CTMC_ADAPTIVE_MAX_IMPACT_LEVELS,
+    CTMC_ADAPTIVE_MAX_SAMPLING_LEVELS,
+    CTMC_ADAPTIVE_STATISTICAL_CONFIDENCE,
+    CTMC_ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE,
     EH,
     EV_TO_HA,
     H2O_MOLAR_MASS_G_MOL,
@@ -2133,6 +2140,7 @@ def save_checkpoint(
     maximum_energy_drift: np.ndarray,
     accumulators: TrajectoryAccumulators,
     execution_workers: int,
+    ownership_generation: str | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp.npz")
@@ -2156,6 +2164,7 @@ def save_checkpoint(
         channel_maximum_energy_drift=accumulators.maximum_energy_drift,
         channel_completed=accumulators.completed,
         execution_workers=np.asarray(int(execution_workers)),
+        ownership_generation=np.asarray(ownership_generation or ""),
     )
     os.replace(temporary, path)
 
@@ -2191,6 +2200,7 @@ def save_failure_diagnostic(
 def load_checkpoint(
     path: Path,
     expected_signature: str,
+    expected_ownership_generation: str | None = None,
 ) -> dict[str, np.ndarray] | None:
     if not path.exists():
         return None
@@ -2201,6 +2211,16 @@ def load_checkpoint(
                 f"Checkpoint {path} belongs to a different configuration. "
                 "Use a new output directory or remove the checkpoint."
             )
+        if expected_ownership_generation is not None:
+            actual_generation = str(
+                np.asarray(data.get("ownership_generation", "")).item()
+            )
+            if actual_generation != expected_ownership_generation:
+                raise RuntimeError(
+                    f"Checkpoint {path} belongs to ownership generation "
+                    f"{actual_generation!r}, expected "
+                    f"{expected_ownership_generation!r}."
+                )
         return {key: np.asarray(data[key]) for key in data.files}
 
 
@@ -2510,6 +2530,204 @@ def estimate_remaining_trajectory_count(
                         remaining / config.trajectory_chunk_size
                     )
     return int(trajectories), int(chunks)
+
+
+def remaining_trajectory_counts_by_point(
+    charges: np.ndarray,
+    impact_au: np.ndarray,
+    done: np.ndarray,
+    accumulators: TrajectoryAccumulators,
+    config: CTMCConfig,
+) -> np.ndarray:
+    """Return the exact uncommitted trajectory count at every grid point."""
+    remaining = np.zeros(done.shape, dtype=np.int64)
+    for energy_index in range(done.shape[0]):
+        for charge_index, charge in enumerate(charges):
+            for impact_index, impact in enumerate(impact_au):
+                point = (energy_index, charge_index, impact_index)
+                if done[point]:
+                    continue
+                for channel_index in _active_channels(
+                    int(charge), float(impact), config
+                ):
+                    completed = int(
+                        accumulators.completed[point + (channel_index,)]
+                    )
+                    if completed < 0 or completed > config.trajectories:
+                        raise RuntimeError(
+                            "Invalid completed-trajectory count at "
+                            f"point={point}, channel={channel_index}: "
+                            f"{completed}"
+                        )
+                    remaining[point] += config.trajectories - completed
+                if remaining[point] <= 0:
+                    raise RuntimeError(
+                        "Incomplete point has no remaining trajectories: "
+                        f"{point}"
+                    )
+    return remaining
+
+
+def balanced_rebalance_owners(
+    done: np.ndarray,
+    remaining: np.ndarray,
+    shard_count: int,
+) -> np.ndarray:
+    """
+    Assign every point to one shard while balancing each energy layer.
+
+    Completed points retain the ordinary stable modulo partition. Within
+    every unfinished energy layer, longest remaining points are assigned to
+    the shard with the least work in that layer, then the least total work.
+    This spreads the intrinsically slow low-energy tail without introducing a
+    physics-dependent runtime fit.
+    """
+    if done.shape != remaining.shape:
+        raise ValueError("done and remaining arrays must have the same shape")
+    if done.ndim != 3:
+        raise ValueError("CTMC ownership arrays must be three-dimensional")
+    if shard_count < 1:
+        raise ValueError("shard_count must be positive")
+    if np.any(remaining < 0):
+        raise ValueError("remaining trajectory counts must be non-negative")
+    if np.any(remaining[done] != 0):
+        raise ValueError("completed points cannot contain remaining work")
+    if np.any(remaining[~done] <= 0):
+        raise ValueError("every incomplete point must contain remaining work")
+
+    owners = np.empty(done.shape, dtype=np.int32)
+    for shard_index in range(shard_count):
+        owners[owned_point_mask(done.shape, shard_count, shard_index)] = (
+            shard_index
+        )
+
+    total_load = np.zeros(shard_count, dtype=np.int64)
+    for energy_index in range(done.shape[0]):
+        energy_load = np.zeros(shard_count, dtype=np.int64)
+        unfinished = [
+            (
+                int(remaining[energy_index, charge_index, impact_index]),
+                charge_index,
+                impact_index,
+            )
+            for charge_index in range(done.shape[1])
+            for impact_index in range(done.shape[2])
+            if not done[energy_index, charge_index, impact_index]
+        ]
+        unfinished.sort(key=lambda item: (-item[0], item[1], item[2]))
+        for point_load, charge_index, impact_index in unfinished:
+            owner = min(
+                range(shard_count),
+                key=lambda candidate: (
+                    int(energy_load[candidate]),
+                    int(total_load[candidate]),
+                    candidate,
+                ),
+            )
+            owners[energy_index, charge_index, impact_index] = owner
+            energy_load[owner] += point_load
+            total_load[owner] += point_load
+    return owners
+
+
+def validate_checkpoint_state(
+    charges: np.ndarray,
+    impact_au: np.ndarray,
+    done: np.ndarray,
+    failures: np.ndarray,
+    successes: np.ndarray,
+    accumulators: TrajectoryAccumulators,
+    config: CTMCConfig,
+) -> None:
+    """Reject incomplete, duplicated, or internally inconsistent raw counts."""
+    count_arrays = (
+        accumulators.primary_events,
+        accumulators.secondary_events,
+        accumulators.failures,
+        accumulators.successes,
+        accumulators.completed,
+    )
+    if any(np.any(values < 0) for values in count_arrays):
+        raise RuntimeError("Checkpoint contains a negative trajectory count")
+    if np.any(accumulators.completed > config.trajectories):
+        raise RuntimeError("Checkpoint contains too many completed trajectories")
+    if not np.array_equal(
+        accumulators.failures + accumulators.successes,
+        accumulators.completed,
+    ):
+        raise RuntimeError("Checkpoint channel accounting is inconsistent")
+    if np.any(
+        accumulators.primary_events + accumulators.secondary_events
+        > accumulators.successes
+    ):
+        raise RuntimeError("Checkpoint event counts exceed successful trajectories")
+
+    for energy_index in range(done.shape[0]):
+        for charge_index, charge in enumerate(charges):
+            for impact_index, impact in enumerate(impact_au):
+                point = (energy_index, charge_index, impact_index)
+                active = _active_channels(int(charge), float(impact), config)
+                active_mask = np.zeros(
+                    accumulators.completed.shape[-1], dtype=bool
+                )
+                active_mask[list(active)] = True
+                point_completed = accumulators.completed[point]
+                if np.any(point_completed[~active_mask] != 0):
+                    raise RuntimeError(
+                        f"Inactive channel contains work at point={point}"
+                    )
+                is_complete = bool(
+                    active
+                    and np.all(point_completed[active_mask] == config.trajectories)
+                )
+                if bool(done[point]) != is_complete:
+                    raise RuntimeError(
+                        "Checkpoint done flag disagrees with raw channels at "
+                        f"point={point}"
+                    )
+                if done[point]:
+                    expected_failures = int(
+                        np.sum(accumulators.failures[point][active_mask])
+                    )
+                    expected_successes = int(
+                        np.sum(accumulators.successes[point][active_mask])
+                    )
+                    if (
+                        int(failures[point]) != expected_failures
+                        or int(successes[point]) != expected_successes
+                    ):
+                        raise RuntimeError(
+                            "Checkpoint point accounting disagrees with raw "
+                            f"channels at point={point}"
+                        )
+
+
+def rebalance_generation_id(
+    signature: str,
+    source_shard_count: int,
+    owners: np.ndarray,
+    done: np.ndarray,
+    accumulators: TrajectoryAccumulators,
+) -> str:
+    """Fingerprint the exact frozen raw state and its new ownership map."""
+    digest = hashlib.sha256()
+    digest.update(signature.encode("ascii"))
+    digest.update(np.asarray(source_shard_count, dtype=np.int64).tobytes())
+    for values in (
+        owners,
+        done,
+        accumulators.primary_events,
+        accumulators.secondary_events,
+        accumulators.failures,
+        accumulators.successes,
+        accumulators.maximum_energy_drift,
+        accumulators.completed,
+    ):
+        contiguous = np.ascontiguousarray(values)
+        digest.update(str(contiguous.dtype).encode("ascii"))
+        digest.update(np.asarray(contiguous.shape, dtype=np.int64).tobytes())
+        digest.update(contiguous.tobytes())
+    return digest.hexdigest()[:16]
 
 
 def _commit_trajectory_chunk(
@@ -3078,6 +3296,125 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--prepare-rebalance-from-shards",
+        type=int,
+        default=None,
+        metavar="SOURCE_SHARDS",
+        help=(
+            "Consolidate frozen checkpoints from the ordinary modulo "
+            "partition, rebalance all unfinished points across --shard-count "
+            "new shards, and write an immutable ownership manifest. Does not "
+            "run trajectories."
+        ),
+    )
+    parser.add_argument(
+        "--ownership-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Use a manifest produced by --prepare-rebalance-from-shards for "
+            "base-grid execution or --merge-shards."
+        ),
+    )
+    adaptive_group = parser.add_mutually_exclusive_group()
+    adaptive_group.add_argument(
+        "--adaptive-refinement",
+        dest="adaptive_refinement",
+        action="store_true",
+        default=True,
+        help=(
+            "Require restart-safe nested impact-parameter and projectile-"
+            "energy refinement before writing final tables (default)."
+        ),
+    )
+    adaptive_group.add_argument(
+        "--no-adaptive-refinement",
+        dest="adaptive_refinement",
+        action="store_false",
+        help=(
+            "Write the legacy fixed-grid result without the default nested "
+            "grid-convergence calculation."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-axis-relative-tolerance",
+        type=float,
+        default=CTMC_ADAPTIVE_AXIS_RELATIVE_TOLERANCE,
+        help=(
+            "Maximum relative change of every nonzero reported cross section "
+            "under nested impact-grid refinement and logarithmic energy-"
+            "midpoint validation (default: 0.0025 = 0.25%% per axis)."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-combined-relative-tolerance",
+        type=float,
+        default=CTMC_ADAPTIVE_COMBINED_RELATIVE_TOLERANCE,
+        help=(
+            "Maximum conservative sum of the impact- and energy-axis "
+            "discretization estimates (default: 0.005 = 0.5%%)."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-statistical-relative-tolerance",
+        type=float,
+        default=CTMC_ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE,
+        help=(
+            "Maximum relative Monte Carlo confidence half-width for every "
+            "active cross section (default: 0.005 = 0.5%%)."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-statistical-confidence",
+        type=float,
+        default=CTMC_ADAPTIVE_STATISTICAL_CONFIDENCE,
+        help="Two-sided confidence level for the statistical gate (default: 0.95).",
+    )
+    parser.add_argument(
+        "--adaptive-max-impact-levels",
+        type=int,
+        default=CTMC_ADAPTIVE_MAX_IMPACT_LEVELS,
+        help=(
+            "Maximum impact-parameter bisection levels. Failure to reach the "
+            "requested tolerance is fatal; the last level is never accepted "
+            "merely because this safety limit was reached."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-max-energy-levels",
+        type=int,
+        default=CTMC_ADAPTIVE_MAX_ENERGY_LEVELS,
+        help=(
+            "Maximum recursive logarithmic energy-midpoint levels per base "
+            "interval, with non-convergence treated as fatal."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-max-sampling-levels",
+        type=int,
+        default=CTMC_ADAPTIVE_MAX_SAMPLING_LEVELS,
+        help=(
+            "Maximum deterministic trajectory-count doublings used to meet "
+            "the statistical confidence-width requirement."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-only",
+        action="store_true",
+        help=(
+            "Refine the completed canonical base checkpoint. With multiple "
+            "shards, each process owns disjoint charge/energy families."
+        ),
+    )
+    parser.add_argument(
+        "--merge-adaptive-shards",
+        action="store_true",
+        help=(
+            "Verify and merge every converged adaptive family into the final "
+            "tables; does not run trajectories."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print grid and trajectory count without integrating.",
@@ -3160,6 +3497,79 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--shard-index must lie in [0, shard-count)")
     if args.merge_shards and args.shard_count < 2:
         raise ValueError("--merge-shards requires --shard-count greater than one")
+    if (
+        args.prepare_rebalance_from_shards is not None
+        and args.prepare_rebalance_from_shards < 1
+    ):
+        raise ValueError("--prepare-rebalance-from-shards must be positive")
+    if args.prepare_rebalance_from_shards is not None and args.shard_count < 2:
+        raise ValueError("Checkpoint rebalancing requires at least two target shards")
+    selected_modes = sum(
+        bool(value)
+        for value in (
+            args.merge_shards,
+            args.adaptive_only,
+            args.merge_adaptive_shards,
+            args.prepare_rebalance_from_shards is not None,
+        )
+    )
+    if selected_modes > 1:
+        raise ValueError(
+            "--merge-shards, --adaptive-only, --merge-adaptive-shards, and "
+            "--prepare-rebalance-from-shards are mutually exclusive"
+        )
+    if args.prepare_rebalance_from_shards is not None and args.ownership_manifest:
+        raise ValueError(
+            "--ownership-manifest names an existing generation and cannot be "
+            "combined with --prepare-rebalance-from-shards"
+        )
+    if args.ownership_manifest and (
+        args.adaptive_only or args.merge_adaptive_shards
+    ):
+        raise ValueError(
+            "Adaptive shards use their own family ownership and do not accept "
+            "--ownership-manifest"
+        )
+    if args.prepare_rebalance_from_shards is not None and args.dry_run:
+        raise ValueError("Checkpoint rebalancing cannot be combined with --dry-run")
+    if (args.adaptive_only or args.merge_adaptive_shards) and not (
+        args.adaptive_refinement
+    ):
+        raise ValueError(
+            "Adaptive execution modes cannot be combined with "
+            "--no-adaptive-refinement"
+        )
+    if not 0.0 < args.adaptive_axis_relative_tolerance < 1.0:
+        raise ValueError(
+            "--adaptive-axis-relative-tolerance must lie strictly between 0 and 1"
+        )
+    if not 0.0 < args.adaptive_combined_relative_tolerance < 1.0:
+        raise ValueError(
+            "--adaptive-combined-relative-tolerance must lie strictly between 0 and 1"
+        )
+    if (
+        2.0 * args.adaptive_axis_relative_tolerance
+        > args.adaptive_combined_relative_tolerance
+    ):
+        raise ValueError(
+            "Twice --adaptive-axis-relative-tolerance must not exceed the "
+            "combined discretization tolerance"
+        )
+    if not 0.0 < args.adaptive_statistical_relative_tolerance < 1.0:
+        raise ValueError(
+            "--adaptive-statistical-relative-tolerance must lie strictly "
+            "between 0 and 1"
+        )
+    if not 0.0 < args.adaptive_statistical_confidence < 1.0:
+        raise ValueError(
+            "--adaptive-statistical-confidence must lie strictly between 0 and 1"
+        )
+    if args.adaptive_max_impact_levels < 1:
+        raise ValueError("--adaptive-max-impact-levels must be positive")
+    if args.adaptive_max_energy_levels < 1:
+        raise ValueError("--adaptive-max-energy-levels must be positive")
+    if args.adaptive_max_sampling_levels < 0:
+        raise ValueError("--adaptive-max-sampling-levels must be non-negative")
 
 
 def available_cpu_count() -> int:
@@ -3193,14 +3603,124 @@ def checkpoint_path_for_shard(
     output_dir: Path,
     shard_count: int,
     shard_index: int,
+    ownership_generation: str | None = None,
 ) -> Path:
     prefix = PROJECTILE.key
+    generation_suffix = (
+        ""
+        if ownership_generation is None
+        else f".rebalance-{ownership_generation}"
+    )
     if shard_count == 1:
-        return output_dir / f"{prefix}_charge_exchange_ctmc_checkpoint.npz"
+        return output_dir / (
+            f"{prefix}_charge_exchange_ctmc_checkpoint"
+            f"{generation_suffix}.npz"
+        )
     return output_dir / (
-        f"{prefix}_charge_exchange_ctmc_checkpoint."
+        f"{prefix}_charge_exchange_ctmc_checkpoint"
+        f"{generation_suffix}."
         f"shard-{shard_index:05d}-of-{shard_count:05d}.npz"
     )
+
+
+def rebalance_manifest_path(output_dir: Path, generation: str) -> Path:
+    return output_dir / (
+        f"{PROJECTILE.key}_charge_exchange_ctmc_rebalance-"
+        f"{generation}.npz"
+    )
+
+
+def save_rebalance_manifest(
+    path: Path,
+    *,
+    signature: str,
+    generation: str,
+    source_shard_count: int,
+    target_shard_count: int,
+    owners: np.ndarray,
+    remaining_by_shard: np.ndarray,
+    completed_trajectories: int,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp.npz")
+    np.savez_compressed(
+        temporary,
+        format_version=np.asarray(1, dtype=np.int64),
+        signature=np.asarray(signature),
+        generation=np.asarray(generation),
+        source_shard_count=np.asarray(source_shard_count, dtype=np.int64),
+        target_shard_count=np.asarray(target_shard_count, dtype=np.int64),
+        owners=np.asarray(owners, dtype=np.int32),
+        remaining_trajectories_by_shard=np.asarray(
+            remaining_by_shard, dtype=np.int64
+        ),
+        completed_trajectories=np.asarray(
+            completed_trajectories, dtype=np.int64
+        ),
+        created_at=np.asarray(time.strftime("%Y-%m-%dT%H:%M:%S%z")),
+    )
+    os.replace(temporary, path)
+
+
+def load_rebalance_manifest(
+    path: Path,
+    *,
+    expected_signature: str,
+    expected_shape: tuple[int, int, int],
+    expected_shard_count: int,
+) -> dict[str, np.ndarray]:
+    if not path.is_file():
+        raise RuntimeError(f"Missing ownership manifest {path}")
+    with np.load(path, allow_pickle=False) as data:
+        required = {
+            "format_version",
+            "signature",
+            "generation",
+            "source_shard_count",
+            "target_shard_count",
+            "owners",
+            "remaining_trajectories_by_shard",
+            "completed_trajectories",
+            "created_at",
+        }
+        missing = sorted(required.difference(data.files))
+        if missing:
+            raise RuntimeError(
+                f"Ownership manifest {path} lacks: {', '.join(missing)}"
+            )
+        manifest = {key: np.asarray(data[key]) for key in data.files}
+    if int(manifest["format_version"]) != 1:
+        raise RuntimeError(f"Unsupported ownership manifest version in {path}")
+    if str(manifest["signature"].item()) != expected_signature:
+        raise RuntimeError(
+            f"Ownership manifest {path} belongs to a different configuration"
+        )
+    if int(manifest["target_shard_count"]) != expected_shard_count:
+        raise RuntimeError(
+            f"Ownership manifest {path} targets "
+            f"{int(manifest['target_shard_count'])} shards, not "
+            f"{expected_shard_count}"
+        )
+    owners = manifest["owners"]
+    if owners.shape != expected_shape:
+        raise RuntimeError(
+            f"Ownership manifest {path} has shape {owners.shape}, expected "
+            f"{expected_shape}"
+        )
+    if np.any(owners < 0) or np.any(owners >= expected_shard_count):
+        raise RuntimeError(f"Ownership manifest {path} has invalid owners")
+    if manifest["remaining_trajectories_by_shard"].shape != (
+        expected_shard_count,
+    ):
+        raise RuntimeError(
+            f"Ownership manifest {path} has an invalid shard-load vector"
+        )
+    generation = str(manifest["generation"].item())
+    if not generation or any(
+        character not in "0123456789abcdef" for character in generation
+    ):
+        raise RuntimeError(f"Ownership manifest {path} has an invalid generation")
+    return manifest
 
 
 def main(
@@ -3273,17 +3793,38 @@ def main(
     signature = configuration_signature(
         energies, charges, impact_au, config
     )
-    owner_mask = owned_point_mask(
-        shape, args.shard_count, args.shard_index
-    )
+    ownership_manifest: dict[str, np.ndarray] | None = None
+    ownership_generation: str | None = None
+    if args.ownership_manifest is not None:
+        ownership_manifest = load_rebalance_manifest(
+            args.ownership_manifest,
+            expected_signature=signature,
+            expected_shape=shape,
+            expected_shard_count=args.shard_count,
+        )
+        ownership_generation = str(
+            ownership_manifest["generation"].item()
+        )
+        owner_mask = (
+            ownership_manifest["owners"] == args.shard_index
+        )
+    else:
+        owner_mask = owned_point_mask(
+            shape, args.shard_count, args.shard_index
+        )
     checkpoint_path = checkpoint_path_for_shard(
-        args.output_dir, args.shard_count, args.shard_index
+        args.output_dir,
+        args.shard_count,
+        args.shard_index,
+        ownership_generation,
     )
     failure_suffix = (
         ""
         if args.shard_count == 1
         else f"_shard_{args.shard_index:04d}"
     )
+    if ownership_generation is not None:
+        failure_suffix += f"_rebalance_{ownership_generation}"
     failure_diagnostic_path = args.output_dir / (
         f"{PROJECTILE.key}_charge_exchange_ctmc_failure"
         f"{failure_suffix}.json"
@@ -3343,6 +3884,7 @@ def main(
             maximum_energy_drift=maximum_energy_drift,
             accumulators=accumulators,
             execution_workers=workers,
+            ownership_generation=ownership_generation,
         )
         if announce:
             completed_points = int(np.count_nonzero(done & owner_mask))
@@ -3356,17 +3898,319 @@ def main(
                 f"points, {completed_trajectories:,} trajectories -> {path}"
             )
 
+    def load_complete_canonical_checkpoint() -> dict[str, np.ndarray]:
+        canonical_path = checkpoint_path_for_shard(args.output_dir, 1, 0)
+        canonical = load_checkpoint(canonical_path, signature)
+        if canonical is None:
+            raise RuntimeError(
+                "Adaptive refinement requires the completed canonical base "
+                f"checkpoint {canonical_path}; merge the base shards first"
+            )
+        if not np.all(canonical["done"]):
+            raise RuntimeError(
+                f"Canonical base checkpoint {canonical_path} is incomplete"
+            )
+        return canonical
+
+    def prepare_adaptive_runtime() -> object:
+        from ctmc_adaptive_refinement import adaptive_config_from_args
+
+        return adaptive_config_from_args(args)
+
+    def warm_adaptive_workers() -> None:
+        if workers == 1 or start_method == "fork":
+            print("Preparing shared microcanonical sampling grids...")
+            warm_up_initial_state_sampling(charges, config.radial_grid_points)
+        if config.backend == "numba":
+            assert warm_up_numba_backend is not None
+            print("Compiling/loading the Numba DOP853 kernel...")
+            warm_up_numba_backend()
+
+    def prepare_rebalanced_generation(source_shard_count: int) -> Path:
+        source_paths = [
+            checkpoint_path_for_shard(
+                args.output_dir, source_shard_count, source_index
+            )
+            for source_index in range(source_shard_count)
+        ]
+        missing_paths = [path for path in source_paths if not path.is_file()]
+        if missing_paths:
+            raise RuntimeError(
+                "Cannot rebalance because source checkpoints are missing: "
+                + ", ".join(str(path) for path in missing_paths)
+            )
+        source_stats = {
+            path: (path.stat().st_mtime_ns, path.stat().st_size)
+            for path in source_paths
+        }
+
+        for source_index, source_path in enumerate(source_paths):
+            checkpoint = load_checkpoint(source_path, signature)
+            assert checkpoint is not None
+            for field, expected in (
+                ("energies_keV_u", energies),
+                ("charges", charges),
+                ("impact_au", impact_au),
+            ):
+                if field not in checkpoint or not np.array_equal(
+                    checkpoint[field], expected
+                ):
+                    raise RuntimeError(
+                        f"Source checkpoint {source_path} has an incompatible "
+                        f"{field} array"
+                    )
+            source_mask = owned_point_mask(
+                shape, source_shard_count, source_index
+            )
+            outside = ~source_mask
+            if np.any(checkpoint["done"][outside]) or np.any(
+                checkpoint["channel_completed"][outside] != 0
+            ):
+                raise RuntimeError(
+                    f"Source checkpoint {source_path} contains progress owned "
+                    "by another shard"
+                )
+            restore_checkpoint(checkpoint, source_mask)
+
+        validate_checkpoint_state(
+            charges,
+            impact_au,
+            done,
+            failures,
+            successes,
+            accumulators,
+            config,
+        )
+        remaining = remaining_trajectory_counts_by_point(
+            charges, impact_au, done, accumulators, config
+        )
+        owners = balanced_rebalance_owners(
+            done, remaining, args.shard_count
+        )
+        generation = rebalance_generation_id(
+            signature,
+            source_shard_count,
+            owners,
+            done,
+            accumulators,
+        )
+        remaining_by_shard = np.asarray(
+            [
+                int(np.sum(remaining[owners == target_index]))
+                for target_index in range(args.shard_count)
+            ],
+            dtype=np.int64,
+        )
+
+        for target_index in tqdm(
+            range(args.shard_count),
+            desc="Rebalanced checkpoints",
+            unit="shard",
+            dynamic_ncols=True,
+        ):
+            target_mask = owners == target_index
+            target_pi = np.full_like(pi, np.nan)
+            target_pc = np.full_like(pc, np.nan)
+            target_pl = np.full_like(pl, np.nan)
+            target_done = np.zeros_like(done)
+            target_failures = np.zeros_like(failures)
+            target_successes = np.zeros_like(successes)
+            target_drift = np.zeros_like(maximum_energy_drift)
+            target_accumulators = create_trajectory_accumulators(shape)
+            for source, destination in (
+                (pi, target_pi),
+                (pc, target_pc),
+                (pl, target_pl),
+                (done, target_done),
+                (failures, target_failures),
+                (successes, target_successes),
+                (maximum_energy_drift, target_drift),
+                (
+                    accumulators.primary_events,
+                    target_accumulators.primary_events,
+                ),
+                (
+                    accumulators.secondary_events,
+                    target_accumulators.secondary_events,
+                ),
+                (accumulators.failures, target_accumulators.failures),
+                (accumulators.successes, target_accumulators.successes),
+                (
+                    accumulators.maximum_energy_drift,
+                    target_accumulators.maximum_energy_drift,
+                ),
+                (accumulators.completed, target_accumulators.completed),
+            ):
+                destination[target_mask] = source[target_mask]
+            target_path = checkpoint_path_for_shard(
+                args.output_dir,
+                args.shard_count,
+                target_index,
+                generation,
+            )
+            save_checkpoint(
+                target_path,
+                signature=signature,
+                energies=energies,
+                charges=charges,
+                impact_au=impact_au,
+                pi=target_pi,
+                pc=target_pc,
+                pl=target_pl,
+                done=target_done,
+                failures=target_failures,
+                successes=target_successes,
+                maximum_energy_drift=target_drift,
+                accumulators=target_accumulators,
+                execution_workers=workers,
+                ownership_generation=generation,
+            )
+
+        changed_sources = [
+            path
+            for path, frozen_stat in source_stats.items()
+            if not path.is_file()
+            or (path.stat().st_mtime_ns, path.stat().st_size) != frozen_stat
+        ]
+        if changed_sources:
+            raise RuntimeError(
+                "Source checkpoints changed during rebalancing; no manifest "
+                "was published. Stop all source writers and retry. Changed: "
+                + ", ".join(str(path) for path in changed_sources)
+            )
+
+        manifest_path = rebalance_manifest_path(args.output_dir, generation)
+        save_rebalance_manifest(
+            manifest_path,
+            signature=signature,
+            generation=generation,
+            source_shard_count=source_shard_count,
+            target_shard_count=args.shard_count,
+            owners=owners,
+            remaining_by_shard=remaining_by_shard,
+            completed_trajectories=int(np.sum(accumulators.completed)),
+        )
+        print(
+            f"Rebalanced {int(np.count_nonzero(~done)):,} unfinished points "
+            f"across {args.shard_count} shards; remaining trajectories per "
+            f"shard: {int(np.min(remaining_by_shard)):,}--"
+            f"{int(np.max(remaining_by_shard)):,}."
+        )
+        print(f"Ownership manifest: {manifest_path}")
+        return manifest_path
+
+    def run_single_node_adaptive(
+        canonical: dict[str, np.ndarray],
+    ) -> tuple[Path, Path, Path, Path]:
+        from ctmc_adaptive_refinement import (
+            merge_adaptive_families,
+            run_adaptive_shard,
+            write_adaptive_manifest,
+        )
+
+        adaptive = prepare_adaptive_runtime()
+        manifest = write_adaptive_manifest(
+            args.output_dir,
+            base_signature=signature,
+            energies=energies,
+            charges=charges,
+            adaptive=adaptive,
+        )
+        print(f"Adaptive refinement manifest: {manifest}")
+        warm_adaptive_workers()
+        run_adaptive_shard(
+            output_dir=args.output_dir,
+            base_signature=signature,
+            base_checkpoint=canonical,
+            base_config=config,
+            workers=workers,
+            start_method=start_method,
+            pending_factor=args.pending_factor,
+            checkpoint_every=args.checkpoint_every,
+            checkpoint_seconds=args.checkpoint_seconds,
+            shard_count=1,
+            shard_index=0,
+            adaptive=adaptive,
+        )
+        return merge_adaptive_families(
+            output_dir=args.output_dir,
+            base_signature=signature,
+            base_checkpoint=canonical,
+            base_config=config,
+            adaptive=adaptive,
+        )
+
+    if args.prepare_rebalance_from_shards is not None:
+        prepare_rebalanced_generation(args.prepare_rebalance_from_shards)
+        return 0
+
+    if args.adaptive_only or args.merge_adaptive_shards:
+        from ctmc_adaptive_refinement import (
+            merge_adaptive_families,
+            run_adaptive_shard,
+            write_adaptive_manifest,
+        )
+
+        canonical = load_complete_canonical_checkpoint()
+        adaptive = prepare_adaptive_runtime()
+        manifest = write_adaptive_manifest(
+            args.output_dir,
+            base_signature=signature,
+            energies=energies,
+            charges=charges,
+            adaptive=adaptive,
+        )
+        if args.merge_adaptive_shards:
+            paths = merge_adaptive_families(
+                output_dir=args.output_dir,
+                base_signature=signature,
+                base_checkpoint=canonical,
+                base_config=config,
+                adaptive=adaptive,
+            )
+            print("Wrote adaptively converged outputs:")
+            for path in paths:
+                print(f"  {path}")
+            return 0
+        print(f"Adaptive refinement manifest: {manifest}")
+        if not args.dry_run:
+            warm_adaptive_workers()
+        return run_adaptive_shard(
+            output_dir=args.output_dir,
+            base_signature=signature,
+            base_checkpoint=canonical,
+            base_config=config,
+            workers=workers,
+            start_method=start_method,
+            pending_factor=args.pending_factor,
+            checkpoint_every=args.checkpoint_every,
+            checkpoint_seconds=args.checkpoint_seconds,
+            shard_count=args.shard_count,
+            shard_index=args.shard_index,
+            adaptive=adaptive,
+            dry_run=args.dry_run,
+        )
+
     if args.merge_shards:
         workers_per_shard: list[int] = []
         for shard_index in range(args.shard_count):
             shard_path = checkpoint_path_for_shard(
-                args.output_dir, args.shard_count, shard_index
+                args.output_dir,
+                args.shard_count,
+                shard_index,
+                ownership_generation,
             )
-            checkpoint = load_checkpoint(shard_path, signature)
+            checkpoint = load_checkpoint(
+                shard_path,
+                signature,
+                ownership_generation,
+            )
             if checkpoint is None:
                 raise RuntimeError(f"Missing shard checkpoint {shard_path}")
-            shard_mask = owned_point_mask(
-                shape, args.shard_count, shard_index
+            shard_mask = (
+                owned_point_mask(shape, args.shard_count, shard_index)
+                if ownership_manifest is None
+                else ownership_manifest["owners"] == shard_index
             )
             if not np.all(checkpoint["done"][shard_mask]):
                 completed = int(np.count_nonzero(checkpoint["done"][shard_mask]))
@@ -3390,6 +4234,26 @@ def main(
             args.output_dir, 1, 0
         )
         save_current_checkpoint(canonical_checkpoint)
+        if args.adaptive_refinement:
+            from ctmc_adaptive_refinement import (
+                write_adaptive_manifest,
+            )
+
+            manifest = write_adaptive_manifest(
+                args.output_dir,
+                base_signature=signature,
+                energies=energies,
+                charges=charges,
+                adaptive=prepare_adaptive_runtime(),
+            )
+            print(
+                "Merged the fixed base grid. Final tables are withheld until "
+                "the default adaptive refinement reaches the requested "
+                f"0.5% tolerance. Manifest: {manifest}\n"
+                "Run the same shard array with --adaptive-only, then run one "
+                "--merge-adaptive-shards command."
+            )
+            return 0
         paths = write_outputs(
             args.output_dir,
             energies=energies,
@@ -3413,7 +4277,11 @@ def main(
         return 0
 
     if not args.no_resume:
-        checkpoint = load_checkpoint(checkpoint_path, signature)
+        checkpoint = load_checkpoint(
+            checkpoint_path,
+            signature,
+            ownership_generation,
+        )
         if checkpoint is not None:
             restore_checkpoint(checkpoint)
             owned_completed = int(np.count_nonzero(done & owner_mask))
@@ -3453,6 +4321,19 @@ def main(
         f"start method: {start_method}"
     )
     if args.dry_run:
+        if args.adaptive_refinement:
+            from ctmc_adaptive_refinement import adaptive_family_count
+
+            print(
+                "Adaptive refinement (default): "
+                f"{adaptive_family_count(energies, charges):,} independent "
+                "charge/energy families; axis/combined discretization targets "
+                f"{args.adaptive_axis_relative_tolerance:.3%}/"
+                f"{args.adaptive_combined_relative_tolerance:.3%}; "
+                f"statistical target "
+                f"{args.adaptive_statistical_relative_tolerance:.3%} at "
+                f"{args.adaptive_statistical_confidence:.1%} confidence."
+            )
         return 0
 
     if pending_points == 0:
@@ -3462,6 +4343,15 @@ def main(
                 f"Run --merge-shards --shard-count {args.shard_count} after "
                 "all shards finish."
             )
+            return 0
+        if args.adaptive_refinement:
+            save_current_checkpoint(checkpoint_path)
+            paths = run_single_node_adaptive(
+                load_complete_canonical_checkpoint()
+            )
+            print("Wrote adaptively converged outputs:")
+            for path in paths:
+                print(f"  {path}")
             return 0
         paths = write_outputs(
             args.output_dir,
@@ -3703,6 +4593,13 @@ def main(
             f"--shard-count {args.shard_count} --merge-shards and the same "
             "physics/grid arguments."
         )
+        return 0
+
+    if args.adaptive_refinement:
+        paths = run_single_node_adaptive(load_complete_canonical_checkpoint())
+        print("Wrote adaptively converged outputs:")
+        for path in paths:
+            print(f"  {path}")
         return 0
 
     paths = write_outputs(

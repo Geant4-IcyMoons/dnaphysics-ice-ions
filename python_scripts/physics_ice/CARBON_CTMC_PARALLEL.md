@@ -139,8 +139,40 @@ qsub -l select=1:ncpus=1:mem=4gb \
 This supplies up to 5,376 concurrent workers. Submit the merge after every
 array element finishes successfully; this PBS installation does not support
 an array-wide `afterokarray` dependency. The merge verifies that every shard
-is complete before writing the final `.dat`, `.csv`, probability archive,
-metadata, and canonical merged checkpoint.
+is complete before writing the canonical merged base checkpoint.
+
+Adaptive refinement is enabled by default. The base merge also writes an
+adaptive manifest, but withholds the final tables until every nested-grid
+family satisfies a 0.25% limit on each numerical axis, their conservative sum
+is at most 0.5%, and every active cross section has a two-sided asymptotic 95%
+Monte Carlo confidence half-width at most 0.5%. Reuse the same 84-way layout:
+
+```bash
+# After the base merge:
+qsub -J 0-41 \
+  -v START_SEPARATION_AU,TARGET_BMAX_AU,LOSS_BMAX_AU,SHARD_COUNT=84,ADAPTIVE_ONLY=1 \
+  pbs/generate_carbon_charge_exchange_ctmc.pbs
+qsub -J 0-41 \
+  -v START_SEPARATION_AU,TARGET_BMAX_AU,LOSS_BMAX_AU,SHARD_COUNT=84,SHARD_OFFSET=42,ADAPTIVE_ONLY=1 \
+  pbs/generate_carbon_charge_exchange_ctmc.pbs
+
+# After every adaptive array element completes:
+qsub -l select=1:ncpus=1:mem=4gb \
+  -v START_SEPARATION_AU,TARGET_BMAX_AU,LOSS_BMAX_AU,SHARD_COUNT=84,MERGE_ADAPTIVE_ONLY=1 \
+  pbs/generate_carbon_charge_exchange_ctmc.pbs
+```
+
+Each adaptive family owns one charge state and one original energy interval.
+It bisects the impact grid and calculates logarithmic energy midpoints only as
+required by convergence. If the confidence-width gate fails, the same
+coordinate-keyed random stream continues with twice as many trajectories;
+the default permits four such doublings and never discards completed samples.
+The uncertainty propagation uses multinomial ionization/capture covariance,
+binomial projectile-loss variance, and the exact Jacobian of the published
+IEVM/IPM estimator. Family checkpoints are independent of the PBS shard count,
+so refinement can resume under a different layout without recomputing
+completed families. Use `--no-adaptive-refinement` only to reproduce the
+legacy fixed-grid output.
 
 Live 64-worker production shards used approximately 3.6--3.8 GiB of resident
 memory during the July 2026 audit. The PBS request therefore retains 4 GB

@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "status": "dynamics_completed_validation_pending",
+  "model": "classical NEP-MB-pol ice Ih at the experimental 100 K cell",
+  "protocol": "FIRE minimization; 1 ns NVT equilibration; 1 ns NVT sampling",
+  "ensemble": "nvt_nhc_fixed_experimental_cell",
+  "target_temperature_k": 100.0,
+  "density_g_cm3": 0.9334742974038461,
+  "periodic": [true, true, true],
+  "vacuum": false,
+  "cell_lengths_a": [
+    71.94499804043697,
+    62.30619597824007,
+    58.566038869219916
+  ],
+  "atoms": 24576,
+  "water_molecules": 8192,
+  "reference": {
+    "authors": "Rottger et al.",
+    "year": 2012,
+    "doi": "10.1107/S0108768111046908",
+    "table": 1,
+    "unit_cell_volume_a3": 128.188109
+  },
+  "potential_sha256": "70b5fa54c185bc75f0ae9cea408f7db77d5d021069c48b77966fc9a7d84eb4aa",
+  "replicas": [
+    {
+      "structure_seed": 1000,
+      "velocity_seed": 1000,
+      "source_80k_restart_sha256": "57d02b9518ffa94cedf0e591199fb2ee82bcb7b71c70ff588f56e438e317b81d",
+      "prepared_cell_sha256": "2229b459bb67790a90449a0174b8f7d0ffa5fb0841dbb037e273f9f10b4e2f79",
+      "final_snapshot": "seed1000_final.xyz.gz",
+      "final_snapshot_uncompressed_sha256": "9e26eaf6f8a3bf7fd09808b7de5a224f68c98ebcb1fc0a27b80e3624a526eeff",
+      "final_snapshot_gzip_sha256": "723081661f108a32478ec20b10ed3a64a74528c76ba0f5ec1cb7fcbb1fc700ee",
+      "run_input_sha256": "91107e176ae3e341f3a89a0aa9a6a9d533b2f5bd1c850c96c7bfadb707d09ba5",
+      "started_utc": "2026-08-04T19:29:05Z",
+      "completed_utc": "2026-08-05T03:16:52Z",
+      "sampling_records": 500,
+      "sampling_temperature_mean_k": 100.001764824,
+      "sampling_temperature_sd_k": 0.529739885,
+      "sampling_potential_energy_mean_ev": -4630.750824322,
+      "sampling_potential_energy_sd_ev": 1.640290701,
+      "sampling_mean_normal_stress_gpa": -0.138299601,
+      "sampling_mean_normal_stress_sd_gpa": 0.016722328
+    },
+    {
+      "structure_seed": 2000,
+      "velocity_seed": 2000,
+      "source_80k_restart_sha256": "18bda72701adc0f9e99916d12fafe3d22cefd08d644faa9ddb56e94b528e83bf",
+      "prepared_cell_sha256": "0138a6c61f78c8a2eff1aa80143f746cea36725c4f7acba6f859a40d6fe65ff6",
+      "final_snapshot": "seed2000_final.xyz.gz",
+      "final_snapshot_uncompressed_sha256": "bef9fc5ae16e5cdedfc1512231f342790fa0bcf93284d87e34d9c1cd56eef43f",
+      "final_snapshot_gzip_sha256": "931a565be218a44a81cec8ce599d38a4aa665f69649383d45550d0945b2fe162",
+      "run_input_sha256": "483cf3075e151a6c1795d0c68c59d2c5e049e5f0e29235acafb5e716b9c0c67f",
+      "started_utc": "2026-08-04T19:38:19Z",
+      "completed_utc": "2026-08-05T03:29:14Z",
+      "sampling_records": 500,
+      "sampling_temperature_mean_k": 100.011365895,
+      "sampling_temperature_sd_k": 0.524524020,
+      "sampling_potential_energy_mean_ev": -4631.516391018,
+      "sampling_potential_energy_sd_ev": 1.686076098,
+      "sampling_mean_normal_stress_gpa": -0.137174819,
+      "sampling_mean_normal_stress_sd_gpa": 0.017300020
+    },
+    {
+      "structure_seed": 3000,
+      "velocity_seed": 3000,
+      "source_80k_restart_sha256": "d52d1ff35211bd3702654f97b6d5e5080f06bb01cde0ceaacad131b55e1cab2c",
+      "prepared_cell_sha256": "a53275c5c70e661b4c2855ea6d9c543c6553fd6c52637adcf94d1de971942f09",
+      "final_snapshot": "seed3000_final.xyz.gz",
+      "final_snapshot_uncompressed_sha256": "192138fb821df08758ec458bcca4817cdb219c1f688a9421b45e524ef462fc3e",
+      "final_snapshot_gzip_sha256": "649cb8442657c7feaecc7b17d19f61c2048dc39832c895976d0270ace5ce9dc0",
+      "run_input_sha256": "bbe96304bc77f8072b4e97d81721f382678c613081b993db1773ef0b2c6a7dd6",
+      "started_utc": "2026-08-04T19:59:51Z",
+      "completed_utc": "2026-08-05T03:47:28Z",
+      "sampling_records": 500,
+      "sampling_temperature_mean_k": 100.001225284,
+      "sampling_temperature_sd_k": 0.500841605,
+      "sampling_potential_energy_mean_ev": -4631.315639381,
+      "sampling_potential_energy_sd_ev": 1.710925473,
+      "sampling_mean_normal_stress_gpa": -0.137901151,
+      "sampling_mean_normal_stress_sd_gpa": 0.016500251
+    }
+  ],
+  "required_validation": [
+    "ice-Ih oxygen-oxygen radial distribution",
+    "Bragg and crystalline-order retention",
+    "hydrogen-bond network and proton disorder",
+    "cross-replica structural agreement"
+  ]
+}

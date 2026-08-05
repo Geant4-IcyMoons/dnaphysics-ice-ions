@@ -1,0 +1,38 @@
+# Classical NEP-MB-pol preparation of a candidate equilibrated ice-Ih cell.
+#
+# This project protocol is not copied from a published NEP-MB-pol ice-Ih
+# calculation.  It uses only documented GPUMD operations: fixed-cell FIRE
+# relaxation followed by anisotropic NPT dynamics.  Its output is not accepted
+# for recoil calculations until the thermodynamic and crystallinity checks in
+# the project README pass.
+#
+# GPUMD uses fs for time and GPa for pressure.  At a 0.2 fs step, each
+# 5,000,000-step block is 1 ns.  The three target normal pressures are each
+# 0.0001 GPa = 0.1 MPa.  Independent control of the orthorhombic supercell
+# lengths permits the basal and c directions to relax separately.
+
+potential       nep.txt
+
+# Remove force mismatch between the ideal GenIce2 cell and NEP-MB-pol while
+# retaining the initial cell and ice-Ih topology.  The tolerance is eV/A.
+minimize        fire 1.0e-4 100000
+
+time_step       0.2
+velocity        80 seed @VELOCITY_SEED@
+
+# One-nanosecond cell/thermal equilibration at 80 K and 0.1 MPa.
+# The 10 GPa elastic-modulus entries are the documented rough barostat scale;
+# the 2000 fs pressure-coupling time matches the supplied NEP-MB-pol examples.
+ensemble        npt_ber 80 80 200 0.0001 0.0001 0.0001 10.0 10.0 10.0 2000
+dump_thermo     10000
+dump_exyz       500000 1 0
+dump_restart    500000
+run             5000000
+
+# One-nanosecond sampling block under the same conditions.  The dump keywords
+# are repeated because they apply only to the next GPUMD run block.
+ensemble        npt_ber 80 80 200 0.0001 0.0001 0.0001 10.0 10.0 10.0 2000
+dump_thermo     10000
+dump_exyz       500000 1 0
+dump_restart    500000
+run             5000000

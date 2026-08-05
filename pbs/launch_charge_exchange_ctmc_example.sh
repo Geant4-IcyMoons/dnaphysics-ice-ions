@@ -11,6 +11,9 @@
 #   bash pbs/launch_charge_exchange_ctmc_example.sh submit carbon 84
 #   # After all compute shards finish successfully:
 #   bash pbs/launch_charge_exchange_ctmc_example.sh merge carbon 84
+#   bash pbs/launch_charge_exchange_ctmc_example.sh refine carbon 84
+#   # After all adaptive shards finish successfully:
+#   bash pbs/launch_charge_exchange_ctmc_example.sh merge-refined carbon 84
 #
 # This launcher intentionally contains no default boundary/cutoff values.
 
@@ -18,7 +21,7 @@ set -euo pipefail
 
 usage() {
     printf '%s\n' \
-        "Usage: $0 {plan|submit|merge} {carbon|lithium|oxygen|sulfur} SHARD_COUNT" \
+        "Usage: $0 {plan|submit|merge|refine|merge-refined} {carbon|lithium|oxygen|sulfur} SHARD_COUNT" \
         "" \
         "Required exported variables:" \
         "  START_SEPARATION_AU  one convergence-derived value per energy" \
@@ -38,7 +41,7 @@ atom="$2"
 shard_count="$3"
 
 case "${action}" in
-    plan|submit|merge) ;;
+    plan|submit|merge|refine|merge-refined) ;;
     *)
         printf 'Unknown action: %s\n' "${action}" >&2
         usage >&2
@@ -103,6 +106,13 @@ optional_variables=(
     RETRY_ATOL
     MAXIMUM_RELATIVE_ENERGY_DRIFT
     BOUNDARY_EXTENSION_FACTOR
+    ADAPTIVE_AXIS_RELATIVE_TOLERANCE
+    ADAPTIVE_COMBINED_RELATIVE_TOLERANCE
+    ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE
+    ADAPTIVE_STATISTICAL_CONFIDENCE
+    ADAPTIVE_MAX_IMPACT_LEVELS
+    ADAPTIVE_MAX_ENERGY_LEVELS
+    ADAPTIVE_MAX_SAMPLING_LEVELS
     EXTRA_ARGS
     REPO_ROOT
 )
@@ -124,15 +134,22 @@ fi
 
 cd "${repo_root}"
 
-if [[ "${action}" == "merge" ]]; then
+if [[ "${action}" == "merge" || "${action}" == "merge-refined" ]]; then
     if (( shard_count < 2 )); then
         printf '%s\n' \
             "A one-shard run writes final outputs directly; no merge is needed." >&2
         exit 2
     fi
-    export_spec="${variable_list},SHARD_COUNT=${shard_count},MERGE_ONLY=1"
-    printf 'Submitting one-core merge for %s (%s shards)\n' \
-        "${atom}" "${shard_count}"
+    if [[ "${action}" == "merge" ]]; then
+        mode_variable="MERGE_ONLY=1"
+        merge_label="base-grid merge"
+    else
+        mode_variable="MERGE_ADAPTIVE_ONLY=1"
+        merge_label="adaptive-family merge"
+    fi
+    export_spec="${variable_list},SHARD_COUNT=${shard_count},${mode_variable}"
+    printf 'Submitting one-core %s for %s (%s shards)\n' \
+        "${merge_label}" "${atom}" "${shard_count}"
     qsub \
         -l select=1:ncpus=1:mem=4gb \
         -v "${export_spec}" \
@@ -157,6 +174,9 @@ while (( offset < shard_count )); do
     fi
     array_last=$((batch_size - 1))
     export_spec="${variable_list},SHARD_COUNT=${shard_count},SHARD_OFFSET=${offset}"
+    if [[ "${action}" == "refine" ]]; then
+        export_spec="${export_spec},ADAPTIVE_ONLY=1"
+    fi
 
     if [[ "${action}" == "plan" ]]; then
         printf 'Would submit shard indices %d--%d as array 0-%d\n' \
@@ -174,6 +194,10 @@ done
 
 if [[ "${action}" == "submit" ]]; then
     printf '%s\n' \
-        "Compute shards submitted. Do not submit the merge until every array" \
-        "element has completed successfully."
+        "Base-grid shards submitted. After they finish, run merge, refine," \
+        "and merge-refined in that order."
+elif [[ "${action}" == "refine" ]]; then
+    printf '%s\n' \
+        "Adaptive families submitted. Do not run merge-refined until every" \
+        "adaptive array element has completed successfully."
 fi

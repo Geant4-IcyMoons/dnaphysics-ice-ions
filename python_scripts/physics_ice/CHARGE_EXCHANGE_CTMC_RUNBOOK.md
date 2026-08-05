@@ -97,6 +97,65 @@ particular, `--energies`, `--charges`, `--impact-points`, and
 `--trajectories` change the scientific grid or Monte Carlo statistics and
 therefore also change the checkpoint signature.
 
+## Default adaptive refinement
+
+Final tables now require nested-grid refinement by default. The original
+energy and impact grids remain the restartable base level, so this does not
+invalidate or recompute an existing matching base checkpoint. For every
+projectile charge and original energy interval, the refinement stage:
+
+1. bisects every impact-parameter interval, retaining all parent points and
+   every explicitly supplied orbital/charge cutoff;
+2. compares successive evaluations of
+   `2*pi*integral[b*P(b) db]` for each independent physical channel;
+3. calculates geometric energy midpoints and compares them with log-log
+   interpolation of the two calculated endpoints; and
+4. recursively refines only families that have not converged.
+
+Every nonzero, physically active cross section must satisfy a 0.25% impact-axis
+limit and a 0.25% energy-axis limit
+(`--adaptive-axis-relative-tolerance 0.0025`). Their conservative sum must not
+exceed 0.5% (`--adaptive-combined-relative-tolerance 0.005`). The default
+maximum depths are four impact bisections and four energy bisections. These are
+safety limits, not acceptance criteria: reaching either limit without
+convergence aborts the refinement and withholds the final tables. A sampled
+zero that makes a relative log-log error undefined is likewise reported rather
+than hidden by an arbitrary numerical floor.
+
+Monte Carlo uncertainty is a separate enforced criterion. For every active
+cross section, the default two-sided asymptotic 95% relative confidence half-width must
+not exceed 0.5% (`--adaptive-statistical-confidence 0.95` and
+`--adaptive-statistical-relative-tolerance 0.005`). Ionization and capture are
+treated as multinomial outcomes, projectile loss as binomial, and their
+covariance is propagated through the published IEVM/IPM equations with an
+exact Jacobian. If necessary, the adaptive stage continues each deterministic
+trajectory stream with twice as many samples, up to four doublings by default
+(`--adaptive-max-sampling-levels 4`). Completed samples remain checkpointed.
+An active channel with a zero estimated integral cannot establish a relative
+confidence width; it therefore triggers further sampling and ultimately a
+clear non-convergence error rather than an arbitrary probability floor.
+The refinement settings are numerical controls, not physical-model
+parameters.
+
+For a one-shard run, refinement and the final merge follow the base grid
+automatically. For a multi-shard run, use the four restart-safe stages:
+
+```bash
+bash pbs/launch_charge_exchange_ctmc_example.sh submit carbon 84
+# After all base shards complete:
+bash pbs/launch_charge_exchange_ctmc_example.sh merge carbon 84
+bash pbs/launch_charge_exchange_ctmc_example.sh refine carbon 84
+# After all adaptive shards complete:
+bash pbs/launch_charge_exchange_ctmc_example.sh merge-refined carbon 84
+```
+
+Adaptive work is partitioned as independent `(charge, original energy
+interval)` families and stored under `adaptive_refinement/`. Each family has
+an atomic trajectory checkpoint and a completed result, so cancellation loses
+only uncommitted in-flight chunks. The same family files remain usable if the
+number of PBS shards is changed on resume. Use `--no-adaptive-refinement` only
+when intentionally reproducing the legacy fixed-grid result.
+
 ## CPU parallelism
 
 The numerical work has two levels of parallelism:
@@ -176,11 +235,13 @@ elements consume no CPU. To plan a submission without calling `qsub`, use:
 bash pbs/launch_charge_exchange_ctmc_example.sh plan carbon 84
 ```
 
-After every compute array element finishes successfully, submit the one-core
-merge:
+After every base-grid array element finishes successfully, run the base merge,
+adaptive arrays, and adaptive merge:
 
 ```bash
 bash pbs/launch_charge_exchange_ctmc_example.sh merge carbon 84
+bash pbs/launch_charge_exchange_ctmc_example.sh refine carbon 84
+bash pbs/launch_charge_exchange_ctmc_example.sh merge-refined carbon 84
 ```
 
 This PBS installation does not provide a reliable array-wide dependency, so
@@ -193,8 +254,14 @@ The launcher forwards these optional environment variables when set:
 `TRAJECTORY_CHUNK_SIZE`, `PENDING_FACTOR`, `CHECKPOINT_EVERY`,
 `CHECKPOINT_SECONDS`, `RTOL`, `ATOL`, `RETRY_RTOL`, `RETRY_ATOL`,
 `MAXIMUM_RELATIVE_ENERGY_DRIFT`, `BOUNDARY_EXTENSION_FACTOR`, `EXTRA_ARGS`,
-and `REPO_ROOT`. `EXTRA_ARGS` is for trusted, whitespace-separated command
-line options. For example, a deliberately non-production software test could
+`ADAPTIVE_AXIS_RELATIVE_TOLERANCE`,
+`ADAPTIVE_COMBINED_RELATIVE_TOLERANCE`,
+`ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE`,
+`ADAPTIVE_STATISTICAL_CONFIDENCE`, `ADAPTIVE_MAX_IMPACT_LEVELS`,
+`ADAPTIVE_MAX_ENERGY_LEVELS`, `ADAPTIVE_MAX_SAMPLING_LEVELS`, and `REPO_ROOT`.
+`EXTRA_ARGS` is for trusted,
+whitespace-separated command-line options. For example, a deliberately
+non-production software test could
 set:
 
 ```bash
@@ -217,6 +284,19 @@ automatically. It is safe to change worker count, pending factor, or trajectory
 chunk size when resuming because deterministic trajectory identities do not
 depend on scheduling. Do not use `--no-resume` for production recovery.
 
+If only a subset of a large array remains, first stop every writer and create
+a new balanced checkpoint generation with
+`--prepare-rebalance-from-shards OLD_COUNT --shard-count NEW_COUNT`. The
+command validates and consolidates the raw committed counts, assigns every
+unfinished point to exactly one new shard, writes separate generation-tagged
+checkpoints, and prints an immutable ownership-manifest path. Pass that path
+to every replacement shard and the base merge using
+`--ownership-manifest PATH`; the PBS wrapper exposes the same setting as
+`OWNERSHIP_MANIFEST`. The ordinary source checkpoints are retained as a
+fallback. Never prepare a rebalance while a source shard is still writing; the
+preparation command also rejects source files whose size or modification time
+changes while it is running.
+
 If a shard reports a deterministic trajectory failure, it writes a JSON
 diagnostic beside the checkpoint and exits without counting that trajectory.
 Investigate the saved identity; do not hide it by increasing
@@ -236,14 +316,21 @@ For a multi-shard run they are named:
 <element>_charge_exchange_ctmc_checkpoint.shard-NNNNN-of-MMMMM.npz
 ```
 
-The merge refuses to proceed if any shard checkpoint is missing, incomplete,
-or has a different configuration signature. A successful merge writes:
+The base merge refuses to proceed if any shard checkpoint is missing,
+incomplete, or has a different configuration signature. With the default
+adaptive mode it writes the canonical base checkpoint and refinement manifest,
+but deliberately withholds final tables. The adaptive merge writes:
 
 - `<element>_charge_exchange_h2o.dat`
 - `<element>_charge_exchange_h2o.csv`
 - `<element>_charge_exchange_probabilities.npz`
 - `<element>_charge_exchange_metadata.json`
 - the canonical merged checkpoint
+
+The adaptive probability archive uses flattened curves because different
+energy/charge families may converge at different impact-grid depths. Its
+`curve_offsets`, `curve_energy_keV_u`, and `curve_charge` arrays map each curve
+to its slice of `impact_au`, `pi`, `pc`, and `pl`.
 
 The `.dat` and `.csv` columns contain energy, charge state, single capture,
 target ionization, single loss, loss ionization, charge decrease, and charge

@@ -19,6 +19,7 @@ from constants import (
     CUSTOM_DATA_ROOT_GEANT4,
     CUSTOM_DATA_ROOT_PROJECT,
     CROSS_SECTIONS_DIR,
+    PHYSICS_ICE_CROSS_SECTIONS_DIR,
     EH,
     EV_TO_HA,
     ELF_ROLLOFF_COEF,
@@ -62,8 +63,8 @@ DEFAULT_ENERGY_MIN_EV = 1.0e6
 DEFAULT_ENERGY_MAX_EV = 1.0e8
 DEFAULT_ENERGY_POINTS = 1000
 DEFAULT_ENERGY_GRID = "log"
-DEFAULT_DE_POINTS = 300
-DEFAULT_DQ_POINTS = 300
+DEFAULT_DE_POINTS = 1000
+DEFAULT_DQ_POINTS = 1000
 
 def _projectile_config(key):
     lookup = str(key).strip().lower()
@@ -139,6 +140,32 @@ def _int_cli_value(names, env_name=None, default=None):
     value = os.environ.get(env_name, default) if env_name else default
     value = _argv_value(names, default=value)
     return int(value)
+
+def _max_workers_from_environment(default=None):
+    for env_name in ("ICE_MAX_WORKERS", "PBS_NCPUS", "PBS_NP", "NCPUS", "NSLOTS", "SLURM_CPUS_PER_TASK"):
+        raw = os.environ.get(env_name)
+        if raw is None or str(raw).strip() == "":
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+
+    pbs_nodefile = os.environ.get("PBS_NODEFILE")
+    if pbs_nodefile and os.path.exists(pbs_nodefile):
+        try:
+            with open(pbs_nodefile, "r", encoding="utf-8") as handle:
+                value = sum(1 for line in handle if line.strip())
+            if value > 0:
+                return value
+        except OSError:
+            pass
+
+    if default is None:
+        default = os.cpu_count() or 1
+    return max(1, int(default))
 
 def _energy_range_from_argv():
     emin = _float_cli_value(
@@ -349,8 +376,8 @@ def _print_cli_help_and_exit():
         "  --energy-unit total|per_u      interpret energy inputs as total ion energy or energy/u (default: total)\n"
         "  --energy-points N              number of incident-energy grid points (default: 1000)\n"
         "  --energy-grid log|linear       incident-energy grid type (default: log)\n"
-        "  --dE N                         energy-loss integration points (default: 300)\n"
-        "  --dq N                         q-integration points (default: 300)\n"
+        "  --dE N                         energy-loss integration points (default: 1000)\n"
+        "  --dq N                         q-integration points (default: 1000)\n"
         "  --charge-mode bare|zeff|explicit\n"
         "                                 interaction charge for Born/Barkas terms (default: bare)\n"
         "  --explicit-charge Q            charge state for --charge-mode explicit\n"
@@ -2377,6 +2404,26 @@ def _geant4_dna_dir():
             return dna_dir
     return None
 
+def _default_dcs_template_paths(ice_label):
+    labels = []
+    for label in (ice_label, ICE_LABEL):
+        if label and label not in labels:
+            labels.append(label)
+
+    for base_dir in (PHYSICS_ICE_CROSS_SECTIONS_DIR, CROSS_SECTIONS_DIR):
+        for label in labels:
+            path = base_dir / f"sigmadiff_ionisation_e_{label}_emfietzoglou_kyriakou.dat"
+            if path.exists():
+                return path, None
+
+    dna_dir = _geant4_dna_dir()
+    if dna_dir is None:
+        return None, None
+    return (
+        dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat",
+        dna_dir / "sigmadiff_ionisation_e_born.dat",
+    )
+
 def _load_dcs_template_grid(path, t_min=None, t_max=None, include_min=True, include_max=True):
     from collections import OrderedDict
 
@@ -3013,7 +3060,7 @@ def write_emfietzoglou_dcs_tables(
     born_reference_explicit_charge=None,
 ):
     if out_dir is None:
-        out_dir = CROSS_SECTIONS_DIR
+        out_dir = PHYSICS_ICE_CROSS_SECTIONS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if ice_label is None:
@@ -3067,19 +3114,22 @@ def write_emfietzoglou_dcs_tables(
 
     if dcs_data is None:
         if template_path is None:
-            dna_dir = _geant4_dna_dir()
-            if dna_dir is None:
-                raise FileNotFoundError("Could not locate Geant4 DNA data directory.")
-            emfi_path = dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat"
+            emfi_path, born_path = _default_dcs_template_paths(ice_label)
+            if emfi_path is None:
+                raise FileNotFoundError(
+                    "Could not locate a DCS template. Expected a local file such as "
+                    f"{CROSS_SECTIONS_DIR / f'sigmadiff_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat'} "
+                    "or a Geant4 DNA data directory."
+                )
             if not os.path.exists(emfi_path):
                 raise FileNotFoundError(f"Missing DCS template file: {emfi_path}")
+            print(f"Using DCS template grid: {emfi_path}")
             grid_low = _load_dcs_template_grid(
                 emfi_path, t_min=grid_t_min, t_max=grid_t_max
             )
 
             grid = grid_low
-            born_path = dna_dir / "sigmadiff_ionisation_e_born.dat"
-            if os.path.exists(born_path):
+            if born_path is not None and os.path.exists(born_path):
                 t_switch = max(grid_low.keys()) if grid_low else grid_t_min
                 grid_high = _load_dcs_template_grid(
                     born_path,
@@ -3156,7 +3206,7 @@ def write_emfietzoglou_dcs_tables(
 
         if do_parallel:
             if max_workers is None:
-                max_workers = os.cpu_count() or 1
+                max_workers = _max_workers_from_environment()
             max_workers = max(1, min(int(max_workers), len(tasks)))
             with ProcessPoolExecutor(
                 max_workers=max_workers,
@@ -3549,9 +3599,8 @@ def main():
         print(f"Loaded cached cross sections from {cache_path}")
     else:
         print("Computing double-integrated cross sections (parallel over T)...")
-        # Use ~ (CPU cores) workers;
-        max_workers = 12
-        print("Using %i workers" %(max_workers))
+        max_workers = max(1, min(_max_workers_from_environment(), len(T_list)))
+        print("Using %i workers" % (max_workers))
 
         results_by_T = {}
 

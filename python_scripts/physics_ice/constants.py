@@ -213,6 +213,17 @@ CARBON_CTMC_IMPACT_POINTS = 101
 CARBON_CTMC_TRAJECTORIES = 10_000
 CARBON_CTMC_WORKERS = 0  # Auto-detect scheduler/CPU affinity.
 CARBON_CTMC_BACKEND = "numba"
+# Error budget for the final adaptive CTMC tables.  The two deterministic
+# discretization axes each receive half of the 0.5% combined budget.  The
+# Monte Carlo confidence-width requirement is reported and enforced
+# separately because it is a statistical, rather than a quadrature, error.
+CTMC_ADAPTIVE_AXIS_RELATIVE_TOLERANCE = 2.5e-3
+CTMC_ADAPTIVE_COMBINED_RELATIVE_TOLERANCE = 5.0e-3
+CTMC_ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE = 5.0e-3
+CTMC_ADAPTIVE_STATISTICAL_CONFIDENCE = 0.95
+CTMC_ADAPTIVE_MAX_IMPACT_LEVELS = 4
+CTMC_ADAPTIVE_MAX_ENERGY_LEVELS = 4
+CTMC_ADAPTIVE_MAX_SAMPLING_LEVELS = 4
 # Zero disables the implementation-only step ceiling.  The paper terminates
 # trajectories by elapsed time and negligible screened-nucleus interaction,
 # not by an unpublished Runge--Kutta step count.

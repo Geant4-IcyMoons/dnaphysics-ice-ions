@@ -52,6 +52,9 @@ SHARD_OFFSET="${SHARD_OFFSET:-0}"
 ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-0}}"
 SHARD_INDEX="$((ARRAY_INDEX + SHARD_OFFSET))"
 MERGE_ONLY="${MERGE_ONLY:-0}"
+ADAPTIVE_ONLY="${ADAPTIVE_ONLY:-0}"
+MERGE_ADAPTIVE_ONLY="${MERGE_ADAPTIVE_ONLY:-0}"
+OWNERSHIP_MANIFEST="${OWNERSHIP_MANIFEST:-}"
 TRAJECTORY_CHUNK_SIZE="${TRAJECTORY_CHUNK_SIZE:-8}"
 PENDING_FACTOR="${PENDING_FACTOR:-2}"
 CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-100}"
@@ -62,6 +65,13 @@ RETRY_RTOL="${RETRY_RTOL:-1e-12}"
 RETRY_ATOL="${RETRY_ATOL:-1e-14}"
 MAXIMUM_RELATIVE_ENERGY_DRIFT="${MAXIMUM_RELATIVE_ENERGY_DRIFT:-1e-3}"
 BOUNDARY_EXTENSION_FACTOR="${BOUNDARY_EXTENSION_FACTOR:-2}"
+ADAPTIVE_AXIS_RELATIVE_TOLERANCE="${ADAPTIVE_AXIS_RELATIVE_TOLERANCE:-0.0025}"
+ADAPTIVE_COMBINED_RELATIVE_TOLERANCE="${ADAPTIVE_COMBINED_RELATIVE_TOLERANCE:-0.005}"
+ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE="${ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE:-0.005}"
+ADAPTIVE_STATISTICAL_CONFIDENCE="${ADAPTIVE_STATISTICAL_CONFIDENCE:-0.95}"
+ADAPTIVE_MAX_IMPACT_LEVELS="${ADAPTIVE_MAX_IMPACT_LEVELS:-4}"
+ADAPTIVE_MAX_ENERGY_LEVELS="${ADAPTIVE_MAX_ENERGY_LEVELS:-4}"
+ADAPTIVE_MAX_SAMPLING_LEVELS="${ADAPTIVE_MAX_SAMPLING_LEVELS:-4}"
 START_SEPARATION_AU="${START_SEPARATION_AU:?required: one value per selected energy}"
 TARGET_BMAX_AU="${TARGET_BMAX_AU:?required: five values for H2O orbitals}"
 LOSS_BMAX_AU="${LOSS_BMAX_AU:?required: six values for C0 through C5+}"
@@ -104,6 +114,13 @@ cmd=(
     --retry-atol "${RETRY_ATOL}"
     --maximum-relative-energy-drift "${MAXIMUM_RELATIVE_ENERGY_DRIFT}"
     --boundary-extension-factor "${BOUNDARY_EXTENSION_FACTOR}"
+    --adaptive-axis-relative-tolerance "${ADAPTIVE_AXIS_RELATIVE_TOLERANCE}"
+    --adaptive-combined-relative-tolerance "${ADAPTIVE_COMBINED_RELATIVE_TOLERANCE}"
+    --adaptive-statistical-relative-tolerance "${ADAPTIVE_STATISTICAL_RELATIVE_TOLERANCE}"
+    --adaptive-statistical-confidence "${ADAPTIVE_STATISTICAL_CONFIDENCE}"
+    --adaptive-max-impact-levels "${ADAPTIVE_MAX_IMPACT_LEVELS}"
+    --adaptive-max-energy-levels "${ADAPTIVE_MAX_ENERGY_LEVELS}"
+    --adaptive-max-sampling-levels "${ADAPTIVE_MAX_SAMPLING_LEVELS}"
     --shard-count "${SHARD_COUNT}"
     --start-separation-au "${START_SEPARATION_AU}"
     --target-bmax-au "${TARGET_BMAX_AU}"
@@ -117,7 +134,15 @@ if [[ -n "${MINIMUM_INTEGRATION_TIME_AU}" ]]; then
     )
 fi
 
-if [[ "${MERGE_ONLY}" == "1" ]]; then
+if [[ -n "${OWNERSHIP_MANIFEST}" ]]; then
+    cmd+=(--ownership-manifest "${OWNERSHIP_MANIFEST}")
+fi
+
+if [[ "${MERGE_ADAPTIVE_ONLY}" == "1" ]]; then
+    cmd+=(--merge-adaptive-shards)
+elif [[ "${ADAPTIVE_ONLY}" == "1" ]]; then
+    cmd+=(--adaptive-only --shard-index "${SHARD_INDEX}")
+elif [[ "${MERGE_ONLY}" == "1" ]]; then
     cmd+=(--merge-shards)
 else
     cmd+=(--shard-index "${SHARD_INDEX}")
@@ -133,7 +158,8 @@ fi
 echo "Repository: ${REPO_ROOT}"
 echo "Python: ${PYTHON_BIN} ($(command -v "${PYTHON_BIN}"))"
 echo "Conda environment: ${CONDA_ENV}"
-echo "Shard: ${SHARD_INDEX}/${SHARD_COUNT}; merge-only: ${MERGE_ONLY}"
+echo "Shard: ${SHARD_INDEX}/${SHARD_COUNT}; base merge: ${MERGE_ONLY}; adaptive: ${ADAPTIVE_ONLY}; adaptive merge: ${MERGE_ADAPTIVE_ONLY}"
+echo "Ownership manifest: ${OWNERSHIP_MANIFEST:-ordinary modulo partition}"
 echo "Local workers: ${LOCAL_WORKERS}; chunk size: ${TRAJECTORY_CHUNK_SIZE}"
 echo "DOP853 tolerances: rtol=${RTOL}; atol=${ATOL}"
 echo "DOP853 retry tolerances: rtol=${RETRY_RTOL}; atol=${RETRY_ATOL}"

@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+#PBS -N ice_ion_xs
+#PBS -q idle
+#PBS -l select=1:ncpus=256:mem=512gb
+#PBS -j oe
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -f "${PBS_O_WORKDIR}/python_scripts/physics_ice/generate_ice_cross_sections_ion.py" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+LOG_DIR="${LOG_DIR:-${SCRIPT_DIR}/logs}"
+SUBMIT_STAMP="${SUBMIT_STAMP:-$(date +%Y%m%d_%H%M%S)}"
+
+# Submission handles. Override them as environment variables when launching this script.
+QUEUE="${QUEUE:-idle}"
+NCPUS="${NCPUS:-256}"
+MEM="${MEM:-512gb}"
+PHASES="${PHASES:-amorphous hexagonal}"
+
+CONDA_SH="${CONDA_SH:-/apps01/apps/anaconda3-2022.10/etc/profile.d/conda.sh}"
+CONDA_ENV="${CONDA_ENV:-yoffe_venv}"
+MODULES="${MODULES:-}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+PROJECTILE="${PROJECTILE:-proton}"
+CHARGE_MODE="${CHARGE_MODE:-bare}"
+EXPLICIT_CHARGE="${EXPLICIT_CHARGE:-}"
+INCLUDE_BARKAS_DCS="${INCLUDE_BARKAS_DCS:-true}"
+BORN_REFERENCE_CHARGE="${BORN_REFERENCE_CHARGE:-bare_Z}"
+BORN_REFERENCE_EXPLICIT_CHARGE="${BORN_REFERENCE_EXPLICIT_CHARGE:-}"
+
+DE="${DE:-1000}"
+DQ="${DQ:-1000}"
+ENERGY_MIN_EV="${ENERGY_MIN_EV:-1.0e5}"
+ENERGY_MAX_EV="${ENERGY_MAX_EV:-1.0e8}"
+ENERGY_POINTS="${ENERGY_POINTS:-1000}"
+ENERGY_GRID="${ENERGY_GRID:-log}"
+
+if [[ -z "${PBS_JOBID:-}" ]]; then
+    mkdir -p "${LOG_DIR}"
+
+    for phase in ${PHASES}; do
+        case "${phase}" in
+            amorphous|hexagonal) ;;
+            *)
+                echo "Unsupported phase '${phase}'. Use amorphous and/or hexagonal." >&2
+                exit 2
+                ;;
+        esac
+
+        barkas_tag="nobarkas"
+        case "${INCLUDE_BARKAS_DCS}" in
+            1|true|TRUE|yes|YES|on|ON) barkas_tag="barkas" ;;
+        esac
+
+        charge_tag="${CHARGE_MODE}"
+        if [[ "${CHARGE_MODE}" == "explicit" && -n "${EXPLICIT_CHARGE}" ]]; then
+            charge_tag="q${EXPLICIT_CHARGE}"
+        fi
+
+        job_name="ice_${PROJECTILE}_${charge_tag}_${barkas_tag}_${phase}_xs"
+        qsub \
+            -N "${job_name}" \
+            -q "${QUEUE}" \
+            -l "select=1:ncpus=${NCPUS}:mem=${MEM}" \
+            -j oe \
+            -o "${LOG_DIR}/${SUBMIT_STAMP}_${job_name}.out" \
+            -v "REPO_ROOT=${REPO_ROOT},ICE_TYPE=${phase},NCPUS=${NCPUS},MEM=${MEM},SUBMIT_STAMP=${SUBMIT_STAMP},CONDA_SH=${CONDA_SH},CONDA_ENV=${CONDA_ENV},MODULES=${MODULES},PYTHON_BIN=${PYTHON_BIN},PROJECTILE=${PROJECTILE},CHARGE_MODE=${CHARGE_MODE},EXPLICIT_CHARGE=${EXPLICIT_CHARGE},INCLUDE_BARKAS_DCS=${INCLUDE_BARKAS_DCS},BORN_REFERENCE_CHARGE=${BORN_REFERENCE_CHARGE},BORN_REFERENCE_EXPLICIT_CHARGE=${BORN_REFERENCE_EXPLICIT_CHARGE},DE=${DE},DQ=${DQ},ENERGY_MIN_EV=${ENERGY_MIN_EV},ENERGY_MAX_EV=${ENERGY_MAX_EV},ENERGY_POINTS=${ENERGY_POINTS},ENERGY_GRID=${ENERGY_GRID}" \
+            "${BASH_SOURCE[0]}"
+    done
+
+    exit 0
+fi
+
+cd "${REPO_ROOT}"
+
+if [[ -n "${MODULES}" ]]; then
+    # shellcheck disable=SC2086
+    module load ${MODULES}
+fi
+
+if [[ -n "${CONDA_ENV}" ]]; then
+    if [[ -f "${CONDA_SH}" ]]; then
+        # shellcheck disable=SC1090
+        source "${CONDA_SH}"
+    else
+        eval "$(conda shell.bash hook)" 2>/dev/null || true
+    fi
+    conda activate "${CONDA_ENV}"
+fi
+
+case "${ICE_TYPE:-}" in
+    amorphous|hexagonal) ;;
+    *)
+        echo "ICE_TYPE must be amorphous or hexagonal; got '${ICE_TYPE:-unset}'." >&2
+        exit 2
+        ;;
+esac
+
+if [[ "${CHARGE_MODE}" == "explicit" && -z "${EXPLICIT_CHARGE}" ]]; then
+    echo "CHARGE_MODE=explicit requires EXPLICIT_CHARGE." >&2
+    exit 2
+fi
+
+if [[ -n "${PBS_NCPUS:-}" ]]; then
+    JOB_NCPUS="${PBS_NCPUS}"
+elif [[ -n "${PBS_NP:-}" ]]; then
+    JOB_NCPUS="${PBS_NP}"
+elif [[ -n "${NCPUS:-}" ]]; then
+    JOB_NCPUS="${NCPUS}"
+elif [[ -n "${PBS_NODEFILE:-}" && -f "${PBS_NODEFILE}" ]]; then
+    JOB_NCPUS="$(wc -l < "${PBS_NODEFILE}")"
+else
+    JOB_NCPUS="${NCPUS}"
+fi
+
+export ICE_TYPE
+export ICE_MAX_WORKERS="${JOB_NCPUS}"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
+cmd=(
+    "${PYTHON_BIN}" -u python_scripts/physics_ice/generate_ice_cross_sections_ion.py
+    --projectile "${PROJECTILE}"
+    --charge-mode "${CHARGE_MODE}"
+    --include-barkas-dcs="${INCLUDE_BARKAS_DCS}"
+    --dE "${DE}"
+    --dq "${DQ}"
+    --energy-min-eV "${ENERGY_MIN_EV}"
+    --energy-max-eV "${ENERGY_MAX_EV}"
+    --energy-points "${ENERGY_POINTS}"
+    --energy-grid "${ENERGY_GRID}"
+    --born-reference-charge "${BORN_REFERENCE_CHARGE}"
+)
+
+if [[ -n "${EXPLICIT_CHARGE}" ]]; then
+    cmd+=(--explicit-charge "${EXPLICIT_CHARGE}")
+fi
+
+if [[ -n "${BORN_REFERENCE_EXPLICIT_CHARGE}" ]]; then
+    cmd+=(--born-reference-explicit-charge "${BORN_REFERENCE_EXPLICIT_CHARGE}")
+fi
+
+echo "Repository: ${REPO_ROOT}"
+echo "Modules: ${MODULES}"
+echo "Conda env: ${CONDA_ENV}"
+echo "Python: ${PYTHON_BIN} ($(command -v "${PYTHON_BIN}" || true))"
+echo "Phase: ${ICE_TYPE}"
+echo "Projectile: ${PROJECTILE}"
+echo "Charge mode: ${CHARGE_MODE}"
+echo "Include Barkas DCS: ${INCLUDE_BARKAS_DCS}"
+echo "Energy grid: ${ENERGY_MIN_EV} to ${ENERGY_MAX_EV} eV, N=${ENERGY_POINTS}, ${ENERGY_GRID}"
+echo "Integration grid: dE=${DE}, dq=${DQ}"
+echo "Workers: ${ICE_MAX_WORKERS}"
+printf 'Command:'
+printf ' %q' "${cmd[@]}"
+printf '\n'
+
+"${cmd[@]}"

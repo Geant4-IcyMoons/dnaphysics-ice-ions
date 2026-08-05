@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ PHYSICS_SCRIPT_DIR = (
 sys.path.insert(0, str(PHYSICS_SCRIPT_DIR))
 
 import charge_exchange_ctmc as ctmc  # noqa: E402
+import ctmc_adaptive_refinement as adaptive  # noqa: E402
 
 
 @pytest.fixture
@@ -267,6 +269,123 @@ def test_checkpoint_roundtrip_preserves_partial_trajectory_counts(
     assert int(loaded["execution_workers"]) == 256
 
 
+def test_rebalanced_owners_cover_grid_and_balance_each_energy_layer() -> None:
+    shape = (3, 2, 7)
+    done = np.zeros(shape, dtype=bool)
+    done[:, :, :2] = True
+    remaining = np.zeros(shape, dtype=np.int64)
+    for energy_index in range(shape[0]):
+        for charge_index in range(shape[1]):
+            for impact_index in range(2, shape[2]):
+                remaining[energy_index, charge_index, impact_index] = (
+                    10 + 3 * energy_index + charge_index + impact_index
+                )
+
+    owners = ctmc.balanced_rebalance_owners(done, remaining, 4)
+
+    assert owners.shape == shape
+    assert np.all((0 <= owners) & (owners < 4))
+    for shard_index in range(4):
+        ordinary = ctmc.owned_point_mask(shape, 4, shard_index)
+        np.testing.assert_array_equal(
+            (owners == shard_index)[done], ordinary[done]
+        )
+    for energy_index in range(shape[0]):
+        loads = np.asarray(
+            [
+                np.sum(
+                    remaining[energy_index][owners[energy_index] == shard_index]
+                )
+                for shard_index in range(4)
+            ]
+        )
+        assert int(np.max(loads) - np.min(loads)) <= int(
+            np.max(remaining[energy_index])
+        )
+
+
+def test_rebalance_manifest_and_checkpoint_reject_wrong_generation(
+    tmp_path: Path,
+) -> None:
+    shape = (1, 1, 2)
+    owners = np.asarray([[[0, 1]]], dtype=np.int32)
+    manifest_path = tmp_path / "manifest.npz"
+    ctmc.save_rebalance_manifest(
+        manifest_path,
+        signature="physics",
+        generation="0123456789abcdef",
+        source_shard_count=2,
+        target_shard_count=2,
+        owners=owners,
+        remaining_by_shard=np.asarray([10, 12]),
+        completed_trajectories=8,
+    )
+    manifest = ctmc.load_rebalance_manifest(
+        manifest_path,
+        expected_signature="physics",
+        expected_shape=shape,
+        expected_shard_count=2,
+    )
+    np.testing.assert_array_equal(manifest["owners"], owners)
+
+    accumulators = ctmc.create_trajectory_accumulators(shape)
+    checkpoint_path = tmp_path / "checkpoint.npz"
+    ctmc.save_checkpoint(
+        checkpoint_path,
+        signature="physics",
+        energies=np.asarray([1.0]),
+        charges=np.asarray([0]),
+        impact_au=np.asarray([0.0, 1.0]),
+        pi=np.full(shape + (len(ctmc.WATER_ORBITALS),), np.nan),
+        pc=np.full(shape + (len(ctmc.WATER_ORBITALS),), np.nan),
+        pl=np.full(shape, np.nan),
+        done=np.zeros(shape, dtype=bool),
+        failures=np.zeros(shape, dtype=np.int64),
+        successes=np.zeros(shape, dtype=np.int64),
+        maximum_energy_drift=np.zeros(shape),
+        accumulators=accumulators,
+        execution_workers=2,
+        ownership_generation="0123456789abcdef",
+    )
+    assert ctmc.load_checkpoint(
+        checkpoint_path, "physics", "0123456789abcdef"
+    ) is not None
+    with pytest.raises(RuntimeError, match="ownership generation"):
+        ctmc.load_checkpoint(checkpoint_path, "physics", "fedcba9876543210")
+
+
+def test_checkpoint_state_validation_accepts_partial_channel_prefixes() -> None:
+    shape = (1, 1, 1)
+    config = _config(trajectories=10, chunk_size=2)
+    accumulators = ctmc.create_trajectory_accumulators(shape)
+    accumulators.successes[0, 0, 0, 0] = 4
+    accumulators.completed[0, 0, 0, 0] = 4
+    done = np.zeros(shape, dtype=bool)
+    failures = np.zeros(shape, dtype=np.int64)
+    successes = np.zeros(shape, dtype=np.int64)
+
+    ctmc.validate_checkpoint_state(
+        np.asarray([6]),
+        np.asarray([0.0]),
+        done,
+        failures,
+        successes,
+        accumulators,
+        config,
+    )
+    done[0, 0, 0] = True
+    with pytest.raises(RuntimeError, match="done flag"):
+        ctmc.validate_checkpoint_state(
+            np.asarray([6]),
+            np.asarray([0.0]),
+            done,
+            failures,
+            successes,
+            accumulators,
+            config,
+        )
+
+
 def test_zero_failure_policy_identifies_exact_uncommitted_trajectory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -329,6 +448,294 @@ def test_failure_diagnostic_records_deterministic_resume(
 
 def test_default_failure_policy_is_strict() -> None:
     assert ctmc.build_parser().get_default("max_failure_fraction") == 0.0
+
+
+def test_adaptive_refinement_is_default_with_half_percent_target() -> None:
+    parser = ctmc.build_parser()
+    assert parser.get_default("adaptive_refinement") is True
+    assert parser.get_default("adaptive_axis_relative_tolerance") == pytest.approx(
+        2.5e-3
+    )
+    assert parser.get_default(
+        "adaptive_combined_relative_tolerance"
+    ) == pytest.approx(5.0e-3)
+    assert parser.get_default(
+        "adaptive_statistical_relative_tolerance"
+    ) == pytest.approx(5.0e-3)
+    assert parser.get_default("adaptive_statistical_confidence") == pytest.approx(
+        0.95
+    )
+    assert parser.get_default("adaptive_max_sampling_levels") == 4
+    assert parser.parse_args(["--no-adaptive-refinement"]).adaptive_refinement is False
+
+
+def test_nested_impact_refinement_preserves_parent_and_cutoff_points() -> None:
+    grids = adaptive.nested_impact_grids(
+        np.asarray([0.0, 0.5, 1.0]),
+        (0.75,),
+        levels=2,
+    )
+    np.testing.assert_array_equal(grids[0], [0.0, 0.5, 0.75, 1.0])
+    assert set(grids[0]).issubset(set(grids[1]))
+    assert set(grids[1]).issubset(set(grids[2]))
+    np.testing.assert_array_equal(
+        grids[1],
+        [0.0, 0.25, 0.5, 0.625, 0.75, 0.875, 1.0],
+    )
+
+
+def test_adaptive_impact_error_checks_each_independent_channel() -> None:
+    coarse = np.asarray([100.0, 3.0, 1.0, 2.0, 3.0, 4.0, 3.0, 7.0, 5.0, 6.0])
+    fine = coarse.copy()
+    fine[8] = 5.025
+    maximum, channels = adaptive.maximum_relative_change(coarse, fine, 3)
+    assert maximum == pytest.approx(0.005 / 1.005)
+    assert channels["sigma_SI_cm2"] == maximum
+
+
+def test_adaptive_energy_midpoint_accepts_exact_log_log_interpolation() -> None:
+    lower = np.asarray([1.0, 3.0, 1.0, 4.0, 9.0, 16.0, 5.0, 25.0, 36.0, 49.0])
+    upper = np.asarray([4.0, 3.0, 4.0, 16.0, 36.0, 64.0, 20.0, 100.0, 144.0, 196.0])
+    midpoint = np.sqrt(lower * upper)
+    midpoint[0] = 2.0
+    midpoint[1] = 3.0
+    maximum, channels = adaptive.maximum_log_midpoint_error(
+        lower, midpoint, upper, 3
+    )
+    assert maximum == pytest.approx(0.0)
+    assert all(error == 0.0 for error in channels.values())
+
+
+def test_adaptive_energy_midpoint_does_not_hide_unresolved_zero() -> None:
+    lower = np.ones(10)
+    midpoint = np.ones(10)
+    upper = np.ones(10)
+    lower[:2] = [1.0, 2.0]
+    midpoint[:2] = [2.0, 2.0]
+    upper[:2] = [4.0, 2.0]
+    midpoint[8] = 0.0
+    maximum, channels = adaptive.maximum_log_midpoint_error(
+        lower, midpoint, upper, 3
+    )
+    assert math.isinf(maximum)
+    assert math.isinf(channels["sigma_SI_cm2"])
+
+
+def test_statistical_jacobian_reproduces_published_channel_weights() -> None:
+    pi = np.asarray([0.05, 0.10, 0.15, 0.20, 0.08])
+    pc = np.asarray([0.02, 0.03, 0.04, 0.05, 0.01])
+    pl = 0.12
+    expected = ctmc.many_electron_probabilities(
+        pi[None, :], pc[None, :], np.asarray([pl]), 3
+    )
+    actual = adaptive._many_electron_probability_jacobian(pi, pc, pl, 3)
+    for name in ("SC", "TI", "SL", "LI", "SI", "DI"):
+        assert actual[name][0] == pytest.approx(expected[name][0])
+
+    primitive = np.concatenate((pi, pc, np.asarray([pl])))
+    orbital_count = len(ctmc.WATER_ORBITALS)
+    step = 1.0e-6
+    for variable_index in range(primitive.size):
+        upper = primitive.copy()
+        lower = primitive.copy()
+        upper[variable_index] += step
+        lower[variable_index] -= step
+        upper_weights = ctmc.many_electron_probabilities(
+            upper[:orbital_count][None, :],
+            upper[orbital_count : 2 * orbital_count][None, :],
+            upper[2 * orbital_count :],
+            3,
+        )
+        lower_weights = ctmc.many_electron_probabilities(
+            lower[:orbital_count][None, :],
+            lower[orbital_count : 2 * orbital_count][None, :],
+            lower[2 * orbital_count :],
+            3,
+        )
+        for name in ("SC", "TI", "SL", "LI", "SI", "DI"):
+            finite_difference = (
+                upper_weights[name][0] - lower_weights[name][0]
+            ) / (2.0 * step)
+            assert actual[name][1][variable_index] == pytest.approx(
+                finite_difference, rel=1.0e-7, abs=1.0e-9
+            )
+
+
+def test_statistical_confidence_width_scales_with_inverse_sqrt_samples() -> None:
+    impact = np.asarray([0.0, 1.0, 2.0])
+    pi = np.full((3, len(ctmc.WATER_ORBITALS)), 0.10)
+    pc = np.full_like(pi, 0.05)
+    pl = np.full(3, 0.10)
+    sample_shape = (3, ctmc.CHANNEL_COUNT)
+    widths_100 = adaptive.cross_section_relative_confidence_half_widths(
+        impact,
+        pi,
+        pc,
+        pl,
+        np.full(sample_shape, 100, dtype=np.int64),
+        3,
+        0.95,
+    )
+    widths_400 = adaptive.cross_section_relative_confidence_half_widths(
+        impact,
+        pi,
+        pc,
+        pl,
+        np.full(sample_shape, 400, dtype=np.int64),
+        3,
+        0.95,
+    )
+    assert set(widths_100) == {"SC", "TI", "SL", "LI", "SI", "DI"}
+    assert all(np.isfinite(list(widths_100.values())))
+    for name in widths_100:
+        assert widths_400[name] == pytest.approx(0.5 * widths_100[name])
+
+
+def test_adaptive_families_partition_every_charge_energy_interval() -> None:
+    energies = np.geomspace(1.0, 1.0e4, 41)
+    charges = np.arange(7)
+    families = adaptive.adaptive_family_indices(energies, charges)
+    assert len(families) == 280
+    assert len(set(families)) == 280
+    coverage = np.zeros((7, 40), dtype=int)
+    for family_index, (charge_index, interval_index) in enumerate(families):
+        assert family_index % 84 in range(84)
+        coverage[charge_index, interval_index] += 1
+    np.testing.assert_array_equal(coverage, np.ones_like(coverage))
+
+
+def test_adaptive_family_refines_and_checkpoints_without_recomputing_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    energies = np.asarray([1.0, 4.0])
+    charges = np.asarray([3])
+    impact = np.asarray([0.0, 1.0])
+    shape = (2, 1, 2)
+    pi = np.full(shape + (len(ctmc.WATER_ORBITALS),), 0.10)
+    pc = np.full_like(pi, 0.05)
+    pl = np.full(shape, 0.10)
+    channel_shape = shape + (ctmc.CHANNEL_COUNT,)
+    base_checkpoint = {
+        "energies_keV_u": energies,
+        "charges": charges,
+        "impact_au": impact,
+        "pi": pi,
+        "pc": pc,
+        "pl": pl,
+        "done": np.ones(shape, dtype=bool),
+        "failures": np.zeros(shape, dtype=np.int64),
+        "successes": np.full(shape, 600, dtype=np.int64),
+        "maximum_energy_drift": np.zeros(shape),
+        "channel_primary_events": np.full(channel_shape, 10, dtype=np.int64),
+        "channel_secondary_events": np.concatenate(
+            (
+                np.full(shape + (ctmc.LOSS_CHANNEL_INDEX,), 5, dtype=np.int64),
+                np.zeros(shape + (1,), dtype=np.int64),
+            ),
+            axis=-1,
+        ),
+        "channel_failures": np.zeros(channel_shape, dtype=np.int64),
+        "channel_successes": np.full(channel_shape, 100, dtype=np.int64),
+        "channel_maximum_energy_drift": np.zeros(channel_shape),
+        "channel_completed": np.full(channel_shape, 100, dtype=np.int64),
+    }
+    config = dataclasses.replace(
+        _config(trajectories=100, chunk_size=100),
+        start_separation_au=(1_000.0, 1_000.0),
+        minimum_integration_time_au=(1_000.0, 1_000.0),
+    )
+    computed_coordinates: list[tuple[float, float]] = []
+    computed_starts: list[int] = []
+
+    def fake_chunk(task: tuple) -> tuple:
+        (
+            energy_index,
+            charge_index,
+            energy,
+            _charge,
+            impact_index,
+            impact_value,
+            channel_index,
+            trajectory_start,
+            trajectory_count,
+            _separation,
+            _minimum_time,
+        ) = task
+        computed_coordinates.append((energy, impact_value))
+        computed_starts.append(trajectory_start)
+        return (
+            energy_index,
+            charge_index,
+            impact_index,
+            channel_index,
+            trajectory_start,
+            trajectory_count,
+            trajectory_count // 10,
+            trajectory_count // 20
+            if channel_index < ctmc.LOSS_CHANNEL_INDEX
+            else 0,
+            0,
+            trajectory_count,
+            0.0,
+        )
+
+    monkeypatch.setattr(
+        adaptive,
+        "_compute_adaptive_trajectory_chunk",
+        fake_chunk,
+    )
+    adaptive_config = adaptive.AdaptiveRefinementConfig(
+        axis_relative_tolerance=5.0e-3,
+        combined_relative_tolerance=1.0e-2,
+        statistical_relative_tolerance=0.13,
+        statistical_confidence=0.50,
+        max_impact_levels=1,
+        max_energy_levels=1,
+        max_sampling_levels=1,
+    )
+    result_path = adaptive._run_family(
+        output_dir=tmp_path,
+        family_index=0,
+        family_count=1,
+        charge_index=0,
+        interval_index=0,
+        base_signature="base",
+        base_checkpoint=base_checkpoint,
+        base_config=config,
+        workers=1,
+        start_method="fork",
+        pending_factor=1,
+        checkpoint_every=1,
+        checkpoint_seconds=0.0,
+        adaptive=adaptive_config,
+    )
+
+    assert result_path.exists()
+    assert (1.0, 0.5) in computed_coordinates
+    assert (2.0, 0.0) in computed_coordinates
+    assert 100 in computed_starts
+    with np.load(result_path, allow_pickle=False) as result:
+        np.testing.assert_array_equal(result["energy_keV_u"], [1.0, 2.0, 4.0])
+        np.testing.assert_array_equal(result["impact_level"], [1, 1, 1])
+        np.testing.assert_allclose(result["impact_relative_error"], 0.0)
+
+    output_paths = adaptive.merge_adaptive_families(
+        output_dir=tmp_path,
+        base_signature="base",
+        base_checkpoint=base_checkpoint,
+        base_config=config,
+        adaptive=adaptive_config,
+    )
+    assert all(path.exists() for path in output_paths)
+    metadata = json.loads(output_paths[-1].read_text(encoding="utf-8"))
+    assert metadata["adaptive_refinement"][
+        "axis_relative_tolerance"
+    ] == pytest.approx(5.0e-3)
+    assert metadata["adaptive_refinement"][
+        "combined_relative_tolerance"
+    ] == pytest.approx(1.0e-2)
+    assert metadata["adaptive_refinement"]["maximum_impact_relative_error"] == 0.0
 
 
 def test_default_tolerances_are_ensemble_converged() -> None:

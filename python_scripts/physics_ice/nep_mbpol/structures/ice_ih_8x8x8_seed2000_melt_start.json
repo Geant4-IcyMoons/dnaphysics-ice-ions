@@ -1,0 +1,46 @@
+{
+  "phase": "hexagonal ice Ih",
+  "state": "initial, proton-disordered, not yet NEP-MB-pol equilibrated",
+  "generator": "GenIce2 2.2.13.3",
+  "genice_lattice": "one[hh]",
+  "orientation": "hexagonal c-axis (basal-plane normal) along z",
+  "water_geometry": "physical_water",
+  "depolarization": "strict",
+  "replication": [
+    8,
+    8,
+    8
+  ],
+  "seed": 2000,
+  "atoms": 24576,
+  "water_molecules": 8192,
+  "target_density_g_cm3": 0.917,
+  "genice_raw_density_g_cm3_using_project_molar_mass": 0.9177568805787228,
+  "isotropic_length_rescale_factor": 1.0002750535929368,
+  "measured_density_g_cm3": 0.9170000000000006,
+  "volume_angstrom3": 267245.6975003835,
+  "lattice_angstrom": [
+    [
+      72.30060107173605,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      62.61415751325384,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      59.033192826892204
+    ]
+  ],
+  "oh_distance_angstrom": {
+    "minimum": 0.957454556910963,
+    "mean": 0.9574645285175354,
+    "maximum": 0.9574757447371792
+  },
+  "gpumd_model": "../model/nep-mbpol.nep.txt",
+  "sha256": "cd7346bd8f7a5bf4fe2d81ada08bdd6d7ad6df88170ccb23dbba7442be790612"
+}
