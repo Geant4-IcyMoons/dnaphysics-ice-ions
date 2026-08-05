@@ -32,3 +32,6 @@ pbs/logs/
 cross_sections/*_charge_exchange/*_ctmc_checkpoint*.npz
 cross_sections/*_charge_exchange/*_ctmc_failure*.json
 cross_sections/*_charge_exchange/.*.tmp*
+
+# Reproducible NLH kernel products and restart shards (too large for source control)
+python_scripts/physics_ice/nep_mbpol/collision_kernels*/

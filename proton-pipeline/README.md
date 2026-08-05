@@ -69,7 +69,7 @@ approximation for both proton and alpha simulations.
 
 `DNA_PHYSICS` supported values:
 
-- `ice_hex`: 0.917 g/cm3
+- `ice_hex`: 0.9335 g/cm3 (ice Ih at 100 K)
 - `ice_am`: 0.940 g/cm3
 - `water`: 1.000 g/cm3
 

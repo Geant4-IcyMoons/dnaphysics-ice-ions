@@ -1106,18 +1106,20 @@ def test_all_ctmc_projectiles_declare_microscopic_phase_scaling(
     assert not scaling["microscopic_tables_scaled"]
     phases = scaling["phases"]
     assert phases["ice_am"]["mass_density_g_cm3"] == pytest.approx(0.940)
-    assert phases["ice_hex"]["mass_density_g_cm3"] == pytest.approx(0.917)
+    assert phases["ice_hex"]["mass_density_g_cm3"] == pytest.approx(
+        ctmc.ICE_HEXAGONAL_DENSITY_G_CM3
+    )
     assert phases["water"]["mass_density_g_cm3"] == pytest.approx(1.000)
     assert phases["ice_am"]["molecular_number_density_cm3"] == pytest.approx(
         3.142228327508648e22
     )
     assert phases["ice_hex"]["molecular_number_density_cm3"] == pytest.approx(
-        3.0653440173674787e22
+        ctmc.h2o_number_density_cm3(ctmc.ICE_HEXAGONAL_DENSITY_G_CM3)
     )
     assert (
         phases["ice_am"]["molecular_number_density_cm3"]
         / phases["ice_hex"]["molecular_number_density_cm3"]
-    ) == pytest.approx(0.940 / 0.917)
+    ) == pytest.approx(0.940 / ctmc.ICE_HEXAGONAL_DENSITY_G_CM3)
 
 
 def test_cpp_and_python_ice_phase_densities_match() -> None:
@@ -1128,7 +1130,7 @@ def test_cpp_and_python_ice_phase_densities_match() -> None:
     ):
         header = (project_root / relative_path).read_text(encoding="utf-8")
         assert "kAmorphousIceDensityGPerCm3 = 0.94;" in header
-        assert "kHexagonalIceDensityGPerCm3 = 0.917;" in header
+        assert "kHexagonalIceDensityGPerCm3 = 0.9335;" in header
         assert "kWaterDensityGPerCm3 = 1.0;" in header
 
 

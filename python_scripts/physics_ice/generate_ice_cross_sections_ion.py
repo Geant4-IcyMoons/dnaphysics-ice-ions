@@ -19,7 +19,6 @@ from constants import (
     CUSTOM_DATA_ROOT_GEANT4,
     CUSTOM_DATA_ROOT_PROJECT,
     CROSS_SECTIONS_DIR,
-    PHYSICS_ICE_CROSS_SECTIONS_DIR,
     EH,
     EV_TO_HA,
     ELF_ROLLOFF_COEF,
@@ -2410,11 +2409,13 @@ def _default_dcs_template_paths(ice_label):
         if label and label not in labels:
             labels.append(label)
 
-    for base_dir in (PHYSICS_ICE_CROSS_SECTIONS_DIR, CROSS_SECTIONS_DIR):
-        for label in labels:
-            path = base_dir / f"sigmadiff_ionisation_e_{label}_emfietzoglou_kyriakou.dat"
-            if path.exists():
-                return path, None
+    for label in labels:
+        path = (
+            CROSS_SECTIONS_DIR
+            / f"sigmadiff_ionisation_e_{label}_emfietzoglou_kyriakou.dat"
+        )
+        if path.exists():
+            return path, None
 
     dna_dir = _geant4_dna_dir()
     if dna_dir is None:
@@ -3060,7 +3061,7 @@ def write_emfietzoglou_dcs_tables(
     born_reference_explicit_charge=None,
 ):
     if out_dir is None:
-        out_dir = PHYSICS_ICE_CROSS_SECTIONS_DIR
+        out_dir = CROSS_SECTIONS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if ice_label is None:

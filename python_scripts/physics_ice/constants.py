@@ -192,8 +192,9 @@ AVOGADRO = 6.02214076e23  # mol^-1
 H2O_MOLAR_MASS_G_MOL = 18.01528
 H2O_MOLECULE_MASS_AU = H2O_MOLAR_MASS_G_MOL * ATOMIC_MASS_UNIT_MASS_AU
 
-# Ice phase nominal mass densities (g/cm^3)
-ICE_HEXAGONAL_DENSITY_G_CM3 = 0.917
+# Ice phase nominal mass densities (g/cm^3). The ice-Ih value is the 100 K
+# density from the corrected Rottger et al. experimental lattice fit.
+ICE_HEXAGONAL_DENSITY_G_CM3 = 0.9335
 ICE_AMORPHOUS_DENSITY_G_CM3 = 0.94
 
 # Reference mass density implied by N above (used in XS normalization code)

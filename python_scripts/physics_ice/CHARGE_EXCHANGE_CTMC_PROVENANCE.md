@@ -76,8 +76,12 @@ and
 | `DNA_PHYSICS` | Geant4 material | Mass density (g/cm3) |
 |:---|:---|---:|
 | `ice_am` | `G4_WATER_ICE_AM` | 0.940 |
-| `ice_hex` | `G4_WATER_ICE_HEX` | 0.917 |
+| `ice_hex` | `G4_WATER_ICE_HEX` | 0.9335 |
 | `water` | `G4_WATER` | 1.000 |
+
+The ice-Ih value is the rounded 100 K density obtained from the corrected
+H2O lattice-volume polynomial of Rottger et al. (2012),
+<https://doi.org/10.1107/S0108768111046908>.
 
 The CTMC tables remain the same microscopic cross sections
 `sigma(E,q)` in cm2 per H2O molecule for every phase. Geant4 obtains the
@@ -100,7 +104,7 @@ the H2O molecular number density returned for the current material by
 `G4DNAMolecularMaterial`. Both the main application and proton/alpha pipeline
 construct `G4_WATER_ICE_AM` and `G4_WATER_ICE_HEX` from `G4_WATER` at the
 densities above. Proton/alpha charge-exchange rates therefore scale as
-`1.000:0.940:0.917` for water, amorphous ice, and hexagonal ice at the same
+`1.000:0.940:0.9335` for water, amorphous ice, and hexagonal ice at the same
 microscopic cross section; their mean free paths scale inversely.
 
 The carbon, lithium, oxygen, and sulfur code in this repository currently

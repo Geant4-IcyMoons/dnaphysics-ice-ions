@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-08-04T13:43:19.033850+00:00",
+  "accepted": true,
+  "axis_relative_tolerance": 0.0025,
+  "acceptance_tolerance": 0.005,
+  "projectiles": [
+    "H",
+    "He",
+    "C",
+    "O",
+    "S"
+  ],
+  "targets": [
+    "H",
+    "O"
+  ],
+  "energies_ev": [
+    1000.0,
+    10000.0,
+    100000.0,
+    1000000.0,
+    10000000.0,
+    100000000.0
+  ],
+  "case_count": 60,
+  "maximum_impact_errors": {
+    "mean_recoil_relative_error": 0.001736804924475921,
+    "recoil_l1_relative_error": 0.001736804924475703,
+    "transport_relative_error": 0.0017417719374273055,
+    "transport_l1_relative_error": 0.0017417719374274235,
+    "theta_cm_l1_relative_error": 0.0011541780741753014,
+    "theta_cm_max_error_over_pi": 0.0024759115203636974
+  },
+  "maximum_energy_errors": {
+    "maximum_theta_cm_relative_error": 0.002167239416900557,
+    "maximum_recoil_relative_error": 0.0022059565913146173
+  },
+  "maximum_quadrature_errors": {
+    "theta_cm_max_error_over_pi": 1.1036065331224415e-09,
+    "maximum_recoil_relative_error": 0.00025793139025021006
+  },
+  "adaptive_points": {
+    "minimum": 18,
+    "median": 161.5,
+    "maximum": 342
+  },
+  "dense_reference": {
+    "logarithmic_q_points": 1025,
+    "linear_q_points": 1025,
+    "q_minimum_positive": 1e-24,
+    "q_split": 0.01
+  },
+  "csv": "nlh_adaptive_kernel_benchmark.csv",
+  "energy_csv": "nlh_adaptive_energy_benchmark.csv",
+  "quadrature_csv": "nlh_quadrature_benchmark.csv"
+}
