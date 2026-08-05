@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#PBS -N nlh_kernels
+#PBS -q idlex
+#PBS -l select=1:ncpus=256:mem=512gb
+#PBS -l walltime=500:00:00
+#PBS -j oe
+
+# Generate the restartable adaptive NLH kernels for H, He, C, O, and S
+# projectiles against H and O. Submit from the repository root with:
+#
+#   qsub pbs/generate_nlh_collision_kernels.pbs
+#
+# Rerunning the same submission resumes checksum-compatible checkpoints.
+
+set -euo pipefail
+umask 002
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -f "${PBS_O_WORKDIR}/python_scripts/physics_ice/nep_mbpol/generate_nlh_collision_kernels.py" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+cd "${REPO_ROOT}"
+
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+GENERATOR="${NEP_DIR}/generate_nlh_collision_kernels.py"
+OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${NEP_DIR}/collision_kernels}"
+CONDA_ENV="${CONDA_ENV:-yoffe_venv}"
+CONDA_SH="${CONDA_SH:-/apps01/apps/anaconda3-2022.10/etc/profile.d/conda.sh}"
+
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+    USER_ENV_PYTHON="${HOME}/.conda/envs/${CONDA_ENV}/bin/python"
+    if [[ -x "${USER_ENV_PYTHON}" ]]; then
+        PYTHON_BIN="${USER_ENV_PYTHON}"
+    else
+        # shellcheck disable=SC1090
+        source "${CONDA_SH}"
+        conda activate "${CONDA_ENV}"
+        PYTHON_BIN="$(command -v python)"
+    fi
+fi
+
+if [[ ! -f "${GENERATOR}" || ! -x "${PYTHON_BIN}" ]]; then
+    echo "Missing generator or Python interpreter." >&2
+    exit 2
+fi
+
+if [[ -n "${PBS_NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${PBS_NCPUS}"
+elif [[ -n "${NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${NCPUS}"
+else
+    ALLOCATED_CPUS="$("${PYTHON_BIN}" -c 'import os; print(len(os.sched_getaffinity(0)))')"
+fi
+WORKERS="${WORKERS:-${ALLOCATED_CPUS}}"
+if [[ ! "${WORKERS}" =~ ^[1-9][0-9]*$ || "${WORKERS}" -gt "${ALLOCATED_CPUS}" ]]; then
+    echo "WORKERS must be an integer between 1 and ${ALLOCATED_CPUS}; got ${WORKERS}." >&2
+    exit 2
+fi
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export PYTHONHASHSEED=0
+export PYTHONUNBUFFERED=1
+
+cmd=(
+    "${PYTHON_BIN}" -u "${GENERATOR}"
+    --projectiles H He C O S
+    --workers "${WORKERS}"
+    --output-directory "${OUTPUT_DIRECTORY}"
+)
+
+echo "Repository: ${REPO_ROOT}"
+echo "Commit: $(git rev-parse HEAD)"
+echo "Host: $(hostname)"
+echo "Python: ${PYTHON_BIN}"
+echo "Allocated CPUs: ${ALLOCATED_CPUS}"
+echo "Workers: ${WORKERS}"
+echo "Output directory: ${OUTPUT_DIRECTORY}"
+echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'Command:'
+printf ' %q' "${cmd[@]}"
+printf '\n'
+
+"${cmd[@]}"
+
+echo "Completed UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

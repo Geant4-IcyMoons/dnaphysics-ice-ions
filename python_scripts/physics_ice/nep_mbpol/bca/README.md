@@ -101,6 +101,17 @@ checkpoints:
 python3 generate_nlh_collision_kernels.py
 ```
 
+On PBS, the repository launcher uses one 256-CPU, 512-GB `idlex` allocation,
+pins threaded numerical libraries to one thread per worker, and generates all
+five supported projectile families:
+
+```bash
+qsub pbs/generate_nlh_collision_kernels.pbs
+```
+
+Submit from the repository root. A repeated submission resumes the same
+configuration-hashed checkpoints and does not recompute completed kernels.
+
 The output directory contains:
 
 - `nlh_collision_kernels.csv`: H/O collision geometry, angles, and recoil
