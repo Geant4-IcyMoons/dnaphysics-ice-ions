@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "created_utc": "2026-08-04T13:43:19.033850+00:00",
+  "created_utc": "2026-08-05T09:00:55.784917+00:00",
   "accepted": true,
   "axis_relative_tolerance": 0.0025,
   "acceptance_tolerance": 0.005,
@@ -25,19 +25,19 @@
   ],
   "case_count": 60,
   "maximum_impact_errors": {
-    "mean_recoil_relative_error": 0.001736804924475921,
-    "recoil_l1_relative_error": 0.001736804924475703,
-    "transport_relative_error": 0.0017417719374273055,
-    "transport_l1_relative_error": 0.0017417719374274235,
-    "theta_cm_l1_relative_error": 0.0011541780741753014,
-    "theta_cm_max_error_over_pi": 0.0024759115203636974
+    "mean_recoil_relative_error": 0.001736804589071106,
+    "recoil_l1_relative_error": 0.0017368045890711204,
+    "transport_relative_error": 0.0017417716190126775,
+    "transport_l1_relative_error": 0.0017417716190129687,
+    "theta_cm_l1_relative_error": 0.0011541780582134593,
+    "theta_cm_max_error_over_pi": 0.0024759115203553572
   },
   "maximum_energy_errors": {
-    "maximum_theta_cm_relative_error": 0.002167239416900557,
-    "maximum_recoil_relative_error": 0.0022059565913146173
+    "maximum_theta_cm_relative_error": 0.0021673329529254826,
+    "maximum_recoil_relative_error": 0.0022058679953138594
   },
   "maximum_quadrature_errors": {
-    "theta_cm_max_error_over_pi": 1.1036065331224415e-09,
+    "theta_cm_max_error_over_pi": 1.1068738816072124e-09,
     "maximum_recoil_relative_error": 0.00025793139025021006
   },
   "adaptive_points": {

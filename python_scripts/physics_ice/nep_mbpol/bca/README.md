@@ -124,6 +124,10 @@ The output directory contains:
   scope, and excluded physics; and
 - `.checkpoints/<configuration hash>/`: restart blocks.
 
+The accepted generated product committed in `../collision_kernels/` is paired
+with the independent evidence in `../collision_benchmarks/`; its local README
+records the exact checksum, generation commits, and PBS jobs.
+
 For a quick infrastructure check:
 
 ```bash

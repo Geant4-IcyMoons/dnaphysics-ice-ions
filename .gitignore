@@ -33,5 +33,10 @@ cross_sections/*_charge_exchange/*_ctmc_checkpoint*.npz
 cross_sections/*_charge_exchange/*_ctmc_failure*.json
 cross_sections/*_charge_exchange/.*.tmp*
 
-# Reproducible NLH kernel products and restart shards (too large for source control)
+# Retain the final NLH production tables; exclude restart shards and test products.
 python_scripts/physics_ice/nep_mbpol/collision_kernels*/
+!python_scripts/physics_ice/nep_mbpol/collision_kernels/
+python_scripts/physics_ice/nep_mbpol/collision_kernels/*
+!python_scripts/physics_ice/nep_mbpol/collision_kernels/README.md
+!python_scripts/physics_ice/nep_mbpol/collision_kernels/nlh_collision_kernels.csv
+!python_scripts/physics_ice/nep_mbpol/collision_kernels/nlh_collision_kernels.manifest.json
