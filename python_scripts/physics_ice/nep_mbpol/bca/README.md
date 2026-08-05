@@ -297,3 +297,53 @@ restart statistics.
 
 The underlying NLH references and corrected dataset are documented in
 `../nlh/README.md`.
+
+## 5. Adaptive per-projectile atomistic transport
+
+`adaptive_nlh_particle_transport.py` is the common controller for H, He, C,
+O, and S. It is not particle-specific code. For each requested projectile it:
+
+1. uses an independent 10,000-trajectory calibration sample to choose between
+   the raw estimator and a straight-line difference-estimator control variate;
+2. runs a distinct production sample with a predeclared sequential schedule;
+3. increases trajectory count until every integral rate/first moment has a 95%
+   simultaneous relative half-width at most 0.5%;
+4. requires a simultaneous Dvoretzky--Kiefer--Wolfowitz absolute band at most
+   0.005 for the complete trajectory-level total-recoil and final-deflection
+   CDFs; and
+5. recursively evaluates geometric energy midpoints, inserting points wherever
+   direct scalar or CDF results differ from endpoint interpolation by more than
+   0.5%.
+
+The control variate subtracts the retained collisions along the sampled
+unperturbed line and adds their exact periodic-translation average. Its fixed
+coefficient is one; it is an unbiased variance-reduction identity, not a
+physical scaling factor. Calibration histories are never reused in production.
+The exact average uses the threshold-defined cross section and numerically
+integrated recoil/transport moments of the same interpolated kernel. Moment
+quadrature is independently limited to one tenth of the kernel interpolation
+tolerance.
+
+Summary-mode checkpoints store sufficient statistics plus compressed
+trajectory-level recoil/deflection samples. They do not write the enormous raw
+per-collision CSV products. Seeds depend on the physical case, not worker count,
+and all completed batches are checksum verified on resume.
+
+Submit one independent 64-core, 16 GB job per projectile with:
+
+```bash
+bash pbs/launch_adaptive_nlh_particles.sh
+```
+
+or one selected projectile with:
+
+```bash
+qsub -N nlh_C -v PROJECTILE=C pbs/run_adaptive_nlh_particle.pbs
+```
+
+The 0.5% criteria above are numerical sampling/interpolation tolerances. They
+do not reduce the separately reported NLH/DMol pair-potential uncertainty.
+These jobs produce structure-sensitive validation and correction evidence;
+they do not regenerate the exact analytic hard cross section. H and He outputs
+must not overlap HTran in Geant4 and remain validation products until a
+non-overlapping handoff or angular/impact-parameter partition is validated.

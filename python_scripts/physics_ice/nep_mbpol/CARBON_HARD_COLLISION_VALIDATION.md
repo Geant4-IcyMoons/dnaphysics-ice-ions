@@ -99,3 +99,9 @@ STATISTICAL_RELATIVE_TOLERANCE=<declared-MC-tolerance> -J 0-53 \
 
 Every case writes checksum-bound batches immediately and resumes only from a
 configuration-compatible checkpoint.
+
+The particle-generic adaptive implementation superseding a manually fixed
+carbon sample count is `adaptive_nlh_particle_transport.py`. It uses the same
+gates for every supported projectile and is launched as one PBS allocation per
+particle by `pbs/launch_adaptive_nlh_particles.sh`. The original 18-case carbon
+pilot remains estimator-calibration evidence; it is not a production table.

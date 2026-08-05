@@ -16,6 +16,7 @@ from .config import canonical_element
 from .scattering import (
     PairKinematics,
     pair_kinematics,
+    two_body_observables_from_cm_angles,
     two_body_outcome_from_cm_angle,
 )
 
@@ -39,6 +40,16 @@ class RuntimeCollision:
     recoil_energy_ev: float
     projectile_out_energy_ev: float
     energy_conservation_error_ev: float
+
+
+@dataclass(frozen=True)
+class HardMomentCrossSections:
+    """Area-integrated moments of the interpolated retained hard kernel."""
+
+    cross_section_angstrom2: float
+    recoil_energy_cross_section_ev_angstrom2: float
+    transport_cross_section_angstrom2: float
+    quadrature_relative_error: float
 
 
 @dataclass(frozen=True)
@@ -289,6 +300,117 @@ class AdaptiveKernelTable:
             projectile, target, projectile_energy_ev
         )
         return math.pi * maximum_impact * maximum_impact
+
+    def area_quantile_breakpoints(
+        self, projectile: str, target: str, projectile_energy_ev: float
+    ) -> NDArray[np.float64]:
+        """Return every impact-grid breakpoint used at one interpolated energy."""
+
+        pair = self._pair(projectile, target)
+        self.pair_kinematics(projectile, target, projectile_energy_ev)
+        energies = pair.energies_ev
+        upper = int(np.searchsorted(energies, projectile_energy_ev, side="left"))
+        if upper < len(energies) and energies[upper] == projectile_energy_ev:
+            values = pair.area_quantiles[upper].copy()
+        else:
+            if upper == 0 or upper == len(energies):
+                raise KernelTableError(
+                    "Energy interpolation attempted outside the table."
+                )
+            values = np.union1d(
+                pair.area_quantiles[upper - 1], pair.area_quantiles[upper]
+            )
+        values.setflags(write=False)
+        return values
+
+    def hard_moment_cross_sections(
+        self,
+        projectile: str,
+        target: str,
+        projectile_energy_ev: float,
+        *,
+        quadrature_order: int = 8,
+        quadrature_relative_tolerance: float = 5.0e-4,
+    ) -> HardMomentCrossSections:
+        """Integrate recoil and transport moments over retained collision area.
+
+        The area quantile q=(b/b_max)^2 is uniform under 2*pi*b*db.  Every
+        adaptive table breakpoint is integrated separately, and orders n and
+        2n are compared so quadrature error is distinct from the kernel's
+        interpolation budget.
+        """
+
+        if quadrature_order < 2:
+            raise ValueError("quadrature_order must be at least two.")
+        if (
+            not math.isfinite(quadrature_relative_tolerance)
+            or quadrature_relative_tolerance <= 0.0
+        ):
+            raise ValueError(
+                "quadrature_relative_tolerance must be finite and positive."
+            )
+        cross_section = self.hard_cross_section_angstrom2(
+            projectile, target, projectile_energy_ev
+        )
+        if cross_section == 0.0:
+            return HardMomentCrossSections(0.0, 0.0, 0.0, 0.0)
+        breakpoints = self.area_quantile_breakpoints(
+            projectile, target, projectile_energy_ev
+        )
+        kinematics = self.pair_kinematics(
+            projectile, target, projectile_energy_ev
+        )
+
+        def integrate(order: int) -> tuple[float, float]:
+            nodes, weights = np.polynomial.legendre.leggauss(order)
+            recoil_total = 0.0
+            transport_total = 0.0
+            for lower, upper in zip(
+                breakpoints[:-1], breakpoints[1:], strict=True
+            ):
+                half_width = 0.5 * float(upper - lower)
+                midpoint = 0.5 * float(upper + lower)
+                quantiles = midpoint + half_width * nodes
+                theta_cm = np.asarray(
+                    [
+                        self.theta_cm_rad(
+                            projectile,
+                            target,
+                            projectile_energy_ev,
+                            float(quantile),
+                        )
+                        for quantile in quantiles
+                    ],
+                    dtype=np.float64,
+                )
+                theta_lab, recoil = two_body_observables_from_cm_angles(
+                    kinematics, theta_cm
+                )
+                recoil_total += half_width * float(np.dot(weights, recoil))
+                transport_total += half_width * float(
+                    np.dot(weights, 1.0 - np.cos(theta_lab))
+                )
+            return recoil_total, transport_total
+
+        coarse = integrate(quadrature_order)
+        fine = integrate(2 * quadrature_order)
+        relative_errors = [
+            abs(fine_value - coarse_value) / max(abs(fine_value), 1.0e-300)
+            for coarse_value, fine_value in zip(coarse, fine, strict=True)
+        ]
+        maximum_error = max(relative_errors)
+        if maximum_error > quadrature_relative_tolerance:
+            raise KernelTableError(
+                "Hard-moment quadrature did not converge: "
+                f"relative error {maximum_error:.3g} exceeds "
+                f"{quadrature_relative_tolerance:.3g}."
+            )
+        return HardMomentCrossSections(
+            cross_section_angstrom2=cross_section,
+            recoil_energy_cross_section_ev_angstrom2=cross_section * fine[0],
+            transport_cross_section_angstrom2=cross_section * fine[1],
+            quadrature_relative_error=maximum_error,
+        )
 
     @staticmethod
     def _angle_at_quantile(pair: _PairTable, index: int, quantile: float) -> float:

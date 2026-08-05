@@ -60,6 +60,7 @@ class HardTrajectoryResult:
     final_direction: tuple[float, float, float]
     termination: str
     events: tuple[HardCollisionEvent, ...]
+    control_variate: "StraightLineControlVariate | None" = None
 
     @property
     def recoil_energy_ev(self) -> float:
@@ -68,6 +69,19 @@ class HardTrajectoryResult:
     @property
     def ambiguous_event_count(self) -> int:
         return sum(event.competing_hard_candidates > 0 for event in self.events)
+
+
+@dataclass(frozen=True)
+class StraightLineControlVariate:
+    """Unperturbed-line hard moments and their exact translation average."""
+
+    collision_count: float
+    recoil_energy_ev: float
+    transport_moment: float
+    expected_collision_count: float
+    expected_recoil_energy_ev: float
+    expected_transport_moment: float
+    maximum_quadrature_relative_error: float
 
 
 @dataclass(frozen=True)
@@ -149,6 +163,9 @@ class PeriodicHardCollisionTransport:
         fractional -= np.floor(fractional)
         self._fractional_positions = fractional
         self._tree = cKDTree(fractional, boxsize=1.0)
+        self._moment_cache: dict[
+            tuple[str, float], tuple[float, float, float, float]
+        ] = {}
 
     def independent_atom_rate_per_angstrom(
         self, projectile: str, projectile_energy_ev: float
@@ -166,6 +183,119 @@ class PeriodicHardCollisionTransport:
                 )
             )
         return rate
+
+    def independent_atom_moment_rates(
+        self, projectile: str, projectile_energy_ev: float
+    ) -> tuple[float, float, float, float]:
+        """Return exact translation-averaged hard count/recoil/transport rates."""
+
+        key = (projectile, float(projectile_energy_ev))
+        cached = self._moment_cache.get(key)
+        if cached is not None:
+            return cached
+        count_rate = 0.0
+        recoil_rate = 0.0
+        transport_rate = 0.0
+        quadrature_error = 0.0
+        for target in ("H", "O"):
+            number_density = (
+                int(np.count_nonzero(self.structure.species == target))
+                / self.structure.volume_angstrom3
+            )
+            moments = self.kernels.hard_moment_cross_sections(
+                projectile, target, projectile_energy_ev
+            )
+            count_rate += number_density * moments.cross_section_angstrom2
+            recoil_rate += (
+                number_density
+                * moments.recoil_energy_cross_section_ev_angstrom2
+            )
+            transport_rate += (
+                number_density * moments.transport_cross_section_angstrom2
+            )
+            quadrature_error = max(
+                quadrature_error, moments.quadrature_relative_error
+            )
+        result = (
+            count_rate,
+            recoil_rate,
+            transport_rate,
+            quadrature_error,
+        )
+        self._moment_cache[key] = result
+        return result
+
+    def straight_line_control_variate(
+        self,
+        projectile: str,
+        projectile_energy_ev: float,
+        initial_position_angstrom: ArrayLike,
+        initial_direction: ArrayLike,
+        path_length_angstrom: float,
+    ) -> StraightLineControlVariate:
+        """Evaluate an unbiased difference-estimator control variate.
+
+        The reference is the sum of retained binary encounters along the
+        unperturbed initial line at fixed initial energy.  Uniform translation
+        of that line through a periodic cell has the exact independent-atom
+        expectation n_t*L*integral(2*pi*b db), irrespective of crystal order.
+        Subtracting this sampled reference and adding its analytic expectation
+        therefore changes variance, not the atomistic trajectory expectation.
+        """
+
+        if not math.isfinite(path_length_angstrom) or path_length_angstrom <= 0.0:
+            raise ValueError("path_length_angstrom must be finite and positive.")
+        position = np.asarray(initial_position_angstrom, dtype=np.float64)
+        if position.shape != (3,) or not np.all(np.isfinite(position)):
+            raise ValueError(
+                "initial_position_angstrom must contain three finite values."
+            )
+        direction = _unit_vector(initial_direction, "initial_direction")
+        collisions = []
+        traveled = 0.0
+        while traveled < path_length_angstrom:
+            segment = min(
+                self.search_window_angstrom,
+                path_length_angstrom - traveled,
+            )
+            segment_position = position + traveled * direction
+            candidates = self._candidates(
+                segment_position,
+                direction,
+                segment,
+                projectile,
+                projectile_energy_ev,
+                None,
+            )
+            for candidate in candidates:
+                if candidate.projection_angstrom > segment:
+                    continue
+                collisions.append(
+                    self.kernels.collide(
+                        projectile,
+                        candidate.target,
+                        projectile_energy_ev,
+                        candidate.impact_parameter_angstrom,
+                    )
+                )
+            traveled += segment
+        count_rate, recoil_rate, transport_rate, quadrature_error = (
+            self.independent_atom_moment_rates(projectile, projectile_energy_ev)
+        )
+        return StraightLineControlVariate(
+            collision_count=float(len(collisions)),
+            recoil_energy_ev=math.fsum(
+                collision.recoil_energy_ev for collision in collisions
+            ),
+            transport_moment=math.fsum(
+                1.0 - math.cos(collision.theta_projectile_lab_rad)
+                for collision in collisions
+            ),
+            expected_collision_count=count_rate * path_length_angstrom,
+            expected_recoil_energy_ev=recoil_rate * path_length_angstrom,
+            expected_transport_moment=transport_rate * path_length_angstrom,
+            maximum_quadrature_relative_error=quadrature_error,
+        )
 
     def _energy_bounds(self, projectile: str) -> tuple[float, float]:
         bounds = [

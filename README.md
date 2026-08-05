@@ -125,6 +125,10 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     directional decision-gate comparisons pass. See `proton-pipeline/README.md`
     and
     [`CARBON_HARD_COLLISION_VALIDATION.md`](python_scripts/physics_ice/nep_mbpol/CARBON_HARD_COLLISION_VALIDATION.md).
+  - `adaptive_nlh_particle_transport.py` supplies one common restart-safe
+    trajectory/energy-refinement workflow for H, He, C, O, and S. The launcher
+    submits one 64-core PBS job per particle; H/He products remain segregated
+    from HTran pending a validated non-overlapping partition.
 
 - `plotting/plot_vibExcitation_channelwise_angular_distributions.py`
   - Visualizes angular PDFs per vib channel using Michaud γ(E) and a Henyey–Greenstein mapping.

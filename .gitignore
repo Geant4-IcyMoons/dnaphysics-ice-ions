@@ -49,3 +49,15 @@ python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/*
 python_scripts/physics_ice/nep_mbpol/hard_collision_runs/
 nlh_hard.o*
 nlh_hard.e*
+nlh_adaptive.o*
+nlh_adaptive.e*
+nlh_H.o*
+nlh_H.e*
+nlh_He.o*
+nlh_He.e*
+nlh_C.o*
+nlh_C.e*
+nlh_O.o*
+nlh_O.e*
+nlh_S.o*
+nlh_S.e*

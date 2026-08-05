@@ -7,6 +7,7 @@ import argparse
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import csv
+from dataclasses import replace
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -34,6 +35,7 @@ from bca.convergence import (  # noqa: E402
     convergence_report,
     doubling_schedule,
     merge_statistics,
+    simultaneous_dkw_half_width,
 )
 from bca.runtime import AdaptiveKernelTable  # noqa: E402
 from bca.structure import IceStructure, load_ice_structure  # noqa: E402
@@ -45,7 +47,7 @@ from bca.trajectory import (  # noqa: E402
 
 _WORKER_TRANSPORT: PeriodicHardCollisionTransport | None = None
 _WORKER_STRUCTURE: IceStructure | None = None
-TRAJECTORY_IMPLEMENTATION_VERSION = 1
+TRAJECTORY_IMPLEMENTATION_VERSION = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -103,6 +105,14 @@ def parse_args() -> argparse.Namespace:
             "(default: 0.95)."
         ),
     )
+    parser.add_argument(
+        "--trajectory-cdf-tolerance",
+        type=float,
+        help=(
+            "Optional simultaneous absolute DKW half-width for the total-"
+            "recoil and final-deflection trajectory CDFs."
+        ),
+    )
     parser.add_argument("--path-length-angstrom", type=float, default=100.0)
     orientation = parser.add_mutually_exclusive_group()
     orientation.add_argument(
@@ -125,6 +135,23 @@ def parse_args() -> argparse.Namespace:
         "--allow-unvalidated",
         action="store_true",
         help="Diagnostic only: permit a structure without collision attestation.",
+    )
+    parser.add_argument(
+        "--control-variate",
+        action="store_true",
+        help=(
+            "Use the unbiased straight-line difference estimator for all five "
+            "rate/moment observables."
+        ),
+    )
+    parser.add_argument(
+        "--output-detail",
+        choices=("full", "summary"),
+        default="full",
+        help=(
+            "Write per-trajectory/event CSVs, or only restart-safe sufficient "
+            "statistics (default: full)."
+        ),
     )
     parser.add_argument(
         "--output-directory",
@@ -157,6 +184,13 @@ def _validate_args(args: argparse.Namespace) -> None:
     if not 0.0 < args.statistical_confidence < 1.0:
         raise ValueError(
             "--statistical-confidence must lie strictly between zero and one."
+        )
+    if args.trajectory_cdf_tolerance is not None and (
+        not math.isfinite(args.trajectory_cdf_tolerance)
+        or args.trajectory_cdf_tolerance <= 0.0
+    ):
+        raise ValueError(
+            "--trajectory-cdf-tolerance must be finite and positive."
         )
     if (
         not math.isfinite(args.path_length_angstrom)
@@ -210,6 +244,7 @@ def _run_one(
         float,
         tuple[float, float, float] | None,
         int,
+        bool,
     ],
 ) -> tuple[int, HardTrajectoryResult]:
     if _WORKER_TRANSPORT is None or _WORKER_STRUCTURE is None:
@@ -222,6 +257,7 @@ def _run_one(
         path_length_angstrom,
         fixed_direction,
         max_collisions,
+        use_control_variate,
     ) = task
     seed = np.random.SeedSequence((master_seed, trajectory_index))
     rng = np.random.default_rng(seed)
@@ -232,6 +268,17 @@ def _run_one(
         if fixed_direction is None
         else np.asarray(fixed_direction, dtype=np.float64)
     )
+    control_variate = (
+        _WORKER_TRANSPORT.straight_line_control_variate(
+            projectile,
+            energy_ev,
+            initial_position,
+            direction,
+            path_length_angstrom,
+        )
+        if use_control_variate
+        else None
+    )
     result = _WORKER_TRANSPORT.trace(
         projectile,
         energy_ev,
@@ -241,6 +288,8 @@ def _run_one(
         rng=rng,
         max_collisions=max_collisions,
     )
+    if control_variate is not None:
+        result = replace(result, control_variate=control_variate)
     return trajectory_index, result
 
 
@@ -274,11 +323,19 @@ def _write_trajectories(
         "final_dx",
         "final_dy",
         "final_dz",
+        "reference_collision_count",
+        "reference_recoil_energy_ev",
+        "reference_transport_moment",
+        "expected_reference_collision_count",
+        "expected_reference_recoil_energy_ev",
+        "expected_reference_transport_moment",
+        "control_variate_quadrature_relative_error",
     )
     with temporary.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(columns)
         for index, result in indexed_results:
+            reference = result.control_variate
             writer.writerow(
                 (
                     index,
@@ -294,6 +351,19 @@ def _write_trajectories(
                     *result.final_position_angstrom,
                     *result.initial_direction,
                     *result.final_direction,
+                    *(
+                        (
+                            reference.collision_count,
+                            reference.recoil_energy_ev,
+                            reference.transport_moment,
+                            reference.expected_collision_count,
+                            reference.expected_recoil_energy_ev,
+                            reference.expected_transport_moment,
+                            reference.maximum_quadrature_relative_error,
+                        )
+                        if reference is not None
+                        else ("", "", "", "", "", "", "")
+                    ),
                 )
             )
     temporary.replace(path)
@@ -367,8 +437,53 @@ def _write_events(
     temporary.replace(path)
 
 
+def _write_distribution_sample(
+    path: Path, indexed_results: list[tuple[int, HardTrajectoryResult]]
+) -> None:
+    """Store compact trajectory-level samples needed to reconstruct both CDFs."""
+
+    trajectory = np.asarray(
+        [index for index, _ in indexed_results], dtype=np.int64
+    )
+    total_recoil = np.asarray(
+        [result.recoil_energy_ev for _, result in indexed_results],
+        dtype=np.float64,
+    )
+    final_deflection = np.asarray(
+        [
+            math.acos(
+                min(
+                    1.0,
+                    max(
+                        -1.0,
+                        float(
+                            np.dot(
+                                result.initial_direction,
+                                result.final_direction,
+                            )
+                        ),
+                    ),
+                )
+            )
+            for _, result in indexed_results
+        ],
+        dtype=np.float64,
+    )
+    temporary = _temporary_path(path)
+    with temporary.open("wb") as handle:
+        np.savez_compressed(
+            handle,
+            trajectory=trajectory,
+            total_recoil_energy_ev=total_recoil,
+            final_deflection_rad=final_deflection,
+        )
+    temporary.replace(path)
+
+
 def _batch_statistics(
     indexed_results: list[tuple[int, HardTrajectoryResult]],
+    *,
+    control_variate: bool = False,
 ) -> dict[str, RatioStatistics]:
     statistics = {name: RatioStatistics() for name in OBSERVABLES}
     for _, result in indexed_results:
@@ -379,6 +494,19 @@ def _batch_statistics(
             1.0 - math.cos(event.theta_projectile_lab_rad)
             for event in result.events
         )
+        if control_variate:
+            reference = result.control_variate
+            if reference is None:
+                raise RuntimeError("Control-variate result is missing its reference.")
+            collisions += (
+                reference.expected_collision_count - reference.collision_count
+            )
+            recoil += (
+                reference.expected_recoil_energy_ev - reference.recoil_energy_ev
+            )
+            transport += (
+                reference.expected_transport_moment - reference.transport_moment
+            )
         statistics["hard_collision_rate_per_angstrom"].add(collisions, path)
         statistics["hard_nuclear_stopping_ev_per_angstrom"].add(recoil, path)
         statistics["hard_transport_rate_per_angstrom"].add(transport, path)
@@ -419,6 +547,8 @@ def _run_signature(
         "seed": args.seed,
         "search_window_angstrom": args.search_window_angstrom,
         "max_collisions": args.max_collisions,
+        "control_variate": getattr(args, "control_variate", False),
+        "output_detail": getattr(args, "output_detail", "full"),
     }
     encoded = json.dumps(
         configuration, sort_keys=True, separators=(",", ":")
@@ -430,16 +560,26 @@ def _checkpoint_batch(
     directory: Path,
     signature: str,
     indexed_results: list[tuple[int, HardTrajectoryResult]],
+    *,
+    output_detail: str,
+    control_variate: bool,
 ) -> Path:
     start = indexed_results[0][0]
     stop = indexed_results[-1][0] + 1
     stem = f"batch_{start:09d}_{stop:09d}"
     trajectory_path = directory / f"{stem}.trajectories.csv"
     event_path = directory / f"{stem}.events.csv"
+    distribution_path = directory / f"{stem}.distributions.npz"
     record_path = directory / f"{stem}.manifest.json"
-    _write_trajectories(trajectory_path, indexed_results)
-    _write_events(event_path, indexed_results)
-    statistics = _batch_statistics(indexed_results)
+    if output_detail == "full":
+        _write_trajectories(trajectory_path, indexed_results)
+        _write_events(event_path, indexed_results)
+    else:
+        _write_distribution_sample(distribution_path, indexed_results)
+    statistics = _batch_statistics(
+        indexed_results, control_variate=control_variate
+    )
+    raw_statistics = _batch_statistics(indexed_results)
     target_counts = Counter(
         event.target for _, result in indexed_results for event in result.events
     )
@@ -447,17 +587,17 @@ def _checkpoint_batch(
         result.termination for _, result in indexed_results
     )
     record = {
-        "schema_version": 1,
+        "schema_version": 2,
         "configuration_signature": signature,
         "trajectory_start": start,
         "trajectory_stop": stop,
         "trajectory_count": stop - start,
-        "trajectory_csv": trajectory_path.name,
-        "trajectory_csv_sha256": _sha256_file(trajectory_path),
-        "event_csv": event_path.name,
-        "event_csv_sha256": _sha256_file(event_path),
+        "output_detail": output_detail,
         "statistics": {
             name: value.to_dict() for name, value in statistics.items()
+        },
+        "raw_statistics": {
+            name: value.to_dict() for name, value in raw_statistics.items()
         },
         "summary": {
             "target_counts": dict(sorted(target_counts.items())),
@@ -465,8 +605,34 @@ def _checkpoint_batch(
             "ambiguous_event_count": sum(
                 result.ambiguous_event_count for _, result in indexed_results
             ),
+            "maximum_control_variate_quadrature_relative_error": max(
+                (
+                    result.control_variate.maximum_quadrature_relative_error
+                    for _, result in indexed_results
+                    if result.control_variate is not None
+                ),
+                default=0.0,
+            ),
         },
     }
+    if output_detail == "full":
+        record.update(
+            {
+                "trajectory_csv": trajectory_path.name,
+                "trajectory_csv_sha256": _sha256_file(trajectory_path),
+                "event_csv": event_path.name,
+                "event_csv_sha256": _sha256_file(event_path),
+            }
+        )
+    else:
+        record.update(
+            {
+                "distribution_sample": distribution_path.name,
+                "distribution_sample_sha256": _sha256_file(
+                    distribution_path
+                ),
+            }
+        )
     temporary = _temporary_path(record_path)
     temporary.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     temporary.replace(record_path)
@@ -486,17 +652,36 @@ def _load_checkpoint_batches(
         stop = int(record["trajectory_stop"])
         if start != expected_start or stop <= start:
             raise RuntimeError(f"Non-contiguous checkpoint range in {path}.")
-        trajectory_path = directory / str(record["trajectory_csv"])
-        event_path = directory / str(record["event_csv"])
-        for product, expected in (
-            (trajectory_path, record["trajectory_csv_sha256"]),
-            (event_path, record["event_csv_sha256"]),
-        ):
-            if not product.is_file() or _sha256_file(product) != expected:
-                raise RuntimeError(f"Checkpoint checksum failure: {product}.")
+        if record.get("output_detail") == "full":
+            trajectory_path = directory / str(record["trajectory_csv"])
+            event_path = directory / str(record["event_csv"])
+            for product, expected in (
+                (trajectory_path, record["trajectory_csv_sha256"]),
+                (event_path, record["event_csv_sha256"]),
+            ):
+                if not product.is_file() or _sha256_file(product) != expected:
+                    raise RuntimeError(f"Checkpoint checksum failure: {product}.")
+        elif record.get("output_detail") == "summary":
+            distribution_path = directory / str(record["distribution_sample"])
+            if (
+                not distribution_path.is_file()
+                or _sha256_file(distribution_path)
+                != record["distribution_sample_sha256"]
+            ):
+                raise RuntimeError(
+                    f"Checkpoint checksum failure: {distribution_path}."
+                )
+        else:
+            raise RuntimeError(f"Unknown checkpoint output detail in {path}.")
         statistics = record.get("statistics")
         if not isinstance(statistics, dict) or set(statistics) != set(OBSERVABLES):
             raise RuntimeError(f"Incomplete checkpoint statistics in {path}.")
+        raw_statistics = record.get("raw_statistics")
+        if (
+            not isinstance(raw_statistics, dict)
+            or set(raw_statistics) != set(OBSERVABLES)
+        ):
+            raise RuntimeError(f"Incomplete raw checkpoint statistics in {path}.")
         records.append(record)
         expected_start = stop
     return records
@@ -504,10 +689,11 @@ def _load_checkpoint_batches(
 
 def _statistics_from_records(
     records: list[dict[str, object]],
+    record_key: str = "statistics",
 ) -> dict[str, RatioStatistics]:
     batches = []
     for record in records:
-        payload = record["statistics"]
+        payload = record[record_key]
         if not isinstance(payload, dict):
             raise RuntimeError("Malformed checkpoint statistics.")
         batches.append(
@@ -546,6 +732,7 @@ def _execute_tasks(
             float,
             tuple[float, float, float] | None,
             int,
+            bool,
         ]
     ],
     executor: ProcessPoolExecutor | None,
@@ -576,18 +763,36 @@ def _write_manifest(
     trajectory_csv: Path,
     event_csv: Path,
 ) -> None:
+    raw_statistics = _statistics_from_records(records, "raw_statistics")
+    raw_statistical_report = convergence_report(
+        raw_statistics,
+        tolerance=args.statistical_relative_tolerance,
+        confidence=args.statistical_confidence,
+        scheduled_look_count=len(schedule),
+        look_index=int(statistical_report["look_index"]),
+    )
     rate_statistics = statistics["hard_collision_rate_per_angstrom"]
     stopping_statistics = statistics[
         "hard_nuclear_stopping_ev_per_angstrom"
     ]
     transport_statistics = statistics["hard_transport_rate_per_angstrom"]
     total_path = rate_statistics.denominator_sum
-    total_events = int(round(rate_statistics.numerator_sum))
-    total_recoil = stopping_statistics.numerator_sum
-    total_transport = transport_statistics.numerator_sum
+    estimated_total_events = rate_statistics.numerator_sum
+    estimated_total_recoil = stopping_statistics.numerator_sum
+    estimated_total_transport = transport_statistics.numerator_sum
+    raw_total_events = raw_statistics[
+        "hard_collision_rate_per_angstrom"
+    ].numerator_sum
+    raw_total_recoil = raw_statistics[
+        "hard_nuclear_stopping_ev_per_angstrom"
+    ].numerator_sum
+    raw_total_transport = raw_statistics[
+        "hard_transport_rate_per_angstrom"
+    ].numerator_sum
     target_counts: Counter[str] = Counter()
     terminations: Counter[str] = Counter()
     ambiguous = 0
+    maximum_quadrature_error = 0.0
     for record in records:
         summary = record["summary"]
         if not isinstance(summary, dict):
@@ -595,6 +800,14 @@ def _write_manifest(
         target_counts.update(summary["target_counts"])
         terminations.update(summary["termination_counts"])
         ambiguous += int(summary["ambiguous_event_count"])
+        maximum_quadrature_error = max(
+            maximum_quadrature_error,
+            float(
+                summary[
+                    "maximum_control_variate_quadrature_relative_error"
+                ]
+            ),
+        )
     independent_atom_rate = sum(
         int(np.count_nonzero(structure.species == target))
         / structure.volume_angstrom3
@@ -603,9 +816,12 @@ def _write_manifest(
         )
         for target in ("H", "O")
     )
-    sampled_rate = total_events / total_path if total_path > 0.0 else 0.0
+    sampled_rate = (
+        estimated_total_events / total_path if total_path > 0.0 else 0.0
+    )
+    raw_sampled_rate = raw_total_events / total_path if total_path > 0.0 else 0.0
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "trajectory_implementation_version": TRAJECTORY_IMPLEMENTATION_VERSION,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "configuration_signature": signature,
@@ -625,6 +841,7 @@ def _write_manifest(
                 args.statistical_relative_tolerance
             ),
             "statistical_confidence": args.statistical_confidence,
+            "trajectory_cdf_tolerance": args.trajectory_cdf_tolerance,
             "path_length_angstrom": args.path_length_angstrom,
             "direction": fixed_direction,
             "isotropic_directions": args.isotropic_directions,
@@ -633,13 +850,19 @@ def _write_manifest(
             "search_window_angstrom": args.search_window_angstrom,
             "max_collisions": args.max_collisions,
             "allow_unvalidated": args.allow_unvalidated,
+            "control_variate": args.control_variate,
+            "output_detail": args.output_detail,
         },
         "summary": {
             "total_traveled_path_angstrom": total_path,
-            "hard_collision_count": total_events,
+            "hard_collision_count": int(round(raw_total_events)),
+            "raw_hard_collision_count": int(round(raw_total_events)),
+            "estimated_hard_collision_count": estimated_total_events,
             "target_counts": dict(sorted(target_counts.items())),
-            "total_recoil_energy_ev": total_recoil,
+            "raw_total_recoil_energy_ev": raw_total_recoil,
+            "estimated_total_recoil_energy_ev": estimated_total_recoil,
             "sampled_hard_collision_rate_per_angstrom": sampled_rate,
+            "raw_sampled_hard_collision_rate_per_angstrom": raw_sampled_rate,
             "independent_atom_hard_rate_per_angstrom_at_initial_energy": (
                 independent_atom_rate
             ),
@@ -649,16 +872,38 @@ def _write_manifest(
                 else None
             ),
             "sampled_hard_nuclear_stopping_ev_per_angstrom": (
-                total_recoil / total_path if total_path > 0.0 else 0.0
+                estimated_total_recoil / total_path if total_path > 0.0 else 0.0
+            ),
+            "raw_sampled_hard_nuclear_stopping_ev_per_angstrom": (
+                raw_total_recoil / total_path if total_path > 0.0 else 0.0
             ),
             "sampled_hard_transport_rate_per_angstrom": (
-                total_transport / total_path if total_path > 0.0 else 0.0
+                estimated_total_transport / total_path
+                if total_path > 0.0
+                else 0.0
+            ),
+            "raw_sampled_hard_transport_rate_per_angstrom": (
+                raw_total_transport / total_path if total_path > 0.0 else 0.0
             ),
             "mean_recoil_energy_ev_per_collision": (
-                total_recoil / total_events if total_events > 0 else None
+                estimated_total_recoil / estimated_total_events
+                if estimated_total_events > 0
+                else None
+            ),
+            "raw_mean_recoil_energy_ev_per_collision": (
+                raw_total_recoil / raw_total_events
+                if raw_total_events > 0
+                else None
             ),
             "mean_one_minus_cosine_per_collision": (
-                total_transport / total_events if total_events > 0 else None
+                estimated_total_transport / estimated_total_events
+                if estimated_total_events > 0
+                else None
+            ),
+            "raw_mean_one_minus_cosine_per_collision": (
+                raw_total_transport / raw_total_events
+                if raw_total_events > 0
+                else None
             ),
             "ambiguous_event_count": ambiguous,
             "termination_counts": dict(sorted(terminations.items())),
@@ -667,9 +912,15 @@ def _write_manifest(
             "required": args.trajectories is None,
             **statistical_report,
             "scope": (
-                "normalization and first energy/angular moments only; this does "
-                "not certify binned angular or recoil distribution tails"
+                "normalization and first energy/angular moments, plus the "
+                "entire trajectory-level total-recoil/final-deflection CDFs "
+                "when trajectory_cdf_tolerance is set"
             ),
+        },
+        "raw_statistical_convergence": {
+            "required": False,
+            **raw_statistical_report,
+            "scope": "diagnostic estimator-selection evidence only",
         },
         "numerical_error_budgets": {
             "collision_kernel_interpolation": (
@@ -683,10 +934,31 @@ def _write_manifest(
                 "not formed: interpolation and sampling errors are reported "
                 "separately and are not the physical-model uncertainty"
             ),
+            "control_variate_moment_quadrature_maximum_relative_error": (
+                maximum_quadrature_error
+            ),
+        },
+        "control_variate": {
+            "enabled": args.control_variate,
+            "estimator": (
+                "atomistic trajectory minus its unperturbed straight-line "
+                "retained collision sum plus the exact periodic-translation "
+                "average"
+            ),
+            "coefficient": 1.0,
+            "purpose": (
+                "unbiased variance reduction; it does not replace or rescale "
+                "the atomistic model"
+            ),
         },
         "outputs": {
-            "trajectories_csv": trajectory_csv.name,
-            "events_csv": event_csv.name,
+            "detail": args.output_detail,
+            "trajectories_csv": (
+                trajectory_csv.name if args.output_detail == "full" else None
+            ),
+            "events_csv": (
+                event_csv.name if args.output_detail == "full" else None
+            ),
             "checkpoint_directory": str(checkpoint_directory),
         },
         "physics_scope": (
@@ -813,12 +1085,17 @@ def main() -> int:
                                 args.path_length_angstrom,
                                 fixed_direction,
                                 args.max_collisions,
+                                args.control_variate,
                             )
                             for index in range(completed, stop)
                         ]
                         indexed_results = _execute_tasks(tasks, executor)
                         record_path = _checkpoint_batch(
-                            checkpoint_directory, signature, indexed_results
+                            checkpoint_directory,
+                            signature,
+                            indexed_results,
+                            output_detail=args.output_detail,
+                            control_variate=args.control_variate,
                         )
                         records.append(
                             json.loads(record_path.read_text(encoding="utf-8"))
@@ -833,6 +1110,34 @@ def main() -> int:
                 scheduled_look_count=len(schedule),
                 look_index=look_index,
             )
+            if args.trajectory_cdf_tolerance is not None:
+                cdf_half_width, cdf_individual_confidence = (
+                    simultaneous_dkw_half_width(
+                        completed,
+                        args.statistical_confidence,
+                        distribution_count=2,
+                        scheduled_look_count=len(schedule),
+                    )
+                )
+                cdf_passes = cdf_half_width <= args.trajectory_cdf_tolerance
+                last_report["trajectory_cdf_convergence"] = {
+                    "passes": cdf_passes,
+                    "absolute_confidence_half_width": cdf_half_width,
+                    "absolute_tolerance": args.trajectory_cdf_tolerance,
+                    "distribution_count": 2,
+                    "individual_band_confidence": cdf_individual_confidence,
+                    "distributions": [
+                        "total_recoil_energy_ev_per_trajectory",
+                        "final_projectile_deflection_rad_per_trajectory",
+                    ],
+                    "method": (
+                        "Dvoretzky-Kiefer-Wolfowitz band with Bonferroni "
+                        "correction across distributions and scheduled looks"
+                    ),
+                }
+                last_report["converged"] = bool(
+                    last_report["converged"] and cdf_passes
+                )
             maximum_width = last_report[
                 "maximum_finite_relative_confidence_half_width"
             ]
@@ -844,7 +1149,14 @@ def main() -> int:
             print(
                 f"Statistical look {look_index}/{len(schedule)}: "
                 f"N={completed:,}, maximum finite relative half-width="
-                f"{width_text}; converged={last_report['converged']}"
+                f"{width_text}; "
+                + (
+                    "CDF half-width="
+                    f"{float(last_report['trajectory_cdf_convergence']['absolute_confidence_half_width']):.3%}; "
+                    if "trajectory_cdf_convergence" in last_report
+                    else ""
+                )
+                + f"converged={last_report['converged']}"
             )
             if not adaptive or bool(last_report["converged"]):
                 break
@@ -858,18 +1170,19 @@ def main() -> int:
     trajectory_csv = output / "hard_collision_trajectories.csv"
     event_csv = output / "hard_collision_events.csv"
     manifest_path = output / "hard_collision_run.manifest.json"
-    _combine_csv_fragments(
-        trajectory_csv,
-        checkpoint_directory,
-        records,
-        "trajectory_csv",
-    )
-    _combine_csv_fragments(
-        event_csv,
-        checkpoint_directory,
-        records,
-        "event_csv",
-    )
+    if args.output_detail == "full":
+        _combine_csv_fragments(
+            trajectory_csv,
+            checkpoint_directory,
+            records,
+            "trajectory_csv",
+        )
+        _combine_csv_fragments(
+            event_csv,
+            checkpoint_directory,
+            records,
+            "event_csv",
+        )
     _write_manifest(
         manifest_path,
         args,
@@ -885,8 +1198,9 @@ def main() -> int:
         trajectory_csv,
         event_csv,
     )
-    print(f"Wrote {trajectory_csv}")
-    print(f"Wrote {event_csv}")
+    if args.output_detail == "full":
+        print(f"Wrote {trajectory_csv}")
+        print(f"Wrote {event_csv}")
     print(f"Wrote {manifest_path}")
     if adaptive and not bool(last_report["converged"]):
         print(

@@ -135,6 +135,18 @@ def test_runtime_reader_matches_direct_grid_collision(tmp_path):
     )
 
 
+def test_runtime_integrates_hard_moments_over_exact_cross_section(tmp_path):
+    table = AdaptiveKernelTable(_kernel_product(tmp_path))
+    moments = table.hard_moment_cross_sections("C", "O", 10_000.0)
+    assert moments.cross_section_angstrom2 == pytest.approx(
+        table.hard_cross_section_angstrom2("C", "O", 10_000.0), rel=1.0e-15
+    )
+    assert moments.recoil_energy_cross_section_ev_angstrom2 > 0.0
+    assert moments.transport_cross_section_angstrom2 > 0.0
+    # The integration budget is one tenth of the 0.5% table tolerance.
+    assert moments.quadrature_relative_error <= 5.0e-4
+
+
 def test_runtime_reader_rejects_tampered_csv(tmp_path):
     manifest = _kernel_product(tmp_path)
     csv_path = tmp_path / "nlh_collision_kernels.csv"
@@ -166,6 +178,22 @@ def test_periodic_transport_links_structure_to_kernel(tmp_path):
         event.projectile_energy_in_ev, abs=1.0e-10
     )
     assert np.linalg.norm(event.recoil_direction) == pytest.approx(1.0)
+
+
+def test_straight_line_control_variate_has_exact_periodic_mean(tmp_path):
+    table = AdaptiveKernelTable(_kernel_product(tmp_path))
+    transport = PeriodicHardCollisionTransport(_structure(), table)
+    reference = transport.straight_line_control_variate(
+        "C", 10_000.0, (9.8, 5.0, 5.0), (1.0, 0.0, 0.0), 1.0
+    )
+    assert reference.collision_count == 1.0
+    assert reference.recoil_energy_ev > 0.0
+    assert reference.transport_moment > 0.0
+    assert reference.expected_collision_count == pytest.approx(
+        transport.independent_atom_rate_per_angstrom("C", 10_000.0)
+    )
+    assert reference.expected_recoil_energy_ev > 0.0
+    assert reference.expected_transport_moment > 0.0
 
 
 @pytest.mark.parametrize("projectile", ("H", "He"))

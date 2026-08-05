@@ -25,6 +25,7 @@ from bca.convergence import (  # noqa: E402
     doubling_schedule,
     merge_statistics,
     simultaneous_critical_value,
+    simultaneous_dkw_half_width,
 )
 import simulate_nlh_hard_collisions as simulator  # noqa: E402
 
@@ -121,6 +122,15 @@ def test_confidence_budget_covers_observables_and_scheduled_looks() -> None:
     assert critical > 1.96
     individual_alpha = 1.0 - individual_confidence
     assert individual_alpha * len(OBSERVABLES) * 11 == pytest.approx(0.05)
+
+
+def test_dkw_budget_covers_two_distributions_and_scheduled_looks() -> None:
+    width, individual_confidence = simultaneous_dkw_half_width(
+        200_000, 0.95, 2, 11
+    )
+    assert width < 0.005
+    individual_alpha = 1.0 - individual_confidence
+    assert individual_alpha * 2 * 11 == pytest.approx(0.05)
 
 
 def test_convergence_requires_every_rate_and_moment() -> None:

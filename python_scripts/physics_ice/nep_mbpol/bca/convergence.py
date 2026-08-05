@@ -38,8 +38,10 @@ class RatioStatistics:
     def add(self, numerator: float, denominator: float) -> None:
         if not math.isfinite(numerator) or not math.isfinite(denominator):
             raise ValueError("Ratio observations must be finite.")
-        if denominator < 0.0:
-            raise ValueError("Ratio denominators cannot be negative.")
+        # Difference-estimator control variates can make an individual
+        # corrected denominator negative while preserving a positive expected
+        # denominator. The ratio delta method only requires the accumulated
+        # denominator to be positive at assessment time.
         self.count += 1
         self.numerator_sum += numerator
         self.denominator_sum += denominator
@@ -164,6 +166,31 @@ def simultaneous_critical_value(
         student_t.ppf(1.0 - 0.5 * individual_alpha, trajectory_count - 1)
     )
     return critical, 1.0 - individual_alpha
+
+
+def simultaneous_dkw_half_width(
+    trajectory_count: int,
+    confidence: float,
+    distribution_count: int,
+    scheduled_look_count: int,
+) -> tuple[float, float]:
+    """Distribution-free CDF band across distributions and sequential looks."""
+
+    if trajectory_count < 1:
+        raise ValueError("At least one trajectory is required.")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must lie strictly between zero and one.")
+    if distribution_count < 1 or scheduled_look_count < 1:
+        raise ValueError(
+            "Distribution and scheduled-look counts must be positive."
+        )
+    individual_alpha = (1.0 - confidence) / (
+        distribution_count * scheduled_look_count
+    )
+    half_width = math.sqrt(
+        math.log(2.0 / individual_alpha) / (2.0 * trajectory_count)
+    )
+    return half_width, 1.0 - individual_alpha
 
 
 def convergence_report(
