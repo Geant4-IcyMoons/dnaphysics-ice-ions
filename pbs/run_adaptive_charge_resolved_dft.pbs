@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+#PBS -N ion_cdft_adaptive
+#PBS -q idle
+#PBS -l select=1:ncpus=8:mem=128gb
+#PBS -l walltime=500:00:00
+#PBS -j oe
+
+# Recursively run and refine one fixed-charge ion DFT pilot. The measured
+# default runs one eight-rank CP2K calculation. Use fixed-batch array shards
+# for multi-node throughput; do not duplicate this immutable controller.
+
+set -euo pipefail
+umask 002
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -f "${PBS_O_WORKDIR}/python_scripts/physics_ice/nep_mbpol/adaptive_charge_resolved_dft.py" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+cd "${REPO_ROOT}"
+
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
+CONTROLLER="${NEP_DIR}/adaptive_charge_resolved_dft.py"
+
+if [[ ! -x "${PYTHON_BIN}" || ! -x "${CONTROLLER}" ]]; then
+    echo "Missing adaptive DFT controller or its Python interpreter." >&2
+    exit 2
+fi
+if [[ -n "${CP2K_MODULE:-}" ]]; then
+    module load "${CP2K_MODULE}"
+fi
+CP2K_EXE="${CP2K_EXE:-$(command -v cp2k.psmp || true)}"
+if [[ -z "${CP2K_EXE}" || ! -x "${CP2K_EXE}" ]]; then
+    echo "CP2K is unavailable. Set CP2K_EXE or CP2K_MODULE; no task was run." >&2
+    exit 2
+fi
+
+if [[ -n "${PBS_NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${PBS_NCPUS}"
+elif [[ -n "${NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${NCPUS}"
+else
+    ALLOCATED_CPUS="$("${PYTHON_BIN}" -c 'import os; print(len(os.sched_getaffinity(0)))')"
+fi
+MPI_RANKS_PER_CALCULATION="${MPI_RANKS_PER_CALCULATION:-8}"
+OMP_THREADS_PER_RANK="${OMP_THREADS_PER_RANK:-1}"
+if [[ ! "${MPI_RANKS_PER_CALCULATION}" =~ ^[1-9][0-9]*$ \
+      || ! "${OMP_THREADS_PER_RANK}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "MPI ranks and OpenMP threads must be positive integers." >&2
+    exit 2
+fi
+CPUS_PER_CALCULATION=$((MPI_RANKS_PER_CALCULATION * OMP_THREADS_PER_RANK))
+PARALLEL_CALCULATIONS="${PARALLEL_CALCULATIONS:-1}"
+if [[ ! "${CPUS_PER_CALCULATION}" =~ ^[1-9][0-9]*$ || "${CPUS_PER_CALCULATION}" -gt "${ALLOCATED_CPUS}" ]]; then
+    echo "CPUS_PER_CALCULATION must lie in 1-${ALLOCATED_CPUS}." >&2
+    exit 2
+fi
+if [[ ! "${PARALLEL_CALCULATIONS}" =~ ^[0-9]+$ ]]; then
+    echo "PARALLEL_CALCULATIONS must be zero or a positive integer." >&2
+    exit 2
+fi
+
+export PYTHONHASHSEED=0
+export PYTHONUNBUFFERED=1
+export CP2K_MPI_RANKS="${MPI_RANKS_PER_CALCULATION}"
+export OMP_THREADS_PER_RANK
+
+cmd=(
+    "${PYTHON_BIN}" -u "${CONTROLLER}"
+    --relative-tolerance "${RELATIVE_TOLERANCE:-0.005}"
+    --maximum-refinement-depth "${MAXIMUM_REFINEMENT_DEPTH:-8}"
+    --maximum-mesh-points-per-orientation "${MAXIMUM_MESH_POINTS:-257}"
+    --cp2k-command "${CP2K_EXE}"
+    --cpus-per-calculation "${CPUS_PER_CALCULATION}"
+    --parallel-calculations "${PARALLEL_CALCULATIONS}"
+)
+
+if [[ -n "${PROJECTILE_DEFINITION:-}" ]]; then
+    cmd+=(--projectile-definition "${PROJECTILE_DEFINITION}")
+else
+    cmd+=(--projectile "${PROJECTILE:-C}")
+fi
+if [[ -n "${OUTPUT_ROOT:-}" ]]; then
+    cmd+=(--output-root "${OUTPUT_ROOT}")
+fi
+if [[ -n "${CHARGES:-}" ]]; then
+    IFS=',' read -r -a CHARGE_VALUES <<< "${CHARGES}"
+    cmd+=(--charges "${CHARGE_VALUES[@]}")
+fi
+
+echo "Repository: ${REPO_ROOT}"
+echo "Commit: $(git rev-parse HEAD)"
+echo "Host: $(hostname)"
+echo "Allocated CPUs: ${ALLOCATED_CPUS}"
+echo "CP2K layout: ${MPI_RANKS_PER_CALCULATION} MPI ranks x ${OMP_THREADS_PER_RANK} OpenMP threads"
+echo "Concurrent calculations: ${PARALLEL_CALCULATIONS} (zero means automatic)"
+echo "Tolerance: ${RELATIVE_TOLERANCE:-0.005}"
+echo "Projectile: ${PROJECTILE:-definition file}"
+echo "Projectile definition: ${PROJECTILE_DEFINITION:-built-in}"
+echo "Output root: ${OUTPUT_ROOT:-controller default}"
+echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'Command:'
+printf ' %q' "${cmd[@]}"
+printf '\n'
+
+"${cmd[@]}"
+
+echo "Completed UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

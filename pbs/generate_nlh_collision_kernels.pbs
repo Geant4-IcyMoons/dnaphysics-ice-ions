@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #PBS -N nlh_kernels
 #PBS -q medium
-#PBS -l select=1:ncpus=32:mem=8gb
+#PBS -l select=1:ncpus=16:mem=4gb
 #PBS -l walltime=01:00:00
 #PBS -j oe
 
@@ -31,20 +31,7 @@ GENERATOR="${NEP_DIR}/generate_nlh_collision_kernels.py"
 OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${NEP_DIR}/collision_kernels}"
 BENCHMARK_DIRECTORY="${BENCHMARK_DIRECTORY:-${NEP_DIR}/collision_benchmarks}"
 RUN_BENCHMARK="${RUN_BENCHMARK:-1}"
-CONDA_ENV="${CONDA_ENV:-yoffe_venv}"
-CONDA_SH="${CONDA_SH:-/apps01/apps/anaconda3-2022.10/etc/profile.d/conda.sh}"
-
-if [[ -z "${PYTHON_BIN:-}" ]]; then
-    USER_ENV_PYTHON="${HOME}/.conda/envs/${CONDA_ENV}/bin/python"
-    if [[ -x "${USER_ENV_PYTHON}" ]]; then
-        PYTHON_BIN="${USER_ENV_PYTHON}"
-    else
-        # shellcheck disable=SC1090
-        source "${CONDA_SH}"
-        conda activate "${CONDA_ENV}"
-        PYTHON_BIN="$(command -v python)"
-    fi
-fi
+PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
 
 if [[ ! -f "${GENERATOR}" || ! -x "${PYTHON_BIN}" ]]; then
     echo "Missing generator or Python interpreter." >&2

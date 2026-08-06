@@ -290,7 +290,7 @@ cells, compact validation tables/plots, and their provenance records.
 
 Once a final cell has been accepted, it is frozen and reused for every H, He,
 C, O, and S projectile calculation. It is not regenerated for each Geant4
-run. Geant4 continues to use the shared 0.94 g/cm3 material density; the
+run. Geant4 uses the molecular density of the selected, validated phase; the
 atomistic cell supplies structural information for separately validated
 projectile--H and projectile--O interactions.
 
@@ -420,6 +420,29 @@ as recorded secondaries. It does not reinsert them, evolve radiation damage,
 or supply the missing soft distant interaction. Those additions require
 separate validation and must not be inferred from the existence of the
 structure-aware hard driver.
+
+The first charge-resolved soft-interaction layer is implemented under
+`soft_dft/`. It prepares restart-safe all-electron CP2K constrained-DFT scans
+for arbitrary explicitly defined ions and charge states, including explicit
+counterpoise calculations. H, He, C, O, and S contain complete NIST ASD
+ground-state ladders from q=0 through q=Z, CP2K 2025.2 all-electron basis
+provenance, and exact species-specific NLH overlap nodes. Registration makes
+the pilot runnable; it does not validate the functional, charge localization,
+or resulting surface. DFT generation is independent of CTMC: a later Geant4
+process will select `V_q`, sample a CTMC transition, and then select `V_q'`.
+The current molecular scans remain `validation_pending`; they are not yet an
+ice potential or a soft stopping/transport table. See `soft_dft/README.md` for
+the adaptive 0.5%-tolerance controller, single- and multi-node PBS execution,
+provenance, and mandatory acceptance gates.
+
+The shared registry and dependency-aware controller are under `ion_ice/`.
+`ion_ice_model.py status` reports component-level readiness for every
+projectile and phase. Its signed plan separates ice preparation, per-species
+kernel benchmarks, per-species/per-phase hard transport, molecular DFT, and
+Geant4 reducers into independently inspectable tasks. It never chains raw ice
+dynamics directly into collision production because structural validation is
+a mandatory decision gate. See `ion_ice/README.md` for onboarding a new ion,
+PBS resources, submission receipts, and strict final assembly.
 
 Production trajectory sampling is convergence-controlled independently of the
 adaptive collision-kernel mesh. With no fixed `--trajectories` argument, the

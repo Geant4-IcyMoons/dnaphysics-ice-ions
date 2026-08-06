@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "symbol": "C",
+  "name": "carbon",
+  "atomic_number": 6,
+  "aliases": [
+    "c",
+    "carbon",
+    "c6+",
+    "carbon6+"
+  ],
+  "default_isotope": {
+    "mass_number": 12,
+    "neutral_atomic_mass_u": 12,
+    "provenance": {
+      "source": "NIST Atomic Weights and Isotopic Compositions",
+      "url": "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl"
+    }
+  },
+  "components": {
+    "nlh_pair_potential": {
+      "status": "implemented",
+      "targets": [
+        "H",
+        "O"
+      ],
+      "coefficient_source": "../../nlh/coefficients.csv",
+      "provenance": {
+        "source": "Nordlund, Lehtola, and Hobler, Physical Review A 111, 032818 (2025), corrected open-data archive",
+        "doi": "10.1103/PhysRevA.111.032818",
+        "data_doi": "10.5281/zenodo.17302337"
+      }
+    },
+    "hard_transport": {
+      "status": "implemented",
+      "backend": "adaptive NLH periodic BCA"
+    },
+    "soft_dft": {
+      "status": "implemented",
+      "complete_charge_ladder": true,
+      "states": [
+        {
+          "charge": 0,
+          "electrons_on_projectile": 6,
+          "multiplicity": 3,
+          "configuration": "1s2 2s2 2p2",
+          "term": "3P0"
+        },
+        {
+          "charge": 1,
+          "electrons_on_projectile": 5,
+          "multiplicity": 2,
+          "configuration": "1s2 2s2 2p1",
+          "term": "2P1/2"
+        },
+        {
+          "charge": 2,
+          "electrons_on_projectile": 4,
+          "multiplicity": 1,
+          "configuration": "1s2 2s2",
+          "term": "1S0"
+        },
+        {
+          "charge": 3,
+          "electrons_on_projectile": 3,
+          "multiplicity": 2,
+          "configuration": "1s2 2s1",
+          "term": "2S1/2"
+        },
+        {
+          "charge": 4,
+          "electrons_on_projectile": 2,
+          "multiplicity": 1,
+          "configuration": "1s2",
+          "term": "1S0"
+        },
+        {
+          "charge": 5,
+          "electrons_on_projectile": 1,
+          "multiplicity": 2,
+          "configuration": "1s1",
+          "term": "2S1/2"
+        },
+        {
+          "charge": 6,
+          "electrons_on_projectile": 0,
+          "multiplicity": 1,
+          "configuration": "bare nucleus",
+          "term": "1S0"
+        }
+      ],
+      "state_provenance": {
+        "source": "NIST Atomic Spectra Database, SRD 78",
+        "doi": "10.18434/T4W30F",
+        "url": "https://physics.nist.gov/PhysRefData/Handbook/Tables/carbontable1.htm",
+        "definition": "The CDFT target is the all-electron population Z-q; multiplicity is 2S+1 for the NIST ground term. The fully stripped state is definitional."
+      },
+      "scan_grid": {
+        "kind": "nlh_overlap",
+        "thresholds_ev": [
+          100,
+          60,
+          30,
+          20,
+          10
+        ],
+        "soft_probe_angstrom": [
+          1,
+          1.25,
+          1.5,
+          2,
+          3,
+          4,
+          6
+        ],
+        "provenance": {
+          "source": "Nordlund, Lehtola, and Hobler, Physical Review A 111, 032818 (2025), corrected open-data archive",
+          "doi": "10.1103/PhysRevA.111.032818",
+          "data_doi": "10.5281/zenodo.17302337",
+          "definition": "Overlap nodes satisfy V_NLH(r)=V_threshold; soft probes are validation coordinates, not a fitted handoff."
+        }
+      },
+      "cp2k": {
+        "projectile_basis_set": "TZVPP-MOLOPT-GGA-ae",
+        "basis_file": "BASIS_MOLOPT_UZH",
+        "basis_provenance": {
+          "source": "CP2K 2025.2 UZH all-electron MOLOPT basis library",
+          "url": "https://github.com/cp2k/cp2k/blob/support/v2025.2/data/BASIS_MOLOPT_UZH"
+        }
+      }
+    },
+    "geant4_hard_runtime": {
+      "status": "implemented",
+      "backend": "G4DNANLHHardElastic",
+      "release_status": "atomistic_validation_pending"
+    },
+    "geant4_soft_runtime": {
+      "status": "missing",
+      "reason": "No validated charge-resolved soft-interaction Geant4 table/runtime has been released."
+    }
+  }
+}

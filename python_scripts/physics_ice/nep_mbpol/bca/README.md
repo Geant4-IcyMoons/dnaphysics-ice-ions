@@ -101,8 +101,7 @@ checkpoints:
 python3 generate_nlh_collision_kernels.py
 ```
 
-On PBS, the repository launcher requests one 32-CPU, 8-GB allocation through
-the `medium` routing queue (which dispatches to `privatex`), pins threaded
+On PBS, the repository launcher requests one 16-CPU, 4-GB allocation, pins threaded
 numerical libraries to one thread per worker, generates all five supported
 projectile families, and then runs the independent dense-reference benchmark:
 
@@ -112,6 +111,10 @@ qsub pbs/generate_nlh_collision_kernels.pbs
 
 Submit from the repository root. A repeated submission resumes the same
 configuration-hashed checkpoints and does not recompute completed kernels.
+The allocation follows completed PBS jobs 106763 and 106765: they used about
+13 cores on average and less than 0.4 GB peak resident memory. Re-evaluate it
+with `ion_ice_model.py calibrate-resources --stage
+nlh_kernel_and_benchmark` after material algorithm or workload changes.
 
 The output directory contains:
 

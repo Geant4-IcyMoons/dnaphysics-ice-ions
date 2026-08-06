@@ -113,6 +113,11 @@ def test_exported_carbon_table_matches_verified_runtime(tmp_path):
     }
 
 
-def test_export_rejects_unreleased_projectile(tmp_path):
-    with pytest.raises(ValueError, match="Only carbon"):
-        export_table(SOURCE, tmp_path, "O")
+@pytest.mark.parametrize("projectile", ("H", "He", "O", "S"))
+def test_export_supports_every_registered_nlh_projectile(tmp_path, projectile):
+    data_path, manifest_path = export_table(SOURCE, tmp_path, projectile)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["projectile"] == projectile
+    assert manifest["release_status"] == "atomistic_validation_pending"
+    assert manifest["table_sha256"]
+    assert data_path.is_file()

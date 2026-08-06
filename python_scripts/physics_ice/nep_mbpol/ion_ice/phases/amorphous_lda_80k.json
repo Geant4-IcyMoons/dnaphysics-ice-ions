@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase_id": "amorphous_lda_80k",
+  "name": "candidate low-density amorphous ice at 80 K",
+  "target_temperature_k": 80.0,
+  "structure_registry": null,
+  "preparation": {
+    "pbs_script": "pbs/run_nep_mbpol_amorphous.pbs",
+    "pbs_job_name": "nep_mbpol_lda",
+    "qsub_arguments": ["-J", "0-2"],
+    "replicas": 3,
+    "seeds": [1000, 2000, 3000],
+    "ensemble": "adapted NPT melt-quench protocol",
+    "literature_cooling_segment_doi": "10.1038/s42004-024-01117-2"
+  },
+  "validation": {
+    "protocol": "python_scripts/physics_ice/nep_mbpol/README.md",
+    "implementation": null,
+    "decision_required": true,
+    "missing": "A phase-specific automated LDA structural validator and accepted collision registry are not yet present."
+  },
+  "density": {
+    "value_g_cm3": null,
+    "definition": "NPT output to be measured and validated; no fixed density is imposed"
+  }
+}

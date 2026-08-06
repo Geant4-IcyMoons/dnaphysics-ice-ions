@@ -62,5 +62,70 @@
     "unique_pair_count": 9,
     "minimum_repulsive_fit_energy_ev": 10.0,
     "preferred_accuracy_threshold_ev": 30.0
+  },
+  "ice_structure_methods": {
+    "nep_mbpol_paper_doi": "10.1038/s41524-025-01777-1",
+    "nep_mbpol_data_doi": "10.5281/zenodo.15033656",
+    "adapted_amorphous_cooling_source_doi": "10.1038/s42004-024-01117-2",
+    "hexagonal_cell_polynomials_doi": "10.1107/S0108768111046908",
+    "chill_plus_doi": "10.1021/jp510289t",
+    "bernal_fowler_doi": "10.1063/1.1749327",
+    "scope": "NEP-MB-pol supplies water-target structure/forces; the amorphous protocol is adapted and remains validation-pending; accepted 100 K ice-Ih structures use the cited experimental cell and structural definitions."
+  },
+  "hard_collision_methods": {
+    "classical_scattering_algorithm_doi": "10.1016/j.nimb.2004.08.014",
+    "htran_liquid_water_elastic_doi": "10.1016/j.nimb.2014.10.016",
+    "dkw_confidence_band_doi": "10.1214/aoms/1177728174",
+    "scope": "Mendenhall-Weller scattering integration is applied to the registered NLH pairs. H/He NLH runtime release is blocked until it cannot overlap the complete HTran elastic process."
+  },
+  "charge_resolved_soft_dft_pilot": {
+    "status": "validation_pending",
+    "software": "CP2K",
+    "target_series": "2025.2",
+    "container": "docker://cp2k/cp2k:2025.2_mpich_x86_64_psmp",
+    "cp2k_manual": "https://manual.cp2k.org/cp2k-2025_2-branch/",
+    "cdft_method_paper_doi": "10.1021/acs.jctc.6b01085",
+    "cdft_tutorial": "https://manual.cp2k.org/cp2k-2025_2-branch/methods/dft/constrained.html",
+    "gapw_documentation": "https://manual.cp2k.org/trunk/methods/dft/gapw.html",
+    "projectile_engine": "data-driven arbitrary atomic element with complete non-negative q=0..Z ladder",
+    "builtin_projectile_definitions": {
+      "definitions": [
+        "ion_ice/species/H.json",
+        "ion_ice/species/He.json",
+        "ion_ice/species/C.json",
+        "ion_ice/species/O.json",
+        "ion_ice/species/S.json"
+      ],
+      "atomic_states_doi": "10.18434/T4W30F",
+      "charge_ladders": "complete q=0..Z",
+      "scan_grid": "published species-specific NLH overlap radii plus declared numerical soft probes",
+      "status": "runnable definitions; physical CDFT validation pending"
+    },
+    "external_projectile_requirement": "complete provenance-bearing electronic-state ladder, all-electron basis, and sourced H/O scan grid",
+    "electronic_method": "all-electron GAPW constrained DFT",
+    "counterpoise_definition": "Boys-Bernardi fixed-geometry ghost-basis subtraction",
+    "adaptive_interpolation": {
+      "enabled_by_default": true,
+      "relative_tolerance": 0.005,
+      "probe_fractions": [0.25, 0.5, 0.75],
+      "coordinate": "linear separation in angstrom",
+      "mesh_policy": "common radial mesh controlled by worst charge-state error",
+      "meaning": "numerical interpolation tolerance, not physical accuracy"
+    },
+    "ctmc_dependency_during_dft": false,
+    "production_geant4_ready": false
+  },
+  "unified_ion_ice_registry": {
+    "schema_version": 1,
+    "species_definitions": "ion_ice/species/*.json",
+    "phase_definitions": "ion_ice/phases/*.json",
+    "shared_contracts": "ion_ice/framework.json",
+    "resource_profiles": "ion_ice/resources.json",
+    "controller": "ion_ice_model.py",
+    "ctmc_included": false,
+    "assembly_policy": "all accepted hard, soft, phase, table, and Geant4 runtime gates are mandatory",
+    "pbs_limits": {"maximum_ncpus": 256, "maximum_memory_gb": 512},
+    "uncalibrated_pbs_default": {"ncpus": 64, "memory_gb": 128},
+    "resource_measurement": "PBS resources_used.mem divided by allocated ncpus, together with CPU time divided by wall time; running-job memory is a lower bound"
   }
 }

@@ -129,6 +129,27 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     trajectory/energy-refinement workflow for H, He, C, O, and S. The launcher
     submits one 64-core PBS job per particle; H/He products remain segregated
     from HTran pending a validated non-overlapping partition.
+  - `nep_mbpol/soft_dft/` contains the validation-pending, all-electron CP2K
+    constrained-DFT workflow for fixed-charge ion--water interaction surfaces.
+    H0--H1+, He0--He2+, C0--C6+, O0--O8+, and S0--S16+ have complete NIST-
+    sourced built-in charge ladders and verified CP2K 2025.2 all-electron basis
+    entries. These definitions make the pilots executable; they do not by
+    themselves validate PBE/CDFT for any ion.
+    Its default controller adaptively validates direct quarter/midpoint probes
+    to a 0.5% radial interpolation tolerance on a common charge-state mesh and
+    stores refinement generations as immutable restartable batches.
+    CTMC is intentionally absent from DFT generation: Geant4 will use CTMC to
+    change `q` and then select the corresponding independently validated
+    soft-potential table.
+  - `nep_mbpol/ion_ice/` is the shared, species-general registry and
+    dependency-aware workflow. It reports the exact missing, running,
+    validation-pending, and complete components for each projectile/phase;
+    produces signed plans for independent PBS jobs; and refuses final Geant4
+    assembly until all hard, soft, structural, and runtime gates pass. See
+    [`ion_ice/README.md`](python_scripts/physics_ice/nep_mbpol/ion_ice/README.md).
+    Every planned PBS task records CPUs, memory, GB/CPU, calibration evidence,
+    and a bounded request (maximum 256 CPUs/512 GB); unmeasured CPU work starts
+    from 64 CPUs/128 GB and is recalibrated from PBS accounting.
 
 - `plotting/plot_vibExcitation_channelwise_angular_distributions.py`
   - Visualizes angular PDFs per vib channel using Michaud γ(E) and a Henyey–Greenstein mapping.

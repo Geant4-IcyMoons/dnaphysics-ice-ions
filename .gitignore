@@ -61,3 +61,23 @@ nlh_O.o*
 nlh_O.e*
 nlh_S.o*
 nlh_S.e*
+
+# Restartable constrained-DFT tasks and scheduler logs. Compact, validated
+# potential tables may be promoted explicitly after the documented gates pass.
+python_scripts/physics_ice/nep_mbpol/soft_collision_dft_runs/
+ion_cdft.o*
+ion_cdft.e*
+ion_cdft_adaptive.o*
+ion_cdft_adaptive.e*
+soft_*_smoke.o*
+soft_*_smoke.e*
+cp2k_install.o*
+cp2k_install.e*
+cp2k_scaling.o*
+cp2k_scaling.e*
+
+# Reproducibly installed external runtime image; never vendor the binary.
+software/cp2k/*.sif
+
+# Signed workflow plans and their scheduler/local execution receipts.
+ion_ice_runs/

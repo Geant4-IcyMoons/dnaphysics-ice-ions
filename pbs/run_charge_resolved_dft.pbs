@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+#PBS -N ion_cdft
+#PBS -q idle
+#PBS -l select=1:ncpus=8:mem=128gb
+#PBS -l walltime=500:00:00
+#PBS -j oe
+
+# Run one restart-safe shard of a fixed-charge ion--H2O CP2K workflow.
+# One shard runs one eight-rank CP2K calculation. The 128-GB envelope follows
+# the exact-input scaling gate; reduce it only from successful PBS accounting
+# for the relevant projectile and charge-state workload.
+
+set -euo pipefail
+umask 002
+
+if [[ -z "${MANIFEST:-}" ]]; then
+    echo "MANIFEST must name a prepared workflow.manifest.json." >&2
+    exit 2
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -f "${PBS_O_WORKDIR}/python_scripts/physics_ice/nep_mbpol/run_charge_resolved_dft.py" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+cd "${REPO_ROOT}"
+
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
+RUNNER="${NEP_DIR}/run_charge_resolved_dft.py"
+ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-0}}"
+SHARD_COUNT="${SHARD_COUNT:-1}"
+
+if [[ ! "${ARRAY_INDEX}" =~ ^[0-9]+$ || ! "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ || "${ARRAY_INDEX}" -ge "${SHARD_COUNT}" ]]; then
+    echo "Require integer 0 <= PBS_ARRAY_INDEX < SHARD_COUNT." >&2
+    exit 2
+fi
+if [[ ! -x "${PYTHON_BIN}" || ! -f "${RUNNER}" || ! -f "${MANIFEST}" ]]; then
+    echo "Missing Python, runner, or workflow manifest." >&2
+    exit 2
+fi
+
+if [[ -n "${CP2K_MODULE:-}" ]]; then
+    module load "${CP2K_MODULE}"
+fi
+CP2K_EXE="${CP2K_EXE:-$(command -v cp2k.psmp || true)}"
+if [[ -z "${CP2K_EXE}" || ! -x "${CP2K_EXE}" ]]; then
+    echo "CP2K is unavailable. Set CP2K_EXE or CP2K_MODULE; no task was run." >&2
+    exit 2
+fi
+
+if [[ -n "${PBS_NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${PBS_NCPUS}"
+elif [[ -n "${NCPUS:-}" ]]; then
+    ALLOCATED_CPUS="${NCPUS}"
+else
+    ALLOCATED_CPUS="$(${PYTHON_BIN} -c 'import os; print(len(os.sched_getaffinity(0)))')"
+fi
+CP2K_MPI_RANKS="${CP2K_MPI_RANKS:-${ALLOCATED_CPUS}}"
+if [[ ! "${CP2K_MPI_RANKS}" =~ ^[1-9][0-9]*$ || "${CP2K_MPI_RANKS}" -gt "${ALLOCATED_CPUS}" ]]; then
+    echo "CP2K_MPI_RANKS must lie in 1-${ALLOCATED_CPUS}." >&2
+    exit 2
+fi
+CP2K_COMMAND="${CP2K_EXE}"
+
+export CP2K_MPI_RANKS
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export PYTHONHASHSEED=0
+export PYTHONUNBUFFERED=1
+
+cmd=(
+    "${PYTHON_BIN}" -u "${RUNNER}" "${MANIFEST}"
+    --shard-count "${SHARD_COUNT}"
+    --shard-index "${ARRAY_INDEX}"
+    --cp2k-command "${CP2K_COMMAND}"
+)
+
+echo "Repository: ${REPO_ROOT}"
+echo "Commit: $(git rev-parse HEAD)"
+echo "Host: $(hostname)"
+echo "Manifest: ${MANIFEST}"
+echo "Shard: ${ARRAY_INDEX}/${SHARD_COUNT}"
+echo "CP2K: ${CP2K_COMMAND}"
+echo "MPI ranks: ${CP2K_MPI_RANKS}"
+echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'Command:'
+printf ' %q' "${cmd[@]}"
+printf '\n'
+
+"${cmd[@]}"
+
+echo "Completed UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

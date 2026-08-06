@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+#PBS -N cp2k_scaling
+#PBS -q idle
+#PBS -l select=1:ncpus=8:mem=128gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+# Benchmark one immutable production-setting CP2K input with an explicit MPI
+# layout. This is a resource calibration only; its output is not a potential.
+
+set -euo pipefail
+umask 002
+
+if [[ -z "${INPUT_FILE:-}" || ! -f "${INPUT_FILE}" ]]; then
+    echo "Set INPUT_FILE to an existing generated CP2K input." >&2
+    exit 2
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -d "${PBS_O_WORKDIR}/python_scripts" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+
+CP2K_EXE="${CP2K_EXE:-${REPO_ROOT}/pbs/cp2k_container_wrapper.sh}"
+MPI_RANKS="${CP2K_MPI_RANKS:-8}"
+OMP_THREADS="${OMP_NUM_THREADS:-1}"
+ALLOCATED_CPUS="${PBS_NCPUS:-8}"
+if [[ ! "${MPI_RANKS}" =~ ^[1-9][0-9]*$ \
+      || ! "${OMP_THREADS}" =~ ^[1-9][0-9]*$ \
+      || $((MPI_RANKS * OMP_THREADS)) -gt "${ALLOCATED_CPUS}" ]]; then
+    echo "MPI ranks times OpenMP threads exceed the PBS allocation." >&2
+    exit 2
+fi
+
+JOB_LABEL="${PBS_JOBID:-local}"
+OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol/soft_collision_dft_runs/cp2k_scaling/${JOB_LABEL}}"
+mkdir -p "${OUTPUT_DIRECTORY}"
+cp "${INPUT_FILE}" "${OUTPUT_DIRECTORY}/input.inp"
+cd "${OUTPUT_DIRECTORY}"
+
+export CP2K_MPI_RANKS="${MPI_RANKS}"
+export OMP_NUM_THREADS="${OMP_THREADS}"
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+echo "Input: $(realpath input.inp)"
+echo "MPI ranks: ${MPI_RANKS}"
+echo "OpenMP threads per rank: ${OMP_THREADS}"
+echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+/usr/bin/time -v "${CP2K_EXE}" -i input.inp >cp2k.out 2>resource_time.log
+if ! grep -q 'PROGRAM ENDED AT' cp2k.out; then
+    echo "CP2K did not report a normal program end." >&2
+    exit 1
+fi
+
+echo "Completed UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+tail -n 30 resource_time.log
