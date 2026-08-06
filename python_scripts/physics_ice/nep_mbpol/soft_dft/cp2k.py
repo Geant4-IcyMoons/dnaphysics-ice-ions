@@ -27,7 +27,7 @@ def _coordinate_kinds(role: str) -> tuple[str, ...]:
     raise ValueError(f"Unsupported CP2K task role {role!r}.")
 
 
-def _kind_section(label: str, element: str, settings: CP2KSettings) -> str:
+def render_kind_section(label: str, element: str, settings: CP2KSettings) -> str:
     ghost = label.endswith("_G")
     ghost_line = "\n      GHOST TRUE" if ghost else ""
     basis_set = (
@@ -44,12 +44,23 @@ def _kind_section(label: str, element: str, settings: CP2KSettings) -> str:
     &END KIND"""
 
 
-def _cdft_section(target_electrons: int, settings: CP2KSettings) -> str:
+def render_cdft_section(
+    target_electrons: int,
+    settings: CP2KSettings,
+    *,
+    strength: float = 0.0,
+    output_prefix: str = "./cdft",
+) -> str:
+    constraint_strength = float(strength)
+    if not math.isfinite(constraint_strength):
+        raise ValueError("The initial CDFT constraint strength must be finite.")
+    if not output_prefix.strip():
+        raise ValueError("The CDFT output prefix cannot be empty.")
     return f"""
       &CDFT
         TYPE_OF_CONSTRAINT BECKE
         ATOMIC_CHARGES TRUE
-        STRENGTH 0.0
+        STRENGTH {constraint_strength:.16g}
         TARGET {target_electrons:d}
         &ATOM_GROUP
           ATOMS 1
@@ -87,34 +98,32 @@ def _cdft_section(target_electrons: int, settings: CP2KSettings) -> str:
           &END EACH
           COMMON_ITERATION_LEVELS 2
           ADD_LAST NUMERIC
-          FILENAME ./cdft
+          FILENAME {output_prefix}
         &END PROGRAM_RUN_INFO
       &END CDFT"""
 
 
-def render_cp2k_input(task: dict[str, Any], settings: CP2KSettings) -> str:
-    """Render one complete, nonperiodic GAPW input without hidden defaults."""
+def render_molecular_subsys(
+    coordinates: list[list[object]] | tuple[tuple[object, ...], ...],
+    settings: CP2KSettings,
+    *,
+    role: str = COMPLEX_ROLE,
+) -> str:
+    """Render the centered projectile--H2O subsystem shared by QS and MIXED."""
 
-    role = str(task["role"])
     if role not in ROLES:
         raise ValueError(f"Unsupported CP2K task role {role!r}.")
-    coordinates = task["coordinates_angstrom"]
     if len(coordinates) != 4:
         raise ValueError("The molecular pilot requires projectile + O + H + H.")
-
-    if role == WATER_COUNTERPOISE_ROLE:
-        charge = 0
-        multiplicity = 1
-    else:
-        charge = int(task["charge"])
-        multiplicity = int(task["multiplicity"])
 
     raw = np.asarray([[row[1], row[2], row[3]] for row in coordinates], dtype=float)
     if raw.shape != (4, 3) or not np.all(np.isfinite(raw)):
         raise ValueError("Invalid scan coordinates.")
     centered = raw - 0.5 * (raw.min(axis=0) + raw.max(axis=0))
     centered += 0.5 * settings.cell_angstrom
-    margin = np.minimum(centered.min(axis=0), settings.cell_angstrom - centered.max(axis=0))
+    margin = np.minimum(
+        centered.min(axis=0), settings.cell_angstrom - centered.max(axis=0)
+    )
     if np.any(margin <= 5.0):
         raise ValueError(
             "The molecular density would have less than 5 A of cell margin; "
@@ -131,31 +140,73 @@ def render_cp2k_input(task: dict[str, Any], settings: CP2KSettings) -> str:
             f"      {label:<4s} {xyz[0]: .12f} {xyz[1]: .12f} {xyz[2]: .12f}"
         )
     kind_sections = "\n".join(
-        _kind_section(label, element, settings) for label, element in kinds.items()
+        render_kind_section(label, element, settings)
+        for label, element in kinds.items()
     )
+    cell = " ".join(3 * (f"{settings.cell_angstrom:.12g}",))
+    return f"""  &SUBSYS
+    &CELL
+      ABC {cell}
+      PERIODIC NONE
+    &END CELL
+    &COORD
+{chr(10).join(coordinate_lines)}
+    &END COORD
+{kind_sections}
+  &END SUBSYS"""
+
+
+def render_qs_force_eval(
+    task: dict[str, Any],
+    settings: CP2KSettings,
+    *,
+    cdft_strength: float = 0.0,
+    cdft_output_prefix: str = "./cdft",
+    wavefunction_restart: str | None = None,
+    force_output_prefix: str = "./forces",
+) -> str:
+    """Render one QS force evaluation, optionally restarting a CDFT state."""
+
+    role = str(task["role"])
+    if role not in ROLES:
+        raise ValueError(f"Unsupported CP2K task role {role!r}.")
+    coordinates = task["coordinates_angstrom"]
+    if role == WATER_COUNTERPOISE_ROLE:
+        charge = 0
+        multiplicity = 1
+    else:
+        charge = int(task["charge"])
+        multiplicity = int(task["multiplicity"])
+    if multiplicity < 1:
+        raise ValueError("The total spin multiplicity must be positive.")
+    if not force_output_prefix.strip():
+        raise ValueError("The force output prefix cannot be empty.")
+
     cdft = (
-        _cdft_section(int(task["electrons_on_projectile"]), settings)
+        render_cdft_section(
+            int(task["electrons_on_projectile"]),
+            settings,
+            strength=cdft_strength,
+            output_prefix=cdft_output_prefix,
+        )
         if role == COMPLEX_ROLE
         else ""
     )
-
-    project = re.sub(r"[^A-Za-z0-9_-]", "_", str(task["task_id"]))[:100]
-    if not project:
-        raise ValueError("Task ID produced an empty CP2K project name.")
-    return f"""# Generated by soft_dft; pilot data remain validation_pending.
-&GLOBAL
-  PROJECT {project}
-  RUN_TYPE ENERGY_FORCE
-  PRINT_LEVEL MEDIUM
-&END GLOBAL
-
-&FORCE_EVAL
+    restart = ""
+    scf_guess = "ATOMIC"
+    if wavefunction_restart is not None:
+        if not str(wavefunction_restart).strip():
+            raise ValueError("Wavefunction restart path cannot be empty.")
+        scf_guess = "RESTART"
+        restart = f"\n      WFN_RESTART_FILE_NAME {wavefunction_restart}"
+    subsys = render_molecular_subsys(coordinates, settings, role=role)
+    return f"""&FORCE_EVAL
   METHOD QUICKSTEP
   &DFT
     BASIS_SET_FILE_NAME {settings.basis_file}
     CHARGE {charge:d}
     MULTIPLICITY {multiplicity:d}
-    UKS TRUE
+    UKS TRUE{restart}
     &QS
       METHOD {settings.method}
       EPS_DEFAULT 1.0E-12{cdft}
@@ -170,7 +221,7 @@ def render_cp2k_input(task: dict[str, Any], settings: CP2KSettings) -> str:
       POISSON_SOLVER WAVELET
     &END POISSON
     &SCF
-      SCF_GUESS ATOMIC
+      SCF_GUESS {scf_guess}
       EPS_SCF {settings.scf_eps:.12g}
       MAX_SCF {settings.scf_max:d}
       &OT ON
@@ -194,22 +245,33 @@ def render_cp2k_input(task: dict[str, Any], settings: CP2KSettings) -> str:
       &END LOWDIN
     &END PRINT
   &END DFT
-  &SUBSYS
-    &CELL
-      ABC {settings.cell_angstrom:.12g} {settings.cell_angstrom:.12g} {settings.cell_angstrom:.12g}
-      PERIODIC NONE
-    &END CELL
-    &COORD
-{chr(10).join(coordinate_lines)}
-    &END COORD
-{kind_sections}
-  &END SUBSYS
+{subsys}
   &PRINT
     &FORCES ON
-      FILENAME ./forces
+      FILENAME {force_output_prefix}
     &END FORCES
   &END PRINT
-&END FORCE_EVAL
+&END FORCE_EVAL"""
+
+
+def render_cp2k_input(task: dict[str, Any], settings: CP2KSettings) -> str:
+    """Render one complete, nonperiodic GAPW input without hidden defaults."""
+
+    role = str(task["role"])
+    if role not in ROLES:
+        raise ValueError(f"Unsupported CP2K task role {role!r}.")
+    project = re.sub(r"[^A-Za-z0-9_-]", "_", str(task["task_id"]))[:100]
+    if not project:
+        raise ValueError("Task ID produced an empty CP2K project name.")
+    force_eval = render_qs_force_eval(task, settings)
+    return f"""# Generated by soft_dft; pilot data remain validation_pending.
+&GLOBAL
+  PROJECT {project}
+  RUN_TYPE ENERGY_FORCE
+  PRINT_LEVEL MEDIUM
+&END GLOBAL
+
+{force_eval}
 """
 
 
@@ -260,6 +322,9 @@ def parse_cp2k_output(text: str, *, require_cdft: bool) -> dict[str, Any]:
                 ),
                 "cdft_deviation_electrons": _last_float(
                     rf"Deviation from target\s*:\s*({_FLOAT})", text
+                ),
+                "cdft_strength": _last_float(
+                    rf"Strength of constraint\s*:\s*({_FLOAT})", text
                 ),
             }
         )

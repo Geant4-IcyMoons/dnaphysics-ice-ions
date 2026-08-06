@@ -11,6 +11,13 @@ interface here is the Geant4 charge state: a CTMC transition `q -> q'` changes
 which independently validated charge-resolved soft table is selected. CTMC
 does not generate, fit, or validate a nuclear-elastic table.
 
+The validation-pending low-energy complement is implemented separately in
+`../low_energy_charge_exchange/`. It reads this registry's complete q=0..Z
+ladder and prepares every spin-conserving single-capture step q->q-1. It does
+not change the hard/soft nuclear-elastic dependency graph and has no accepted
+Geant4 or CTMC handover until molecular couplings, trajectories, cross
+sections, and their overlap have been validated.
+
 ## Sources of truth
 
 - `species/<symbol>.json` holds one isotope mass and provenance, aliases, and

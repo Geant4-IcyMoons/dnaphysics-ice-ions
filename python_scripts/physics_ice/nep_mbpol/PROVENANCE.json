@@ -115,6 +115,27 @@
     "ctmc_dependency_during_dft": false,
     "production_geant4_ready": false
   },
+  "low_energy_single_capture_pilot": {
+    "status": "implemented_framework_validation_pending",
+    "process": "X(q+) + H2O -> X((q-1)+) + H2O+",
+    "projectile_charge_states": "every q=1..Z from the complete species ladder; q=0 is the neutral product endpoint",
+    "target_channel": "electron donation from H2O 1b1 to ground H2O+ X 2B1",
+    "target_state_source": "NIST Chemistry WebBook SRD 69",
+    "target_state_url": "https://webbook.nist.gov/cgi/cbook.cgi?ID=C56583621&Mask=1980",
+    "electronic_states": "two all-electron charge-localized CDFT states with common total charge and total multiplicity",
+    "electronic_coupling": "CP2K MIXED_CDFT with Lowdin orthogonalization",
+    "cp2k_documentation": "https://manual.cp2k.org/cp2k-2025_2-branch/methods/dft/constrained.html",
+    "transition_model": "Landau-Zener probability using an externally supplied trajectory radial speed",
+    "calculated_cross_sections_present": false,
+    "ctmc_handover_validated": false,
+    "excluded_processes": [
+      "excited H2O+ capture channels",
+      "multiple-electron capture",
+      "projectile electron loss",
+      "transfer ionisation",
+      "spin-changing capture"
+    ]
+  },
   "unified_ion_ice_registry": {
     "schema_version": 1,
     "species_definitions": "ion_ice/species/*.json",

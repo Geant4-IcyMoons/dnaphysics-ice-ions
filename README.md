@@ -113,6 +113,18 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     do not require separate CTMC tables. The C/Li/O/S table generators are
     present, but their Geant4 runtime consumer is not yet implemented.
 
+- Low-energy single-electron capture:
+  - `physics_ice/nep_mbpol/low_energy_charge_exchange/` uses the shared
+    q=0..Z species definitions to enumerate every spin-conserving q->q-1
+    ground-channel transition. Carbon therefore has six prepared channels,
+    from C6+->C5+ through C+->C0.
+  - Its restart-safe CP2K workflow converges the two charge-localized states
+    at fixed total charge and spin, then evaluates their mixed-CDFT coupling.
+    Unit-explicit Landau--Zener and impact-parameter primitives are included.
+  - The implementation is a validation-pending isolated-H2O framework. It
+    contains no calculated cross sections or accepted CTMC handover. See
+    [`low_energy_charge_exchange/README.md`](python_scripts/physics_ice/nep_mbpol/low_energy_charge_exchange/README.md).
+
 - NLH hard elastic scattering for carbon-12:
   - `G4DNANLHHardElastic` evaluates the 30 eV threshold-defined C--H/O cross
     sections analytically and samples the checksum-linked adaptive angular
