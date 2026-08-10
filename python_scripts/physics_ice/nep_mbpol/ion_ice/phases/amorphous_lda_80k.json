@@ -1,26 +1,31 @@
 {
   "schema_version": 1,
   "phase_id": "amorphous_lda_80k",
-  "name": "candidate low-density amorphous ice at 80 K",
+  "name": "low-density amorphous ice EPSR neutron model at 80 K",
   "target_temperature_k": 80.0,
-  "structure_registry": null,
+  "structure_registry": "../../../ice_structures/epsr_lda80k/artifacts/collision_structures.json",
   "preparation": {
-    "pbs_script": "pbs/run_nep_mbpol_amorphous.pbs",
-    "pbs_job_name": "nep_mbpol_lda",
-    "qsub_arguments": ["-J", "0-2"],
-    "replicas": 3,
-    "seeds": [1000, 2000, 3000],
-    "ensemble": "adapted NPT melt-quench protocol",
-    "literature_cooling_segment_doi": "10.1038/s42004-024-01117-2"
+    "pbs_script": "pbs/run_epsr_lda80k_validation.pbs",
+    "pbs_job_name": "epsr_lda80k",
+    "qsub_arguments": [],
+    "replicas": 1,
+    "seeds": [],
+    "ensemble": "published EPSR Monte Carlo structure constrained by 80 K neutron diffraction",
+    "data_doi": "10.5286/edata/729"
   },
   "validation": {
-    "protocol": "python_scripts/physics_ice/nep_mbpol/README.md",
-    "implementation": null,
+    "protocol": "python_scripts/physics_ice/process_evidence/ice_structures/validation/epsr_lda80k/PROTOCOL.md",
+    "implementation": "python_scripts/physics_ice/ice_structures/epsr_lda80k/validate.py",
+    "report": "python_scripts/physics_ice/ice_structures/epsr_lda80k/artifacts/epsr_lda80k_validation.json",
     "decision_required": true,
-    "missing": "A phase-specific automated LDA structural validator and accepted collision registry are not yet present."
+    "result": "accepted_exact_published_epsr_lda80k_structure_for_static_collision_sampling"
   },
   "density": {
-    "value_g_cm3": null,
-    "definition": "NPT output to be measured and validated; no fixed density is imposed"
+    "value_g_cm3": 0.9343471678603292,
+    "definition": "Derived from 3000 H2O molecules in the archived 45.796719 A EPSR cell",
+    "provenance": {
+      "source": "STFC ISIS AmorIce EPSR model archive, LDAneutron/LDA80K.ato",
+      "data_doi": "10.5286/edata/729"
+    }
   }
 }

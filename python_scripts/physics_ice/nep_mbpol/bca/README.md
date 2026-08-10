@@ -87,7 +87,7 @@ specific frame. `--allow-unvalidated` exists only for checking the plumbing;
 it marks every such entry `diagnostic-only`.
 
 The accepted 100 K ice-Ih replicas are already attested under
-`../structures/hexagonal_ih_100K_experimental/`. Their portable
+`../../ice_structures/hexagonal_ih_100K_experimental/`. Their portable
 `collision_structures.json` registry points to the three gzip-compressed final
 snapshots, and the checksummed evidence is under its `validation/` directory.
 The XYZ reader supports both plain and `.gz` inputs.
@@ -128,8 +128,9 @@ The output directory contains:
 - `.checkpoints/<configuration hash>/`: restart blocks.
 
 The accepted generated product committed in `../collision_kernels/` is paired
-with the independent evidence in `../collision_benchmarks/`; its local README
-records the exact checksum, generation commits, and PBS jobs.
+with the independent evidence in
+`../../process_evidence/hard_nuclear_collisions/benchmarking/reference_results/`;
+its local README records the exact checksum, generation commits, and PBS jobs.
 
 For a quick infrastructure check:
 
@@ -199,6 +200,30 @@ python3 simulate_nlh_hard_collisions.py final_hexagonal_seed1000.xyz \
   --trajectories 1000
 ```
 
+Uniform sampling is retained as `--sampling-mode uniform` for direct checks,
+but it is not the production default. In the carbon 100-MeV validation
+campaign, 7.3--28.8 million uniform histories per case left the recoil/stopping
+and transport relative half-widths at approximately 24--64%; direct
+extrapolation to 0.5% requires order 10^11 histories per case. The production
+sampler instead uses the adaptive impact-area intervals already present in
+each physical kernel as collision-tube strata. Half of the default draws
+remain uniform cell translations and half select a target atom, longitudinal
+encounter point, adaptive `q` interval, and azimuth. Every history carries the
+exact periodic target/proposal likelihood ratio, including the sum over
+overlapping tube preimages. The uniform mixture component bounds weights by
+two. This is the stratified rare-event approach advocated for ion--solid Monte
+Carlo by Jakas (1997; DOI `10.1080/10420159708211554`), specialized here
+without a fitted bias or a change to the NLH hard boundary. Tests recover the
+analytic periodic hard rate and verify likelihood support and bounds. The
+direct uniform component alone is retained for ordinary unweighted trajectory
+CDFs.
+
+The earlier campaign also found overlapping retained NLH interaction intervals for
+approximately 10.1--10.5% of hard events. This conservative ambiguity metric
+does not itself prove a bias, because the sequential solver still processes
+the competing events, but it requires a multi-centre-force comparison before
+the binary ordering can be accepted.
+
 The 0.5% Monte Carlo gate is separate from the adaptive collision-kernel
 interpolation budget. It certifies normalization and first energy/angular
 moments, not rare tails or a binned angular/recoil CDF. Those distributions
@@ -265,7 +290,7 @@ The internal adaptive estimator is checked against direct solutions on a
 separate grid extending down to `q=10^-24`:
 
 ```bash
-python3 benchmark_nlh_adaptive_kernels.py
+python3 ../process_evidence/hard_nuclear_collisions/benchmarking/benchmark_nlh_adaptive_kernels.py
 ```
 
 The command tests H, He, C, O, and S against H and O at six energies spanning
@@ -273,7 +298,7 @@ The command tests H, He, C, O, and S against H and O at six energies spanning
 recoil, transport, angular, or quadrature metric exceeds 0.5%. The production
 96-point scattering quadrature is compared independently with 192 points. The
 command writes the complete case tables and summary under
-`collision_benchmarks/`.
+`../process_evidence/hard_nuclear_collisions/benchmarking/reference_results/`.
 
 ## Tests
 
@@ -327,22 +352,53 @@ integrated recoil/transport moments of the same interpolated kernel. Moment
 quadrature is independently limited to one tenth of the kernel interpolation
 tolerance.
 
+The collision-tube sampler is an independent numerical layer around that
+control variate. Its exact importance weight multiplies the sampled-minus-
+reference residual. Proposal component, density ratio, weight, target, atom,
+and adaptive `q` stratum are recorded for audit. Configuration signatures
+include the proposal and mixture fraction, so legacy uniform checkpoints
+cannot be mistaken for the corrected run.
+
 Summary-mode checkpoints store sufficient statistics plus compressed
 trajectory-level recoil/deflection samples. They do not write the enormous raw
 per-collision CSV products. Seeds depend on the physical case, not worker count,
 and all completed batches are checksum verified on resume.
 
-Submit one independent 64-core, 16 GB job per projectile with:
+The serial controller remains useful for small pilots. Production campaigns
+use case-level sharding so that every structure/orientation/energy case has
+exactly one writer and its own configuration-hashed trajectory checkpoints.
+One reducer is the only writer of the adaptive energy-grid state. It analyzes
+all completed cases at a refinement level, prepares every required geometric
+midpoint as one immutable breadth-first wave, and chains the next wave only
+after all case shards succeed.
+
+Launch one selected projectile with:
 
 ```bash
-bash pbs/launch_adaptive_nlh_particles.sh
+bash pbs/launch_adaptive_nlh_particle_shards.sh C
 ```
 
-or one selected projectile with:
+Each case shard requests 128 CPUs, 8 GB, and 96 hours. Jobs 106876 and the
+August 2026 carbon checkpoints show that 256 workers have poor incremental
+scaling, whereas 128 workers allow two cases to occupy one 256-core node. The
+measured rates predict roughly 12--16 hours for the previously observed slow
+cases; one case per shard therefore leaves room for about three sequential
+energy-refinement waves within a 48-hour active-compute target. PBS arrays are
+limited to 50 elements, so the supervisor splits a wave into non-overlapping
+array groups while preserving one global shard index. Queueing is not included
+in the 48-hour estimate.
+
+The earlier single-allocation controller remains available for diagnostics:
 
 ```bash
 qsub -N nlh_C -v PROJECTILE=C pbs/run_adaptive_nlh_particle.pbs
 ```
+
+The sharded trajectory batch is 100,000 histories. This reduces checkpoint
+metadata by a factor of ten relative to the superseded 10,000-history runs,
+without changing trajectory seeds or results; interruption loses at most the
+currently executing batch. A repeated shard submission checksum-reuses every
+completed batch.
 
 The 0.5% criteria above are numerical sampling/interpolation tolerances. They
 do not reduce the separately reported NLH/DMol pair-potential uncertainty.

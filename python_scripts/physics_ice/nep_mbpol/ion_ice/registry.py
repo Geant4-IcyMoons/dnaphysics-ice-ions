@@ -16,6 +16,8 @@ from .schema import (
 PACKAGE_ROOT = Path(__file__).resolve().parent
 NEP_MBPOL_ROOT = PACKAGE_ROOT.parent
 REPOSITORY_ROOT = NEP_MBPOL_ROOT.parents[2]
+PROCESS_EVIDENCE_ROOT = NEP_MBPOL_ROOT.parent / "process_evidence"
+ICE_STRUCTURES_ROOT = NEP_MBPOL_ROOT.parent / "ice_structures"
 SPECIES_DIRECTORY = PACKAGE_ROOT / "species"
 PHASE_DIRECTORY = PACKAGE_ROOT / "phases"
 

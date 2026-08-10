@@ -1,0 +1,10 @@
+# Sampling continuation of the fixed-density compatibility test. model.xyz
+# is the completed equilibration restart and already contains velocities.
+
+potential       nep.txt
+time_step       0.2
+ensemble        nvt_nhc 80 80 200
+dump_thermo     10000
+dump_exyz       250000 1 0
+dump_restart    250000
+run             2500000

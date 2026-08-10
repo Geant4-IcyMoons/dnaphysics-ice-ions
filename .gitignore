@@ -65,6 +65,8 @@ nlh_S.e*
 # Restartable constrained-DFT tasks and scheduler logs. Compact, validated
 # potential tables may be promoted explicitly after the documented gates pass.
 python_scripts/physics_ice/nep_mbpol/soft_collision_dft_runs/
+python_scripts/physics_ice/process_evidence/**/benchmarking/runs/
+python_scripts/physics_ice/process_evidence/**/validation/runs/
 ion_cdft.o*
 ion_cdft.e*
 ion_cdft_adaptive.o*

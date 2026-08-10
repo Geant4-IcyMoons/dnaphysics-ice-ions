@@ -18,11 +18,12 @@ REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
 cd "${REPO_ROOT}"
 
 NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+BENCHMARK_ROOT="${REPO_ROOT}/python_scripts/physics_ice/process_evidence/hard_nuclear_collisions/benchmarking"
 PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
 export PYTHONPATH="${NEP_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 PROJECTILE="${PROJECTILE:?Set PROJECTILE to a registered ion symbol.}"
 KERNEL_OUTPUT="${KERNEL_OUTPUT:-${NEP_DIR}/collision_kernels/by_species/${PROJECTILE}}"
-BENCHMARK_OUTPUT="${BENCHMARK_OUTPUT:-${NEP_DIR}/collision_benchmarks/by_species/${PROJECTILE}}"
+BENCHMARK_OUTPUT="${BENCHMARK_OUTPUT:-${BENCHMARK_ROOT}/reference_results/by_species/${PROJECTILE}}"
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
     echo "Missing Python interpreter ${PYTHON_BIN}." >&2
@@ -60,7 +61,7 @@ echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     --workers "${WORKERS}" \
     --output-directory "${KERNEL_OUTPUT}"
 
-"${PYTHON_BIN}" -u "${NEP_DIR}/benchmark_nlh_adaptive_kernels.py" \
+"${PYTHON_BIN}" -u "${BENCHMARK_ROOT}/benchmark_nlh_adaptive_kernels.py" \
     --projectiles "${PROJECTILE}" \
     --workers "${WORKERS}" \
     --output-directory "${BENCHMARK_OUTPUT}"

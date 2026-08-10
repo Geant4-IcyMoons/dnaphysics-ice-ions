@@ -200,10 +200,11 @@ AVOGADRO = 6.02214076e23  # mol^-1
 H2O_MOLAR_MASS_G_MOL = 18.01528
 H2O_MOLECULE_MASS_AU = H2O_MOLAR_MASS_G_MOL * ATOMIC_MASS_UNIT_MASS_AU
 
-# Ice phase nominal mass densities (g/cm^3). The ice-Ih value is the 100 K
-# density from the corrected Rottger et al. experimental lattice fit.
+# Ice phase mass densities (g/cm^3). Ice Ih is the 100 K density from the
+# corrected Rottger et al. experimental lattice fit. LDA is derived from the
+# validated 3000-water, 45.796719 A EPSR model archived at 10.5286/edata/729.
 ICE_HEXAGONAL_DENSITY_G_CM3 = 0.9335
-ICE_AMORPHOUS_DENSITY_G_CM3 = 0.94
+ICE_AMORPHOUS_DENSITY_G_CM3 = 0.9343471678603292
 
 # Reference mass density implied by N above (used in XS normalization code)
 N_REFERENCE_DENSITY_G_CM3 = (N / 1.0e6) * H2O_MOLAR_MASS_G_MOL / AVOGADRO

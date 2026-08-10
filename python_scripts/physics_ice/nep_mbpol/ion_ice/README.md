@@ -29,6 +29,8 @@ sections, and their overlap have been validated.
 - `resources.json` holds bounded PBS allocations, calibration status, and the
   exact accounting evidence behind each exception to the 64-core/128-GB
   uncalibrated default.
+- `../../process_evidence/` separates independent benchmarks from scientific
+  validation protocols and generated acceptance records for every process.
 - `compatibility.py` verifies that the established NLH/BCA backend still
   agrees exactly with the shared registry. This adapter allows current
   production jobs to finish without changing their numerical code.
@@ -298,6 +300,13 @@ connected workflows are:
   Chemical Physics* **1**, 515--548 (1933),
   <https://doi.org/10.1063/1.1749327>. These define CHILL+ phase recognition
   and proton-topology checks, respectively.
+- The 80 K LDA target is the checksum-pinned EPSR model and three neutron
+  datasets in the STFC ISIS `AmorIce` archive,
+  <https://doi.org/10.5286/edata/729>. Its experimental and structural basis is
+  Finney et al., *Physical Review Letters* **88**, 225503 (2002),
+  <https://doi.org/10.1103/PhysRevLett.88.225503>, and Bowron et al.,
+  *Journal of Chemical Physics* **125**, 194502 (2006),
+  <https://doi.org/10.1063/1.2378921>.
 - Nordlund, Lehtola, and Hobler, *Physical Review A* **111**, 032818 (2025),
   <https://doi.org/10.1103/PhysRevA.111.032818>; corrected coefficient archive,
   <https://doi.org/10.5281/zenodo.17302337>. These are the only source of the

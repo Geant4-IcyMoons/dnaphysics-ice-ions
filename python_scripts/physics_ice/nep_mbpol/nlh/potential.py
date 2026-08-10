@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import math
 from pathlib import Path
-from typing import TypeAlias
+from typing import Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -57,7 +57,7 @@ _ELEMENT_ALIASES = {
 _SUPPORTED_PROJECTILES = frozenset((1, 2, 6, 8, 16))
 _SUPPORTED_TARGETS = frozenset((1, 8))
 
-ScalarOrArray: TypeAlias = float | NDArray[np.float64]
+ScalarOrArray = Union[float, NDArray[np.float64]]
 
 
 class NLHDomainError(ValueError):

@@ -87,15 +87,29 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
   - Rebuilds differential and cumulated vib‑excitation cross‑section tables from `michaud_table2.csv` and `michaud_table3.csv`.
   - Outputs: `sigmadiff_excitationvib_e_michaud.dat`, `sigmadiff_cumulated_excitationvib_e_michaud_hp.dat`.
 
+- Independent benchmarks and scientific acceptance protocols for every
+  process are indexed under
+  [`physics_ice/process_evidence/`](python_scripts/physics_ice/process_evidence/README.md).
+
+- Copy-paste PBS and local command lines for the current CTMC, hard-collision,
+  soft-DFT, ice-structure, low-energy charge-exchange, and Geant4 workflows
+  are collected in
+  [`physics_ice/WORKFLOW_COMMANDS.md`](python_scripts/physics_ice/WORKFLOW_COMMANDS.md).
+  That command index distinguishes runnable software from validated and
+  production-releasable physics products.
+
 - CTMC charge exchange for carbon, lithium, oxygen, and sulfur:
   - `physics_ice/charge_exchange_ctmc.py` contains the shared CTMC/IEVM/IPM
     engine; the four `generate_*_charge_exchange_ctmc.py` files contain
     separate, immutable projectile definitions and entry points.
-  - `physics_ice/CHARGE_EXCHANGE_CTMC_PROVENANCE.md` documents every paper,
+  - `physics_ice/process_evidence/charge_exchange_ctmc/validation/PROVENANCE.md`
+    documents every paper,
     coefficient, physical definition, validity limit, and ice-density rule.
-    `physics_ice/CHARGE_EXCHANGE_CTMC_RUNBOOK.md` is the detailed C/Li/O/S
+    `physics_ice/process_evidence/charge_exchange_ctmc/validation/RUNBOOK.md`
+    is the detailed C/Li/O/S
     CPU, PBS, checkpoint/resume, and output guide.
-    `physics_ice/CARBON_CTMC_PARALLEL.md` retains the carbon-specific
+    `physics_ice/process_evidence/charge_exchange_ctmc/validation/PARALLEL_EXECUTION.md`
+    retains the carbon-specific
     validation and production history.
   - The optimized Numba DOP853 backend uses process-level CPU parallelism,
     deterministic per-trajectory random streams, bounded scheduling, and
@@ -136,7 +150,7 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     only phase scaling is not released until amorphous/hexagonal and
     directional decision-gate comparisons pass. See `proton-pipeline/README.md`
     and
-    [`CARBON_HARD_COLLISION_VALIDATION.md`](python_scripts/physics_ice/nep_mbpol/CARBON_HARD_COLLISION_VALIDATION.md).
+    [`CARBON_GATE.md`](python_scripts/physics_ice/process_evidence/hard_nuclear_collisions/validation/CARBON_GATE.md).
   - `adaptive_nlh_particle_transport.py` supplies one common restart-safe
     trajectory/energy-refinement workflow for H, He, C, O, and S. The launcher
     submits one 64-core PBS job per particle; H/He products remain segregated

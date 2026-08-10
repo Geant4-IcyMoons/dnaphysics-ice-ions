@@ -156,14 +156,14 @@ The first 18 fixed-sample jobs measure variance and throughput; they are not a
 convergence claim. The 54 jobs are a structure-sensitive decision-gate
 calculation and do not generate the analytic hard cross section. The complete
 staged protocol is in
-[`CARBON_HARD_COLLISION_VALIDATION.md`](../python_scripts/physics_ice/nep_mbpol/CARBON_HARD_COLLISION_VALIDATION.md).
+[`CARBON_GATE.md`](../python_scripts/physics_ice/process_evidence/hard_nuclear_collisions/validation/CARBON_GATE.md).
 A matched accepted amorphous matrix and a documented statistical comparison
 remain required before continuum production release.
 
 `DNA_PHYSICS` supported values:
 
 - `ice_hex`: 0.9335 g/cm3 (ice Ih at 100 K)
-- `ice_am`: 0.940 g/cm3
+- `ice_am`: 0.9343471678603292 g/cm3 (validated 80 K EPSR LDA cell)
 - `water`: 1.000 g/cm3
 
 The detector constructs the corresponding H2O material automatically and

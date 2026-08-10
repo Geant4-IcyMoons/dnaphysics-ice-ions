@@ -83,9 +83,10 @@ and equilibrated with `model/nep-mbpol.nep.txt` on a GPU node.
 
 ## Cluster workflow: candidate low-density amorphous ice
 
-The project constant
-`ICE_AMORPHOUS_DENSITY_G_CM3 = 0.94` is the experimental reference density for
-low-density amorphous ice (LDA), not a volume constraint for this preparation.
+The approximately 0.94 g/cm3 experimental LDA density is a validation reference,
+not a volume constraint for this preparation. The production phase constant is
+now 0.9343471678603292 g/cm3, derived from the separately validated archived
+EPSR model; it is not an acceptance target retrofitted to this NEP trajectory.
 Every stage is NPT at 0.1 MPa, so the cell volume and density evolve. The final
 density is a prediction to validate, together with the structure; it must not
 be imposed by rescaling. Do not obtain the amorphous target by randomly moving
@@ -279,6 +280,26 @@ If the final density is inconsistent with 0.94 g/cm3, reject or revise the
 thermodynamic path. Do not force agreement by rescaling the final coordinates
 without a subsequent equilibrated, validated trajectory.
 
+The completed three-replica campaign is analyzed reproducibly with:
+
+```bash
+python_scripts/physics_ice/nep_mbpol/.venv/bin/python \
+  python_scripts/physics_ice/nep_mbpol/validate_amorphous_ice.py
+```
+
+Its compact PNG, CSV, and JSON products are under
+`../ice_structures/rejected_candidates/amorphous_lda_80K_candidate/validation/`.
+The current campaign is
+rejected as an experimental-density LDA collision target: it is amorphous by
+CHILL+, but its mean 80 K densities are 1.013--1.022 g/cm3.  A short 80 K
+density--stress scan is the next decision gate; simply rescaling a snapshot is
+not an accepted preparation.
+
+The production 80 K amorphous collision structure is instead the exact
+published, neutron-constrained EPSR model documented in
+`../ice_structures/epsr_lda80k/README.md`. This preserves the rejected NEP
+campaign as model evidence without conflating it with the accepted EPSR target.
+
 ### 5. Files to return from the cluster
 
 For every seed, retain `run.in`, `gpumd.log`, `thermo.out`, the final
@@ -397,12 +418,13 @@ cell makes the density exact by construction.
 
 The three compact completed final snapshots and their checksummed run summary
 are versioned under
-`structures/hexagonal_ih_100K_experimental/`. Full trajectories and scheduler
+`../ice_structures/hexagonal_ih_100K_experimental/`. Full trajectories and scheduler
 logs remain unversioned. Their manifest and collision registry record the
 completed structural acceptance decision.
 
 The reproducible decision procedure, published definitions, commands, and
-acceptance boundary are specified in `HEXAGONAL_ICE_VALIDATION.md`; run its
+acceptance boundary are specified in
+`../process_evidence/ice_structures/validation/HEXAGONAL_ICE.md`; run its
 `validate_hexagonal_ice.py` implementation before attesting any snapshot as a
 collision input.
 

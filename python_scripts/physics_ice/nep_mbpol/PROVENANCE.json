@@ -74,6 +74,7 @@
   },
   "hard_collision_methods": {
     "classical_scattering_algorithm_doi": "10.1016/j.nimb.2004.08.014",
+    "ion_transport_stratified_sampling_doi": "10.1080/10420159708211554",
     "htran_liquid_water_elastic_doi": "10.1016/j.nimb.2014.10.016",
     "dkw_confidence_band_doi": "10.1214/aoms/1177728174",
     "scope": "Mendenhall-Weller scattering integration is applied to the registered NLH pairs. H/He NLH runtime release is blocked until it cannot overlap the complete HTran elastic process."

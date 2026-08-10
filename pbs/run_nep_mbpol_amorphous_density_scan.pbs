@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+#PBS -N nep_lda_rho
+#PBS -q gpuq
+#PBS -l select=1:ncpus=4:ngpus=1:mem=8gb:node_type=gpu48gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+
+# Nine independent array tasks cover three densities x three structure seeds:
+#   qsub -J 0-8 pbs/run_nep_mbpol_amorphous_density_scan.pbs
+# GPUMD requires CUDA; the CPU-only idlex queue cannot execute this job.
+
+set -euo pipefail
+umask 002
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" && -d "${PBS_O_WORKDIR}/python_scripts/physics_ice/nep_mbpol" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+GPUMD_SOURCE="${NEP_DIR}/upstream/GPUMD-v3.9.3/src"
+POTENTIAL="${NEP_DIR}/model/nep-mbpol.nep.txt"
+PREPARER="${NEP_DIR}/prepare_amorphous_density_cell.py"
+EQUIL_INPUT="${NEP_DIR}/inputs/amorphous_density_stress_equilibrate.in"
+SAMPLE_INPUT="${NEP_DIR}/inputs/amorphous_density_stress_sample.in"
+CUDA_MODULE="${CUDA_MODULE:-cuda/12.6}"
+
+ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-}}"
+if [[ ! "${ARRAY_INDEX}" =~ ^[0-8]$ ]]; then
+    echo "Submit as array indices 0-8; got ${ARRAY_INDEX:-unset}." >&2
+    exit 2
+fi
+SEEDS=(1000 2000 3000)
+DENSITIES=(0.94 0.98 1.02)
+SEED="${SEEDS[$((ARRAY_INDEX % 3))]}"
+DENSITY="${DENSITIES[$((ARRAY_INDEX / 3))]}"
+DENSITY_TAG="${DENSITY/./p}"
+SOURCE="${NEP_DIR}/runs/amorphous_seed${SEED}/restart.xyz"
+SOURCE_COMPLETE="${NEP_DIR}/runs/amorphous_seed${SEED}/COMPLETED"
+RUN_DIR="${NEP_DIR}/runs/amorphous_density_stress_scan/rho_${DENSITY_TAG}/seed${SEED}"
+
+for required in \
+    "${GPUMD_SOURCE}/makefile" "${POTENTIAL}" "${PREPARER}" \
+    "${EQUIL_INPUT}" "${SAMPLE_INPUT}" "${SOURCE}" "${SOURCE_COMPLETE}"; do
+    if [[ ! -f "${required}" ]]; then
+        echo "Required file is missing: ${required}" >&2
+        exit 2
+    fi
+done
+if [[ "$(grep -Fc '@VELOCITY_SEED@' "${EQUIL_INPUT}")" -ne 1 ]]; then
+    echo "Equilibration input must contain one @VELOCITY_SEED@ token." >&2
+    exit 2
+fi
+
+mkdir -p "${RUN_DIR}"
+if [[ -e "${RUN_DIR}/COMPLETED" ]]; then
+    echo "Already complete: ${RUN_DIR}"
+    exit 0
+fi
+
+if ! type module >/dev/null 2>&1; then
+    # shellcheck disable=SC1091
+    source /etc/profile.d/modules.sh
+fi
+module load "${CUDA_MODULE}"
+command -v nvcc >/dev/null
+command -v nvidia-smi >/dev/null
+
+SCRATCH_PARENT="${TMPDIR:-/tmp/${USER}/${PBS_JOBID:-nep-lda-rho}}"
+BUILD_DIR="${SCRATCH_PARENT}/gpumd-v3.9.3-src"
+mkdir -p "${SCRATCH_PARENT}"
+cp -a "${GPUMD_SOURCE}" "${BUILD_DIR}"
+make -C "${BUILD_DIR}" clean >/dev/null
+make -C "${BUILD_DIR}" -j 4 gpumd \
+    CFLAGS='-std=c++14 -O3 -arch=native' \
+    >"${RUN_DIR}/build.log" 2>&1
+test -x "${BUILD_DIR}/gpumd"
+
+if [[ ! -s "${RUN_DIR}/scaled_model.xyz" ]]; then
+    python3 "${PREPARER}" \
+        --input "${SOURCE}" \
+        --output "${RUN_DIR}/scaled_model.xyz" \
+        --metadata "${RUN_DIR}/cell_mapping.json" \
+        --target-density-g-cm3 "${DENSITY}"
+fi
+
+run_stage() {
+    local stage="$1"
+    local source_model="$2"
+    local input_template="$3"
+    local stage_dir="${RUN_DIR}/${stage}"
+    local attempt_dir
+    if [[ -e "${stage_dir}/COMPLETED" ]]; then
+        return
+    fi
+    if [[ -d "${stage_dir}" ]]; then
+        mv "${stage_dir}" "${RUN_DIR}/${stage}.incomplete.$(date -u +%Y%m%dT%H%M%SZ)"
+    fi
+    attempt_dir="${stage_dir}.attempt.${PBS_JOBID:-manual}"
+    mkdir -p "${attempt_dir}"
+    cp "${source_model}" "${attempt_dir}/model.xyz"
+    cp "${POTENTIAL}" "${attempt_dir}/nep.txt"
+    if [[ "${stage}" == "equilibration" ]]; then
+        sed "s/@VELOCITY_SEED@/${SEED}/" "${input_template}" >"${attempt_dir}/run.in"
+    else
+        cp "${input_template}" "${attempt_dir}/run.in"
+    fi
+    (
+        cd "${attempt_dir}"
+        "${BUILD_DIR}/gpumd" >gpumd.log 2>&1
+        test -s restart.xyz
+        test -s thermo.out
+        test -s dump.xyz
+        touch COMPLETED
+    )
+    mv "${attempt_dir}" "${stage_dir}"
+}
+
+{
+    echo "job_id=${PBS_JOBID:-not-set}"
+    echo "array_index=${ARRAY_INDEX}"
+    echo "seed=${SEED}"
+    echo "target_density_g_cm3=${DENSITY}"
+    echo "target_temperature_k=80"
+    echo "ensemble=nvt_nhc"
+    echo "equilibration_ns=0.5"
+    echo "sampling_ns=0.5"
+    echo "purpose=preliminary_density_stress_and_structure_compatibility_gate"
+    echo "collision_ready=false"
+    echo "host=$(hostname)"
+    echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi --query-gpu=name,uuid,memory.total,compute_cap,driver_version \
+        --format=csv,noheader
+} >"${RUN_DIR}/provenance.txt"
+
+run_stage equilibration "${RUN_DIR}/scaled_model.xyz" "${EQUIL_INPUT}"
+run_stage sampling "${RUN_DIR}/equilibration/restart.xyz" "${SAMPLE_INPUT}"
+
+{
+    echo "completed_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    sha256sum \
+        "${RUN_DIR}/scaled_model.xyz" \
+        "${RUN_DIR}/cell_mapping.json" \
+        "${RUN_DIR}/equilibration/restart.xyz" \
+        "${RUN_DIR}/sampling/restart.xyz"
+} >>"${RUN_DIR}/provenance.txt"
+touch "${RUN_DIR}/COMPLETED"

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#PBS -N nlh_case_shard
+#PBS -q idle
+#PBS -l select=1:ncpus=128:mem=16gb
+#PBS -l walltime=96:00:00
+#PBS -j oe
+
+# Run a deterministic subset of an immutable hard-collision case wave. Each
+# case owns a distinct output/checkpoint directory, so array elements never
+# share writable simulation state.
+
+set -euo pipefail
+umask 002
+
+if [[ -z "${WAVE_MANIFEST:-}" || ! -f "${WAVE_MANIFEST}" ]]; then
+    echo "WAVE_MANIFEST must name an existing hard-collision wave." >&2
+    exit 2
+fi
+
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    echo "REPO_ROOT or PBS_O_WORKDIR is required." >&2
+    exit 2
+fi
+cd "${REPO_ROOT}"
+
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
+RUNNER="${NEP_DIR}/adaptive_nlh_particle_shards.py"
+LOCAL_ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-0}}"
+SHARD_OFFSET="${SHARD_OFFSET:-0}"
+SHARD_COUNT="${SHARD_COUNT:-1}"
+ALLOCATED_CPUS="${PBS_NCPUS:-${NCPUS:-128}}"
+WORKERS="${WORKERS:-${ALLOCATED_CPUS}}"
+
+if [[ ! "${LOCAL_ARRAY_INDEX}" =~ ^[0-9]+$ \
+      || ! "${SHARD_OFFSET}" =~ ^[0-9]+$ \
+      || ! "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ \
+      || ! "${WORKERS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Shard indices, shard count, and workers must be integers." >&2
+    exit 2
+fi
+SHARD_INDEX=$((LOCAL_ARRAY_INDEX + SHARD_OFFSET))
+if (( SHARD_INDEX >= SHARD_COUNT || WORKERS > ALLOCATED_CPUS )); then
+    echo "Invalid global shard index or worker count." >&2
+    exit 2
+fi
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export PYTHONHASHSEED=0
+export PYTHONUNBUFFERED=1
+
+echo "Repository: ${REPO_ROOT}"
+echo "Commit: $(git rev-parse HEAD)"
+echo "Wave: ${WAVE_MANIFEST}"
+echo "Shard: ${SHARD_INDEX}/${SHARD_COUNT}"
+echo "Workers: ${WORKERS}"
+echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+"${PYTHON_BIN}" -u "${RUNNER}" run "${WAVE_MANIFEST}" \
+    --shard-count "${SHARD_COUNT}" \
+    --shard-index "${SHARD_INDEX}" \
+    --workers "${WORKERS}"
+
+echo "Completed UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

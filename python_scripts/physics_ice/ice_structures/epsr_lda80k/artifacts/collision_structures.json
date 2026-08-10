@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-08-08T14:17:32.771629+00:00",
+  "all_collision_ready": true,
+  "path_base": "directory containing this registry",
+  "structures": [
+    {
+      "path": "lda80k_epsr.xyz.gz",
+      "sha256": "92266727fc236a8bf2f8c3083be9ea77aa8947b5bd9fd16ed8f5487cd17aeece",
+      "frame_index": 0,
+      "phase": "low-density amorphous ice, EPSR neutron model, 80 K",
+      "state": "equilibrated and structurally validated for collision sampling",
+      "collision_ready": true,
+      "use_class": "production-input",
+      "atoms": 9000,
+      "water_molecules": 3000,
+      "density_g_cm3": 0.9343471678603285,
+      "volume_angstrom3": 96051.26640855041,
+      "lattice_angstrom": [
+        [
+          45.796719,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          45.796719,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          45.796719
+        ]
+      ]
+    }
+  ]
+}

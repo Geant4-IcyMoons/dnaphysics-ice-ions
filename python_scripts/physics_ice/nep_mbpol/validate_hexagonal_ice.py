@@ -132,7 +132,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--archive-dir",
         type=Path,
-        default=HERE / "structures" / "hexagonal_ih_100K_experimental",
+        default=PHYSICS_ICE / "ice_structures" / "hexagonal_ih_100K_experimental",
         help="Directory containing manifest.json and compact final snapshots.",
     )
     parser.add_argument(
@@ -590,7 +590,13 @@ def _lineage_checks(
 ) -> dict[str, object]:
     archive = archive_dir / str(replica_manifest["final_snapshot"])
     source_80k = HERE / "runs" / f"hexagonal_ih_80K_seed{seed}" / "restart.xyz"
-    generated = HERE / "structures" / f"ice_ih_8x8x8_seed{seed}_melt_start.xyz"
+    generated = (
+        PHYSICS_ICE
+        / "ice_structures"
+        / "preparation"
+        / "hexagonal_ih_genice2"
+        / f"ice_ih_8x8x8_seed{seed}_melt_start.xyz"
+    )
     generated_metadata = generated.with_suffix(".json")
     generator_record = _read_json(generated_metadata)
     experimental_record = _read_json(run_dir / "experimental_cell.json")

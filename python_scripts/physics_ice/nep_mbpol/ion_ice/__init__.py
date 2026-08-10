@@ -1,7 +1,9 @@
 """Unified registry and workflow control for the ion--ice collision model."""
 
 from .registry import (
+    ICE_STRUCTURES_ROOT,
     NEP_MBPOL_ROOT,
+    PROCESS_EVIDENCE_ROOT,
     REPOSITORY_ROOT,
     canonical_projectile,
     get_phase,
@@ -18,8 +20,10 @@ from .schema import (
 )
 
 __all__ = [
+    "ICE_STRUCTURES_ROOT",
     "IonChargeState",
     "NEP_MBPOL_ROOT",
+    "PROCESS_EVIDENCE_ROOT",
     "PhaseDefinition",
     "ProjectileDefinition",
     "REPOSITORY_ROOT",

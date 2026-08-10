@@ -18,7 +18,13 @@ from bca.runtime import AdaptiveKernelTable, KernelTableError
 from bca.structure import file_sha256, load_ice_structure
 from nlh import get_coefficients
 
-from .registry import NEP_MBPOL_ROOT, REPOSITORY_ROOT, get_phase, get_projectile
+from .registry import (
+    NEP_MBPOL_ROOT,
+    PROCESS_EVIDENCE_ROOT,
+    REPOSITORY_ROOT,
+    get_phase,
+    get_projectile,
+)
 from .resources import RESOURCE_PATH, load_resource_profiles
 from .schema import PhaseDefinition, ProjectileDefinition
 
@@ -26,6 +32,12 @@ from .schema import PhaseDefinition, ProjectileDefinition
 REPORT_SCHEMA_VERSION = 1
 PLAN_SCHEMA_VERSION = 1
 BUNDLE_SCHEMA_VERSION = 1
+HARD_COLLISION_BENCHMARK_ROOT = (
+    PROCESS_EVIDENCE_ROOT
+    / "hard_nuclear_collisions"
+    / "benchmarking"
+    / "reference_results"
+)
 STATES = frozenset(
     (
         "complete",
@@ -193,7 +205,10 @@ def _structure_status(phase: PhaseDefinition) -> StageStatus:
     return StageStatus(
         "ice_structure",
         "complete",
-        f"{len(records)} accepted {phase.phase_id} replicas are available.",
+        (
+            f"{len(records)} accepted {phase.phase_id} structure"
+            f"{'s' if len(records) != 1 else ''} available."
+        ),
         evidence=(str(registry_path),),
     )
 
@@ -242,8 +257,7 @@ def _kernel_candidates(symbol: str) -> tuple[tuple[Path, Path], ...]:
             / "by_species"
             / symbol
             / "nlh_collision_kernels.manifest.json",
-            NEP_MBPOL_ROOT
-            / "collision_benchmarks"
+            HARD_COLLISION_BENCHMARK_ROOT
             / "by_species"
             / symbol
             / "nlh_adaptive_kernel_benchmark.json",
@@ -252,8 +266,7 @@ def _kernel_candidates(symbol: str) -> tuple[tuple[Path, Path], ...]:
             NEP_MBPOL_ROOT
             / "collision_kernels"
             / "nlh_collision_kernels.manifest.json",
-            NEP_MBPOL_ROOT
-            / "collision_benchmarks"
+            HARD_COLLISION_BENCHMARK_ROOT
             / "nlh_adaptive_kernel_benchmark.json",
         ),
     )
@@ -332,11 +345,33 @@ def _kernel_status(
 
 
 def _hard_state_candidates(symbol: str, phase: PhaseDefinition) -> list[Path]:
-    root = NEP_MBPOL_ROOT / "hard_collision_runs" / "adaptive_particles" / symbol
+    roots = (
+        PROCESS_EVIDENCE_ROOT
+        / "hard_nuclear_collisions"
+        / "validation"
+        / "runs"
+        / "sharded_adaptive_particles"
+        / symbol,
+        PROCESS_EVIDENCE_ROOT
+        / "hard_nuclear_collisions"
+        / "validation"
+        / "runs"
+        / "adaptive_particles"
+        / symbol,
+        NEP_MBPOL_ROOT / "hard_collision_runs" / "adaptive_particles" / symbol,
+    )
     result = []
     structure_registry = phase.resolve(phase.structure_registry)
     structure_directory = structure_registry.parent if structure_registry else None
-    for path in sorted(root.glob("*/adaptive_particle_state.json")):
+    for path in sorted(
+        path
+        for root in roots
+        for pattern in (
+            "*/adaptive_particle_state.json",
+            "*/adaptive_particle_shards.state.json",
+        )
+        for path in root.glob(pattern)
+    ):
         try:
             value = _read_json(path)
             configured = Path(
@@ -373,7 +408,7 @@ def _hard_transport_status(
                 "Adaptive phase/orientation transport is numerically complete.",
                 evidence=(str(path),),
             )
-        if state == "running":
+        if state in {"running", "awaiting_calculations", "refining"}:
             return StageStatus(
                 "hard_transport",
                 "running",
@@ -487,8 +522,13 @@ def _soft_definition_status(projectile: ProjectileDefinition) -> StageStatus:
 
 
 def _soft_state_candidates(symbol: str) -> list[Path]:
-    root = NEP_MBPOL_ROOT / "soft_collision_dft_runs"
-    return sorted(root.glob(f"{symbol.lower()}_adaptive_pilot/*/adaptive_charge_resolved_dft.state.json"))
+    root = PROCESS_EVIDENCE_ROOT / "soft_nuclear_collisions" / "validation" / "runs"
+    return sorted(
+        path
+        for path in root.glob(
+            f"{symbol.lower()}_adaptive_pilot/*/adaptive_charge_resolved_dft.state.json"
+        )
+    )
 
 
 def _soft_molecular_status(

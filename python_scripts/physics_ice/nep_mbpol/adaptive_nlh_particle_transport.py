@@ -24,10 +24,11 @@ sys.path.insert(0, str(HERE))
 
 from bca.config import DEFAULT_PROJECTILES  # noqa: E402
 from bca.convergence import OBSERVABLES  # noqa: E402
+from ion_ice import ICE_STRUCTURES_ROOT, PROCESS_EVIDENCE_ROOT  # noqa: E402
 
 
 SCHEMA_VERSION = 1
-IMPLEMENTATION_VERSION = 1
+IMPLEMENTATION_VERSION = 2
 DEFAULT_BASE_ENERGIES_EV = (
     1.0e3,
     1.0e4,
@@ -57,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--structure-directory",
         type=Path,
-        default=HERE / "structures" / "hexagonal_ih_100K_experimental",
+        default=ICE_STRUCTURES_ROOT / "hexagonal_ih_100K_experimental",
     )
     parser.add_argument(
         "--structure-seeds",
@@ -81,7 +82,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=HERE / "hard_collision_runs" / "adaptive_particles",
+        default=(
+            PROCESS_EVIDENCE_ROOT
+            / "hard_nuclear_collisions"
+            / "validation"
+            / "runs"
+            / "adaptive_particles"
+        ),
     )
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--tolerance", type=float, default=0.005)
@@ -89,8 +96,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--calibration-trajectories", type=int, default=10_000)
     parser.add_argument("--minimum-trajectories", type=int, default=200_000)
     parser.add_argument("--maximum-trajectories", type=int, default=64_000_000)
+    parser.add_argument(
+        "--extended-maximum-trajectories",
+        type=int,
+        default=None,
+        help=(
+            "Raise only the restart-time sampling ceiling without changing the "
+            "controller signature or deterministic trajectory stream."
+        ),
+    )
+    parser.add_argument(
+        "--unlimited-trajectories",
+        action="store_true",
+        help=(
+            "Continue checkpointed sampling until the statistical gate is met "
+            "or the external scheduler stops the process."
+        ),
+    )
     parser.add_argument("--trajectory-batch-size", type=int, default=10_000)
     parser.add_argument("--path-length-angstrom", type=float, default=100.0)
+    parser.add_argument(
+        "--sampling-mode",
+        choices=("uniform", "collision_tube_mixture"),
+        default="collision_tube_mixture",
+    )
+    parser.add_argument("--tube-mixture-fraction", type=float, default=0.5)
     parser.add_argument("--maximum-refinement-depth", type=int, default=8)
     parser.add_argument("--maximum-energy-points", type=int, default=257)
     parser.add_argument("--dry-run", action="store_true")
@@ -115,8 +145,25 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--calibration-trajectories must be at least two.")
     if not 2 <= args.minimum_trajectories <= args.maximum_trajectories:
         raise ValueError("Invalid minimum/maximum trajectory bounds.")
+    if (
+        args.extended_maximum_trajectories is not None
+        and args.extended_maximum_trajectories < args.maximum_trajectories
+    ):
+        raise ValueError(
+            "--extended-maximum-trajectories cannot lower the signed ceiling."
+        )
+    if args.unlimited_trajectories and args.extended_maximum_trajectories is not None:
+        raise ValueError(
+            "--unlimited-trajectories and --extended-maximum-trajectories are "
+            "mutually exclusive."
+        )
     if args.trajectory_batch_size < 1:
         raise ValueError("--trajectory-batch-size must be positive.")
+    if args.sampling_mode == "collision_tube_mixture" and not (
+        math.isfinite(args.tube_mixture_fraction)
+        and 0.0 < args.tube_mixture_fraction < 1.0
+    ):
+        raise ValueError("--tube-mixture-fraction must lie strictly in (0, 1).")
     if args.maximum_refinement_depth < 0 or args.maximum_energy_points < len(
         energies
     ):
@@ -154,6 +201,13 @@ def _worker_count(requested: int) -> int:
             f"--workers must be 0 or lie in 1-{available}; got {requested}."
         )
     return workers
+
+
+def _runtime_trajectory_ceiling(args: argparse.Namespace) -> int:
+    if getattr(args, "unlimited_trajectories", False):
+        return sys.maxsize
+    extension = args.extended_maximum_trajectories
+    return args.maximum_trajectories if extension is None else int(extension)
 
 
 def _case_directory(root: Path, stage: str, case: Case) -> Path:
@@ -249,6 +303,10 @@ def _run_simulator(
         "summary",
         "--output-directory",
         str(output),
+        "--sampling-mode",
+        getattr(args, "sampling_mode", "collision_tube_mixture"),
+        "--tube-mixture-fraction",
+        f"{getattr(args, 'tube_mixture_fraction', 0.5):.17g}",
         *ORIENTATIONS[case.orientation],
     ]
     if fixed_trajectories is None:
@@ -257,7 +315,7 @@ def _run_simulator(
                 "--minimum-trajectories",
                 str(args.minimum_trajectories),
                 "--maximum-trajectories",
-                str(args.maximum_trajectories),
+                str(_runtime_trajectory_ceiling(args)),
             )
         )
     else:
@@ -266,7 +324,20 @@ def _run_simulator(
         command.append("--control-variate")
     if args.dry_run:
         return 0, output / "hard_collision_run.manifest.json", command
-    completed = subprocess.run(command, check=False)
+    # PBS captures inherited stdout/stderr through a pipe.  A long-running
+    # nested tqdm stream can block in pipe_write if that capture path stops
+    # draining, which in turn prevents the parent from consuming worker
+    # results.  Keep the scientifically meaningful per-case progress, but
+    # write it directly to the case directory rather than through PBS.
+    output.mkdir(parents=True, exist_ok=True)
+    progress_log = output / "hard_collision_progress.log"
+    with progress_log.open("w", encoding="utf-8") as stream:
+        completed = subprocess.run(
+            command,
+            check=False,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+        )
     return completed.returncode, output / "hard_collision_run.manifest.json", command
 
 
@@ -344,7 +415,8 @@ def _run_production_case(
         return manifest_path
     if return_code == 2:
         raise RuntimeError(
-            f"Case reached {args.maximum_trajectories:,} trajectories without "
+            f"Case reached {_runtime_trajectory_ceiling(args):,} trajectories "
+            "without "
             f"meeting every 0.5% gate: {case}. Checkpoints are resumable."
         )
     if return_code != 0:
@@ -564,6 +636,10 @@ def _controller_configuration(args: argparse.Namespace) -> dict[str, object]:
         "maximum_trajectories": args.maximum_trajectories,
         "trajectory_batch_size": args.trajectory_batch_size,
         "path_length_angstrom": args.path_length_angstrom,
+        "initial_condition_sampling": getattr(
+            args, "sampling_mode", "collision_tube_mixture"
+        ),
+        "tube_mixture_fraction": getattr(args, "tube_mixture_fraction", 0.5),
         "maximum_refinement_depth": args.maximum_refinement_depth,
         "maximum_energy_points": args.maximum_energy_points,
         "numerical_contract": {
@@ -617,6 +693,24 @@ def main() -> int:
             "intervals": {},
         }
         _atomic_json(state_path, state)
+
+    runtime_ceiling = _runtime_trajectory_ceiling(args)
+    history = state.setdefault("runtime_trajectory_ceiling_history", [])
+    if not isinstance(history, list):
+        raise RuntimeError(f"Malformed trajectory-ceiling history: {state_path}")
+    if not history or int(history[-1]["maximum_trajectories"]) != runtime_ceiling:
+        history.append(
+            {
+                "recorded_utc": datetime.now(timezone.utc).isoformat(),
+                "maximum_trajectories": runtime_ceiling,
+                "reason": (
+                    "restart-time liveness ceiling; physical and numerical "
+                    "acceptance gates unchanged"
+                ),
+            }
+        )
+    state["runtime_workers"] = workers
+    _atomic_json(state_path, state)
 
     base = sorted(set(float(value) for value in args.base_energies_ev))
     for energy in base:

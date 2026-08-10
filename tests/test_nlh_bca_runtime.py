@@ -196,6 +196,45 @@ def test_straight_line_control_variate_has_exact_periodic_mean(tmp_path):
     assert reference.expected_transport_moment > 0.0
 
 
+def test_collision_tube_mixture_has_exact_bounded_likelihood_weights(tmp_path):
+    table = AdaptiveKernelTable(_kernel_product(tmp_path))
+    transport = PeriodicHardCollisionTransport(_structure(), table)
+    rng = np.random.default_rng(98765)
+    direction = np.asarray((1.0, 0.0, 0.0))
+    path_length = 10.0
+    weighted_counts: list[float] = []
+    selected_strata: set[int] = set()
+
+    for _ in range(4_000):
+        position, importance = transport.sample_collision_tube_mixture(
+            "C", 10_000.0, direction, path_length, 0.5, rng
+        )
+        assert 0.0 < importance.target_over_proposal_weight <= 2.0
+        candidates = transport._straight_line_candidates(
+            position, direction, path_length, "C", 10_000.0
+        )
+        weighted_counts.append(
+            importance.target_over_proposal_weight * len(candidates)
+        )
+        if importance.component == "collision_tube":
+            assert importance.selected_atom_index in {
+                candidate.atom_index for candidate in candidates
+            }
+            assert importance.selected_stratum_index is not None
+            selected_strata.add(importance.selected_stratum_index)
+
+    expected = (
+        transport.independent_atom_rate_per_angstrom("C", 10_000.0)
+        * path_length
+    )
+    samples = np.asarray(weighted_counts)
+    standard_error = float(samples.std(ddof=1) / math.sqrt(samples.size))
+    assert float(samples.mean()) == pytest.approx(
+        expected, abs=6.0 * standard_error
+    )
+    assert selected_strata == {0, 1, 2}
+
+
 @pytest.mark.parametrize("projectile", ("H", "He"))
 def test_periodic_transport_supports_proton_and_helium_projectiles(
     tmp_path, projectile

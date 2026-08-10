@@ -43,6 +43,7 @@ from .runtime import (
 )
 from .structure import IceStructure, StructureValidationError, load_ice_structure
 from .trajectory import (
+    CollisionTubeImportanceSample,
     HardCollisionEvent,
     HardTrajectoryResult,
     PeriodicHardCollisionTransport,
@@ -50,6 +51,7 @@ from .trajectory import (
 
 __all__ = [
     "CollisionResult",
+    "CollisionTubeImportanceSample",
     "DEFAULT_AXIS_RELATIVE_TOLERANCE",
     "DEFAULT_BASE_ENERGY_POINTS",
     "DEFAULT_ENERGY_MAX_EV",

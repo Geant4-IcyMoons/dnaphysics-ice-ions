@@ -131,15 +131,19 @@ def backend_compatibility_checks() -> tuple[CompatibilityCheck, ...]:
             ),
         )
     )
-    phase = get_phase("hexagonal_ih_100k")
-    registry_path = phase.resolve(phase.structure_registry)
-    checks.append(
-        CompatibilityCheck(
-            "hexagonal_structure_registry",
-            registry_path is not None and registry_path.is_file(),
-            str(registry_path),
+    for phase_id, check_name in (
+        ("hexagonal_ih_100k", "hexagonal_structure_registry"),
+        ("amorphous_lda_80k", "amorphous_structure_registry"),
+    ):
+        phase = get_phase(phase_id)
+        registry_path = phase.resolve(phase.structure_registry)
+        checks.append(
+            CompatibilityCheck(
+                check_name,
+                registry_path is not None and registry_path.is_file(),
+                str(registry_path),
+            )
         )
-    )
 
     resource_profiles, _, _ = load_resource_profiles()
     resource_scripts = {

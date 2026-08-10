@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 import csv
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -43,11 +43,12 @@ from bca.trajectory import (  # noqa: E402
     HardTrajectoryResult,
     PeriodicHardCollisionTransport,
 )
+from ion_ice import PROCESS_EVIDENCE_ROOT  # noqa: E402
 
 
 _WORKER_TRANSPORT: PeriodicHardCollisionTransport | None = None
 _WORKER_STRUCTURE: IceStructure | None = None
-TRAJECTORY_IMPLEMENTATION_VERSION = 2
+TRAJECTORY_IMPLEMENTATION_VERSION = 3
 
 
 def parse_args() -> argparse.Namespace:
@@ -145,6 +146,25 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--sampling-mode",
+        choices=("uniform", "collision_tube_mixture"),
+        default="collision_tube_mixture",
+        help=(
+            "Initial-condition proposal. The default combines uniform cell "
+            "translations with exactly weighted collision-tube strata."
+        ),
+    )
+    parser.add_argument(
+        "--tube-mixture-fraction",
+        type=float,
+        default=0.5,
+        help=(
+            "Probability of drawing from the collision-tube proposal; the "
+            "remaining probability samples the target distribution directly "
+            "(default: 0.5)."
+        ),
+    )
+    parser.add_argument(
         "--output-detail",
         choices=("full", "summary"),
         default="full",
@@ -156,7 +176,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-directory",
         type=Path,
-        default=HERE / "hard_collision_runs",
+        default=(
+            PROCESS_EVIDENCE_ROOT
+            / "hard_nuclear_collisions"
+            / "validation"
+            / "runs"
+        ),
     )
     return parser.parse_args()
 
@@ -201,6 +226,13 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--workers must be positive.")
     if args.max_collisions < 1:
         raise ValueError("--max-collisions must be positive.")
+    if args.sampling_mode == "collision_tube_mixture" and not (
+        math.isfinite(args.tube_mixture_fraction)
+        and 0.0 < args.tube_mixture_fraction < 1.0
+    ):
+        raise ValueError(
+            "--tube-mixture-fraction must lie strictly in (0, 1)."
+        )
 
 
 def _initialize_worker(
@@ -245,6 +277,8 @@ def _run_one(
         tuple[float, float, float] | None,
         int,
         bool,
+        str,
+        float,
     ],
 ) -> tuple[int, HardTrajectoryResult]:
     if _WORKER_TRANSPORT is None or _WORKER_STRUCTURE is None:
@@ -258,16 +292,33 @@ def _run_one(
         fixed_direction,
         max_collisions,
         use_control_variate,
+        sampling_mode,
+        tube_mixture_fraction,
     ) = task
     seed = np.random.SeedSequence((master_seed, trajectory_index))
     rng = np.random.default_rng(seed)
-    fractional_position = rng.random(3)
-    initial_position = fractional_position @ _WORKER_STRUCTURE.lattice_angstrom
     direction = (
         _isotropic_direction(rng)
         if fixed_direction is None
         else np.asarray(fixed_direction, dtype=np.float64)
     )
+    if sampling_mode == "collision_tube_mixture":
+        initial_position, importance_sampling = (
+            _WORKER_TRANSPORT.sample_collision_tube_mixture(
+                projectile,
+                energy_ev,
+                direction,
+                path_length_angstrom,
+                tube_mixture_fraction,
+                rng,
+            )
+        )
+    elif sampling_mode == "uniform":
+        fractional_position = rng.random(3)
+        initial_position = fractional_position @ _WORKER_STRUCTURE.lattice_angstrom
+        importance_sampling = None
+    else:
+        raise ValueError(f"Unknown sampling mode {sampling_mode!r}.")
     control_variate = (
         _WORKER_TRANSPORT.straight_line_control_variate(
             projectile,
@@ -288,8 +339,12 @@ def _run_one(
         rng=rng,
         max_collisions=max_collisions,
     )
-    if control_variate is not None:
-        result = replace(result, control_variate=control_variate)
+    if control_variate is not None or importance_sampling is not None:
+        result = replace(
+            result,
+            control_variate=control_variate,
+            importance_sampling=importance_sampling,
+        )
     return trajectory_index, result
 
 
@@ -330,12 +385,22 @@ def _write_trajectories(
         "expected_reference_recoil_energy_ev",
         "expected_reference_transport_moment",
         "control_variate_quadrature_relative_error",
+        "sampling_component",
+        "tube_mixture_fraction",
+        "tube_density_over_uniform",
+        "target_over_proposal_weight",
+        "selected_target",
+        "selected_atom_index",
+        "selected_area_quantile",
+        "selected_stratum_index",
+        "selected_stratum_count",
     )
     with temporary.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(columns)
         for index, result in indexed_results:
             reference = result.control_variate
+            importance = result.importance_sampling
             writer.writerow(
                 (
                     index,
@@ -363,6 +428,37 @@ def _write_trajectories(
                         )
                         if reference is not None
                         else ("", "", "", "", "", "", "")
+                    ),
+                    *(
+                        (
+                            importance.component,
+                            importance.tube_mixture_fraction,
+                            importance.tube_density_over_uniform,
+                            importance.target_over_proposal_weight,
+                            importance.selected_target or "",
+                            (
+                                importance.selected_atom_index
+                                if importance.selected_atom_index is not None
+                                else ""
+                            ),
+                            (
+                                importance.selected_area_quantile
+                                if importance.selected_area_quantile is not None
+                                else ""
+                            ),
+                            (
+                                importance.selected_stratum_index
+                                if importance.selected_stratum_index is not None
+                                else ""
+                            ),
+                            (
+                                importance.selected_stratum_count
+                                if importance.selected_stratum_count is not None
+                                else ""
+                            ),
+                        )
+                        if importance is not None
+                        else ("uniform", "", "", 1.0, "", "", "", "", "")
                     ),
                 )
             )
@@ -439,14 +535,21 @@ def _write_events(
 
 def _write_distribution_sample(
     path: Path, indexed_results: list[tuple[int, HardTrajectoryResult]]
-) -> None:
-    """Store compact trajectory-level samples needed to reconstruct both CDFs."""
+) -> int:
+    """Store only direct target draws, which retain ordinary unweighted CDFs."""
+
+    target_results = [
+        (index, result)
+        for index, result in indexed_results
+        if result.importance_sampling is None
+        or result.importance_sampling.component == "uniform"
+    ]
 
     trajectory = np.asarray(
-        [index for index, _ in indexed_results], dtype=np.int64
+        [index for index, _ in target_results], dtype=np.int64
     )
     total_recoil = np.asarray(
-        [result.recoil_energy_ev for _, result in indexed_results],
+        [result.recoil_energy_ev for _, result in target_results],
         dtype=np.float64,
     )
     final_deflection = np.asarray(
@@ -465,7 +568,7 @@ def _write_distribution_sample(
                     ),
                 )
             )
-            for _, result in indexed_results
+            for _, result in target_results
         ],
         dtype=np.float64,
     )
@@ -478,6 +581,7 @@ def _write_distribution_sample(
             final_deflection_rad=final_deflection,
         )
     temporary.replace(path)
+    return len(target_results)
 
 
 def _batch_statistics(
@@ -487,10 +591,16 @@ def _batch_statistics(
 ) -> dict[str, RatioStatistics]:
     statistics = {name: RatioStatistics() for name in OBSERVABLES}
     for _, result in indexed_results:
-        path = result.traveled_path_length_angstrom
-        collisions = float(len(result.events))
-        recoil = result.recoil_energy_ev
-        transport = math.fsum(
+        importance = result.importance_sampling
+        weight = (
+            importance.target_over_proposal_weight
+            if importance is not None
+            else 1.0
+        )
+        path = weight * result.traveled_path_length_angstrom
+        sampled_collisions = float(len(result.events))
+        sampled_recoil = result.recoil_energy_ev
+        sampled_transport = math.fsum(
             1.0 - math.cos(event.theta_projectile_lab_rad)
             for event in result.events
         )
@@ -498,15 +608,19 @@ def _batch_statistics(
             reference = result.control_variate
             if reference is None:
                 raise RuntimeError("Control-variate result is missing its reference.")
-            collisions += (
-                reference.expected_collision_count - reference.collision_count
+            collisions = reference.expected_collision_count + weight * (
+                sampled_collisions - reference.collision_count
             )
-            recoil += (
-                reference.expected_recoil_energy_ev - reference.recoil_energy_ev
+            recoil = reference.expected_recoil_energy_ev + weight * (
+                sampled_recoil - reference.recoil_energy_ev
             )
-            transport += (
-                reference.expected_transport_moment - reference.transport_moment
+            transport = reference.expected_transport_moment + weight * (
+                sampled_transport - reference.transport_moment
             )
+        else:
+            collisions = weight * sampled_collisions
+            recoil = weight * sampled_recoil
+            transport = weight * sampled_transport
         statistics["hard_collision_rate_per_angstrom"].add(collisions, path)
         statistics["hard_nuclear_stopping_ev_per_angstrom"].add(recoil, path)
         statistics["hard_transport_rate_per_angstrom"].add(transport, path)
@@ -548,6 +662,8 @@ def _run_signature(
         "search_window_angstrom": args.search_window_angstrom,
         "max_collisions": args.max_collisions,
         "control_variate": getattr(args, "control_variate", False),
+        "initial_condition_sampling": getattr(args, "sampling_mode", "uniform"),
+        "tube_mixture_fraction": getattr(args, "tube_mixture_fraction", 0.5),
         "output_detail": getattr(args, "output_detail", "full"),
     }
     encoded = json.dumps(
@@ -571,11 +687,18 @@ def _checkpoint_batch(
     event_path = directory / f"{stem}.events.csv"
     distribution_path = directory / f"{stem}.distributions.npz"
     record_path = directory / f"{stem}.manifest.json"
+    target_distribution_sample_count = sum(
+        result.importance_sampling is None
+        or result.importance_sampling.component == "uniform"
+        for _, result in indexed_results
+    )
     if output_detail == "full":
         _write_trajectories(trajectory_path, indexed_results)
         _write_events(event_path, indexed_results)
     else:
-        _write_distribution_sample(distribution_path, indexed_results)
+        target_distribution_sample_count = _write_distribution_sample(
+            distribution_path, indexed_results
+        )
     statistics = _batch_statistics(
         indexed_results, control_variate=control_variate
     )
@@ -586,8 +709,69 @@ def _checkpoint_batch(
     terminations = Counter(
         result.termination for _, result in indexed_results
     )
+    weighted_actual_collision_count = math.fsum(
+        (
+            result.importance_sampling.target_over_proposal_weight
+            if result.importance_sampling is not None
+            else 1.0
+        )
+        * len(result.events)
+        for _, result in indexed_results
+    )
+    weighted_ambiguous_collision_count = math.fsum(
+        (
+            result.importance_sampling.target_over_proposal_weight
+            if result.importance_sampling is not None
+            else 1.0
+        )
+        for _, result in indexed_results
+        for event in result.events
+        if event.competing_hard_candidates > 0
+    )
+    weighted_actual_recoil_energy_ev = math.fsum(
+        (
+            result.importance_sampling.target_over_proposal_weight
+            if result.importance_sampling is not None
+            else 1.0
+        )
+        * event.recoil_energy_ev
+        for _, result in indexed_results
+        for event in result.events
+    )
+    weighted_ambiguous_recoil_energy_ev = math.fsum(
+        (
+            result.importance_sampling.target_over_proposal_weight
+            if result.importance_sampling is not None
+            else 1.0
+        )
+        * event.recoil_energy_ev
+        for _, result in indexed_results
+        for event in result.events
+        if event.competing_hard_candidates > 0
+    )
+    weighted_actual_transport_moment = math.fsum(
+        (
+            result.importance_sampling.target_over_proposal_weight
+            if result.importance_sampling is not None
+            else 1.0
+        )
+        * (1.0 - math.cos(event.theta_projectile_lab_rad))
+        for _, result in indexed_results
+        for event in result.events
+    )
+    weighted_ambiguous_transport_moment = math.fsum(
+        (
+            result.importance_sampling.target_over_proposal_weight
+            if result.importance_sampling is not None
+            else 1.0
+        )
+        * (1.0 - math.cos(event.theta_projectile_lab_rad))
+        for _, result in indexed_results
+        for event in result.events
+        if event.competing_hard_candidates > 0
+    )
     record = {
-        "schema_version": 2,
+        "schema_version": 4,
         "configuration_signature": signature,
         "trajectory_start": start,
         "trajectory_stop": stop,
@@ -604,6 +788,67 @@ def _checkpoint_batch(
             "termination_counts": dict(sorted(terminations.items())),
             "ambiguous_event_count": sum(
                 result.ambiguous_event_count for _, result in indexed_results
+            ),
+            "event_row_count": sum(
+                len(result.events) for _, result in indexed_results
+            ),
+            "importance_weighted_actual_collision_count": (
+                weighted_actual_collision_count
+            ),
+            "importance_weighted_ambiguous_collision_count": (
+                weighted_ambiguous_collision_count
+            ),
+            "importance_weighted_actual_recoil_energy_ev": (
+                weighted_actual_recoil_energy_ev
+            ),
+            "importance_weighted_ambiguous_recoil_energy_ev": (
+                weighted_ambiguous_recoil_energy_ev
+            ),
+            "importance_weighted_actual_transport_moment": (
+                weighted_actual_transport_moment
+            ),
+            "importance_weighted_ambiguous_transport_moment": (
+                weighted_ambiguous_transport_moment
+            ),
+            "target_distribution_sample_count": (
+                target_distribution_sample_count
+            ),
+            "proposal_component_counts": dict(
+                sorted(
+                    Counter(
+                        (
+                            result.importance_sampling.component
+                            if result.importance_sampling is not None
+                            else "uniform"
+                        )
+                        for _, result in indexed_results
+                    ).items()
+                )
+            ),
+            "importance_weight_sum": math.fsum(
+                (
+                    result.importance_sampling.target_over_proposal_weight
+                    if result.importance_sampling is not None
+                    else 1.0
+                )
+                for _, result in indexed_results
+            ),
+            "importance_weight_square_sum": math.fsum(
+                (
+                    result.importance_sampling.target_over_proposal_weight
+                    if result.importance_sampling is not None
+                    else 1.0
+                )
+                ** 2
+                for _, result in indexed_results
+            ),
+            "maximum_importance_weight": max(
+                (
+                    result.importance_sampling.target_over_proposal_weight
+                    if result.importance_sampling is not None
+                    else 1.0
+                )
+                for _, result in indexed_results
             ),
             "maximum_control_variate_quadrature_relative_error": max(
                 (
@@ -733,17 +978,41 @@ def _execute_tasks(
             tuple[float, float, float] | None,
             int,
             bool,
+            str,
+            float,
         ]
     ],
     executor: ProcessPoolExecutor | None,
+    worker_count: int,
 ) -> list[tuple[int, HardTrajectoryResult]]:
     indexed_results: list[tuple[int, HardTrajectoryResult]] = []
     if executor is None:
         indexed_results = [_run_one(task) for task in tasks]
     else:
-        futures = [executor.submit(_run_one, task) for task in tasks]
-        for future in as_completed(futures):
-            indexed_results.append(future.result())
+        # Keep the executor's wake-up pipe and pending-work dictionary bounded.
+        # Submitting an entire 100,000-trajectory checkpoint batch at once can
+        # eventually fill that pipe during long production runs, leaving the
+        # parent blocked in write(2) while every worker waits for work.
+        task_iterator = iter(tasks)
+        maximum_pending = 4 * worker_count
+        pending = {
+            executor.submit(_run_one, task)
+            for task in (
+                next(task_iterator, None) for _ in range(maximum_pending)
+            )
+            if task is not None
+        }
+        while pending:
+            completed_futures, pending = wait(
+                pending, return_when=FIRST_COMPLETED
+            )
+            for future in completed_futures:
+                indexed_results.append(future.result())
+            for _ in range(maximum_pending - len(pending)):
+                task = next(task_iterator, None)
+                if task is None:
+                    break
+                pending.add(executor.submit(_run_one, task))
     indexed_results.sort(key=lambda item: item[0])
     return indexed_results
 
@@ -793,6 +1062,18 @@ def _write_manifest(
     terminations: Counter[str] = Counter()
     ambiguous = 0
     maximum_quadrature_error = 0.0
+    target_distribution_sample_count = 0
+    proposal_component_counts: Counter[str] = Counter()
+    importance_weight_sum = 0.0
+    importance_weight_square_sum = 0.0
+    maximum_importance_weight = 0.0
+    event_row_count = 0
+    weighted_actual_collision_count = 0.0
+    weighted_ambiguous_collision_count = 0.0
+    weighted_actual_recoil_energy_ev = 0.0
+    weighted_ambiguous_recoil_energy_ev = 0.0
+    weighted_actual_transport_moment = 0.0
+    weighted_ambiguous_transport_moment = 0.0
     for record in records:
         summary = record["summary"]
         if not isinstance(summary, dict):
@@ -800,6 +1081,37 @@ def _write_manifest(
         target_counts.update(summary["target_counts"])
         terminations.update(summary["termination_counts"])
         ambiguous += int(summary["ambiguous_event_count"])
+        event_row_count += int(summary["event_row_count"])
+        weighted_actual_collision_count += float(
+            summary["importance_weighted_actual_collision_count"]
+        )
+        weighted_ambiguous_collision_count += float(
+            summary["importance_weighted_ambiguous_collision_count"]
+        )
+        weighted_actual_recoil_energy_ev += float(
+            summary["importance_weighted_actual_recoil_energy_ev"]
+        )
+        weighted_ambiguous_recoil_energy_ev += float(
+            summary["importance_weighted_ambiguous_recoil_energy_ev"]
+        )
+        weighted_actual_transport_moment += float(
+            summary["importance_weighted_actual_transport_moment"]
+        )
+        weighted_ambiguous_transport_moment += float(
+            summary["importance_weighted_ambiguous_transport_moment"]
+        )
+        target_distribution_sample_count += int(
+            summary["target_distribution_sample_count"]
+        )
+        proposal_component_counts.update(summary["proposal_component_counts"])
+        importance_weight_sum += float(summary["importance_weight_sum"])
+        importance_weight_square_sum += float(
+            summary["importance_weight_square_sum"]
+        )
+        maximum_importance_weight = max(
+            maximum_importance_weight,
+            float(summary["maximum_importance_weight"]),
+        )
         maximum_quadrature_error = max(
             maximum_quadrature_error,
             float(
@@ -821,7 +1133,7 @@ def _write_manifest(
     )
     raw_sampled_rate = raw_total_events / total_path if total_path > 0.0 else 0.0
     manifest = {
-        "schema_version": 3,
+        "schema_version": 4,
         "trajectory_implementation_version": TRAJECTORY_IMPLEMENTATION_VERSION,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "configuration_signature": signature,
@@ -851,12 +1163,14 @@ def _write_manifest(
             "max_collisions": args.max_collisions,
             "allow_unvalidated": args.allow_unvalidated,
             "control_variate": args.control_variate,
+            "initial_condition_sampling": args.sampling_mode,
+            "tube_mixture_fraction": args.tube_mixture_fraction,
             "output_detail": args.output_detail,
         },
         "summary": {
             "total_traveled_path_angstrom": total_path,
-            "hard_collision_count": int(round(raw_total_events)),
-            "raw_hard_collision_count": int(round(raw_total_events)),
+            "event_row_count": event_row_count,
+            "importance_estimated_raw_hard_collision_count": raw_total_events,
             "estimated_hard_collision_count": estimated_total_events,
             "target_counts": dict(sorted(target_counts.items())),
             "raw_total_recoil_energy_ev": raw_total_recoil,
@@ -906,7 +1220,45 @@ def _write_manifest(
                 else None
             ),
             "ambiguous_event_count": ambiguous,
+            "importance_weighted_ambiguous_fractions": {
+                "collision_count": (
+                    weighted_ambiguous_collision_count
+                    / weighted_actual_collision_count
+                    if weighted_actual_collision_count > 0.0
+                    else None
+                ),
+                "recoil_energy": (
+                    weighted_ambiguous_recoil_energy_ev
+                    / weighted_actual_recoil_energy_ev
+                    if weighted_actual_recoil_energy_ev > 0.0
+                    else None
+                ),
+                "transport_moment": (
+                    weighted_ambiguous_transport_moment
+                    / weighted_actual_transport_moment
+                    if weighted_actual_transport_moment > 0.0
+                    else None
+                ),
+            },
             "termination_counts": dict(sorted(terminations.items())),
+            "target_distribution_sample_count": (
+                target_distribution_sample_count
+            ),
+            "proposal_component_counts": dict(
+                sorted(proposal_component_counts.items())
+            ),
+            "importance_weight_mean": (
+                importance_weight_sum / rate_statistics.count
+                if rate_statistics.count
+                else None
+            ),
+            "importance_weight_effective_sample_size": (
+                importance_weight_sum * importance_weight_sum
+                / importance_weight_square_sum
+                if importance_weight_square_sum > 0.0
+                else None
+            ),
+            "maximum_importance_weight": maximum_importance_weight,
         },
         "statistical_convergence": {
             "required": args.trajectories is None,
@@ -949,6 +1301,19 @@ def _write_manifest(
             "purpose": (
                 "unbiased variance reduction; it does not replace or rescale "
                 "the atomistic model"
+            ),
+        },
+        "importance_sampling": {
+            "mode": args.sampling_mode,
+            "tube_mixture_fraction": args.tube_mixture_fraction,
+            "estimator": (
+                "exact target/proposal likelihood ratio for a mixture of "
+                "uniform periodic translations and adaptive impact-area "
+                "collision tubes"
+            ),
+            "purpose": (
+                "unbiased rare-event variance reduction; it changes neither "
+                "the NLH interaction nor the hard-collision definition"
             ),
         },
         "outputs": {
@@ -1086,10 +1451,14 @@ def main() -> int:
                                 fixed_direction,
                                 args.max_collisions,
                                 args.control_variate,
+                                args.sampling_mode,
+                                args.tube_mixture_fraction,
                             )
                             for index in range(completed, stop)
                         ]
-                        indexed_results = _execute_tasks(tasks, executor)
+                        indexed_results = _execute_tasks(
+                            tasks, executor, args.workers
+                        )
                         record_path = _checkpoint_batch(
                             checkpoint_directory,
                             signature,
@@ -1111,9 +1480,18 @@ def main() -> int:
                 look_index=look_index,
             )
             if args.trajectory_cdf_tolerance is not None:
+                cdf_sample_count = sum(
+                    int(record["summary"]["target_distribution_sample_count"])
+                    for record in records
+                )
+                if cdf_sample_count < 1:
+                    raise RuntimeError(
+                        "No direct target-distribution draws are available "
+                        "for the unweighted trajectory CDF gate."
+                    )
                 cdf_half_width, cdf_individual_confidence = (
                     simultaneous_dkw_half_width(
-                        completed,
+                        cdf_sample_count,
                         args.statistical_confidence,
                         distribution_count=2,
                         scheduled_look_count=len(schedule),
@@ -1125,6 +1503,7 @@ def main() -> int:
                     "absolute_confidence_half_width": cdf_half_width,
                     "absolute_tolerance": args.trajectory_cdf_tolerance,
                     "distribution_count": 2,
+                    "target_distribution_sample_count": cdf_sample_count,
                     "individual_band_confidence": cdf_individual_confidence,
                     "distributions": [
                         "total_recoil_energy_ev_per_trajectory",

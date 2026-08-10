@@ -26,7 +26,11 @@ from validate_hexagonal_ice import (  # noqa: E402
 
 
 INITIAL_STRUCTURE = (
-    NEP_MBPOL / "structures" / "ice_ih_8x8x8_seed1000_initial.xyz"
+    NEP_MBPOL.parent
+    / "ice_structures"
+    / "preparation"
+    / "hexagonal_ih_genice2"
+    / "ice_ih_8x8x8_seed1000_melt_start.xyz"
 )
 
 

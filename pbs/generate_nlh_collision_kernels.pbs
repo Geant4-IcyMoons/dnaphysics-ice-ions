@@ -27,9 +27,10 @@ fi
 cd "${REPO_ROOT}"
 
 NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+BENCHMARK_ROOT="${REPO_ROOT}/python_scripts/physics_ice/process_evidence/hard_nuclear_collisions/benchmarking"
 GENERATOR="${NEP_DIR}/generate_nlh_collision_kernels.py"
 OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${NEP_DIR}/collision_kernels}"
-BENCHMARK_DIRECTORY="${BENCHMARK_DIRECTORY:-${NEP_DIR}/collision_benchmarks}"
+BENCHMARK_DIRECTORY="${BENCHMARK_DIRECTORY:-${BENCHMARK_ROOT}/reference_results}"
 RUN_BENCHMARK="${RUN_BENCHMARK:-1}"
 PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
 
@@ -82,7 +83,7 @@ printf '\n'
 
 if [[ "${RUN_BENCHMARK}" == "1" ]]; then
     benchmark_cmd=(
-        "${PYTHON_BIN}" -u "${NEP_DIR}/benchmark_nlh_adaptive_kernels.py"
+        "${PYTHON_BIN}" -u "${BENCHMARK_ROOT}/benchmark_nlh_adaptive_kernels.py"
         --workers "${WORKERS}"
         --output-directory "${BENCHMARK_DIRECTORY}"
     )

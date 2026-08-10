@@ -61,6 +61,7 @@ class HardTrajectoryResult:
     termination: str
     events: tuple[HardCollisionEvent, ...]
     control_variate: "StraightLineControlVariate | None" = None
+    importance_sampling: "CollisionTubeImportanceSample | None" = None
 
     @property
     def recoil_energy_ev(self) -> float:
@@ -82,6 +83,28 @@ class StraightLineControlVariate:
     expected_recoil_energy_ev: float
     expected_transport_moment: float
     maximum_quadrature_relative_error: float
+
+
+@dataclass(frozen=True)
+class CollisionTubeImportanceSample:
+    """Exact likelihood record for one cell-translation proposal.
+
+    The target distribution is uniform translation through the periodic cell.
+    The proposal is a declared mixture of that target and a collision-tube
+    density.  ``target_over_proposal_weight`` is therefore the complete
+    Radon--Nikodym derivative used by every rate and moment estimator; it is a
+    numerical sampling weight, not a physical correction.
+    """
+
+    component: str
+    tube_mixture_fraction: float
+    tube_density_over_uniform: float
+    target_over_proposal_weight: float
+    selected_target: str | None
+    selected_atom_index: int | None
+    selected_area_quantile: float | None
+    selected_stratum_index: int | None
+    selected_stratum_count: int | None
 
 
 @dataclass(frozen=True)
@@ -124,6 +147,18 @@ def _random_transverse(direction: Vector, rng: np.random.Generator) -> Vector:
     second = np.cross(direction, first)
     phi = 2.0 * math.pi * float(rng.random())
     return math.cos(phi) * first + math.sin(phi) * second
+
+
+def _transverse_basis(direction: Vector) -> tuple[Vector, Vector]:
+    """Return a deterministic right-handed basis normal to ``direction``."""
+
+    trial = np.asarray((1.0, 0.0, 0.0), dtype=np.float64)
+    if abs(float(np.dot(direction, trial))) > 0.8:
+        trial = np.asarray((0.0, 1.0, 0.0), dtype=np.float64)
+    first = np.cross(direction, trial)
+    first /= np.linalg.norm(first)
+    second = np.cross(direction, first)
+    return first, second
 
 
 class PeriodicHardCollisionTransport:
@@ -251,34 +286,22 @@ class PeriodicHardCollisionTransport:
                 "initial_position_angstrom must contain three finite values."
             )
         direction = _unit_vector(initial_direction, "initial_direction")
-        collisions = []
-        traveled = 0.0
-        while traveled < path_length_angstrom:
-            segment = min(
-                self.search_window_angstrom,
-                path_length_angstrom - traveled,
-            )
-            segment_position = position + traveled * direction
-            candidates = self._candidates(
-                segment_position,
-                direction,
-                segment,
+        candidates = self._straight_line_candidates(
+            position,
+            direction,
+            path_length_angstrom,
+            projectile,
+            projectile_energy_ev,
+        )
+        collisions = [
+            self.kernels.collide(
                 projectile,
+                candidate.target,
                 projectile_energy_ev,
-                None,
+                candidate.impact_parameter_angstrom,
             )
-            for candidate in candidates:
-                if candidate.projection_angstrom > segment:
-                    continue
-                collisions.append(
-                    self.kernels.collide(
-                        projectile,
-                        candidate.target,
-                        projectile_energy_ev,
-                        candidate.impact_parameter_angstrom,
-                    )
-                )
-            traveled += segment
+            for candidate in candidates
+        ]
         count_rate, recoil_rate, transport_rate, quadrature_error = (
             self.independent_atom_moment_rates(projectile, projectile_energy_ev)
         )
@@ -296,6 +319,254 @@ class PeriodicHardCollisionTransport:
             expected_transport_moment=transport_rate * path_length_angstrom,
             maximum_quadrature_relative_error=quadrature_error,
         )
+
+    def _straight_line_candidates(
+        self,
+        initial_position_angstrom: Vector,
+        initial_direction: Vector,
+        path_length_angstrom: float,
+        projectile: str,
+        projectile_energy_ev: float,
+    ) -> list[_Candidate]:
+        """Return every retained encounter along one unperturbed finite line."""
+
+        candidates: list[_Candidate] = []
+        traveled = 0.0
+        while traveled < path_length_angstrom:
+            segment = min(
+                self.search_window_angstrom,
+                path_length_angstrom - traveled,
+            )
+            segment_position = (
+                initial_position_angstrom + traveled * initial_direction
+            )
+            segment_candidates = self._candidates(
+                segment_position,
+                initial_direction,
+                segment,
+                projectile,
+                projectile_energy_ev,
+                None,
+            )
+            for candidate in segment_candidates:
+                if candidate.projection_angstrom > segment:
+                    continue
+                candidates.append(
+                    _Candidate(
+                        atom_index=candidate.atom_index,
+                        target=candidate.target,
+                        image=candidate.image,
+                        projection_angstrom=traveled
+                        + candidate.projection_angstrom,
+                        impact_parameter_angstrom=(
+                            candidate.impact_parameter_angstrom
+                        ),
+                        target_position_angstrom=(
+                            candidate.target_position_angstrom
+                        ),
+                        impact_to_target_angstrom=(
+                            candidate.impact_to_target_angstrom
+                        ),
+                        maximum_impact_parameter_angstrom=(
+                            candidate.maximum_impact_parameter_angstrom
+                        ),
+                        retained_half_span_angstrom=(
+                            candidate.retained_half_span_angstrom
+                        ),
+                    )
+                )
+            traveled += segment
+        candidates.sort(
+            key=lambda item: (
+                item.projection_angstrom,
+                item.impact_parameter_angstrom,
+                item.atom_index,
+                item.image,
+            )
+        )
+        return candidates
+
+    def _area_quantile_density(
+        self,
+        projectile: str,
+        target: str,
+        projectile_energy_ev: float,
+        area_quantile: float,
+    ) -> float:
+        """Density from equal allocation over the real adaptive-q intervals."""
+
+        breakpoints = self.kernels.area_quantile_breakpoints(
+            projectile, target, projectile_energy_ev
+        )
+        index = min(
+            len(breakpoints) - 2,
+            int(np.searchsorted(breakpoints, area_quantile, side="right")) - 1,
+        )
+        index = max(0, index)
+        width = float(breakpoints[index + 1] - breakpoints[index])
+        return 1.0 / ((len(breakpoints) - 1) * width)
+
+    def _collision_tube_density_over_uniform(
+        self,
+        projectile: str,
+        projectile_energy_ev: float,
+        initial_position_angstrom: Vector,
+        initial_direction: Vector,
+        path_length_angstrom: float,
+    ) -> float:
+        """Evaluate the exact periodic collision-tube proposal ratio q(x)/p(x)."""
+
+        candidates = self._straight_line_candidates(
+            initial_position_angstrom,
+            initial_direction,
+            path_length_angstrom,
+            projectile,
+            projectile_energy_ev,
+        )
+        weighted_area = math.fsum(
+            self._area_quantile_density(
+                projectile,
+                candidate.target,
+                projectile_energy_ev,
+                (
+                    candidate.impact_parameter_angstrom
+                    / candidate.maximum_impact_parameter_angstrom
+                )
+                ** 2,
+            )
+            for candidate in candidates
+        )
+        cross_section_sum = math.fsum(
+            int(np.count_nonzero(self.structure.species == target))
+            * self.kernels.hard_cross_section_angstrom2(
+                projectile, target, projectile_energy_ev
+            )
+            for target in ("H", "O")
+        )
+        if cross_section_sum <= 0.0:
+            raise KernelTableError("Collision-tube sampling has zero support.")
+        return (
+            self.structure.volume_angstrom3
+            * weighted_area
+            / (path_length_angstrom * cross_section_sum)
+        )
+
+    def sample_collision_tube_mixture(
+        self,
+        projectile: str,
+        projectile_energy_ev: float,
+        initial_direction: ArrayLike,
+        path_length_angstrom: float,
+        tube_mixture_fraction: float,
+        rng: np.random.Generator,
+    ) -> tuple[Vector, CollisionTubeImportanceSample]:
+        """Sample an exactly weighted uniform/collision-tube mixture.
+
+        A tube draw first selects H or O in proportion to ``N_t sigma_t``,
+        then one real target atom, one longitudinal collision location, and
+        one adaptive impact-area interval.  The inverse map is the complete
+        list of retained straight-line candidates.  Summing those preimages
+        gives the exact proposal density even where tubes overlap.
+        """
+
+        if not 0.0 < tube_mixture_fraction < 1.0:
+            raise ValueError("tube_mixture_fraction must lie strictly in (0, 1).")
+        if not math.isfinite(path_length_angstrom) or path_length_angstrom <= 0.0:
+            raise ValueError("path_length_angstrom must be finite and positive.")
+        direction = _unit_vector(initial_direction, "initial_direction")
+        use_tube = float(rng.random()) < tube_mixture_fraction
+        selected_target: str | None = None
+        selected_atom: int | None = None
+        selected_quantile: float | None = None
+        selected_stratum: int | None = None
+        selected_stratum_count: int | None = None
+
+        if not use_tube:
+            fractional_position = rng.random(3)
+            initial_position = fractional_position @ self._lattice
+            component = "uniform"
+        else:
+            target_records: list[tuple[str, NDArray[np.int64], float]] = []
+            total_area = 0.0
+            for target in ("H", "O"):
+                indices = np.flatnonzero(self.structure.species == target)
+                cross_section = self.kernels.hard_cross_section_angstrom2(
+                    projectile, target, projectile_energy_ev
+                )
+                area = float(indices.size) * cross_section
+                if area > 0.0:
+                    target_records.append((target, indices, area))
+                    total_area += area
+            if total_area <= 0.0:
+                raise KernelTableError("Collision-tube sampling has zero support.")
+            draw = float(rng.random()) * total_area
+            cumulative = 0.0
+            target = target_records[-1][0]
+            indices = target_records[-1][1]
+            for candidate_target, candidate_indices, area in target_records:
+                cumulative += area
+                if draw < cumulative:
+                    target = candidate_target
+                    indices = candidate_indices
+                    break
+            atom_index = int(indices[int(rng.integers(indices.size))])
+            breakpoints = self.kernels.area_quantile_breakpoints(
+                projectile, target, projectile_energy_ev
+            )
+            stratum_count = len(breakpoints) - 1
+            stratum = int(rng.integers(stratum_count))
+            lower = float(breakpoints[stratum])
+            upper = float(breakpoints[stratum + 1])
+            quantile = lower + (upper - lower) * float(rng.random())
+            maximum_impact = self.kernels.maximum_impact_parameter_angstrom(
+                projectile, target, projectile_energy_ev
+            )
+            impact = maximum_impact * math.sqrt(quantile)
+            phi = 2.0 * math.pi * float(rng.random())
+            first, second = _transverse_basis(direction)
+            transverse = impact * (math.cos(phi) * first + math.sin(phi) * second)
+            longitudinal = path_length_angstrom * float(rng.random())
+            unwrapped = (
+                self.structure.positions_angstrom[atom_index]
+                - longitudinal * direction
+                + transverse
+            )
+            fractional_position = unwrapped @ self._inverse_lattice
+            fractional_position -= np.floor(fractional_position)
+            initial_position = fractional_position @ self._lattice
+            component = "collision_tube"
+            selected_target = target
+            selected_atom = atom_index
+            selected_quantile = quantile
+            selected_stratum = stratum
+            selected_stratum_count = stratum_count
+
+        tube_ratio = self._collision_tube_density_over_uniform(
+            projectile,
+            projectile_energy_ev,
+            initial_position,
+            direction,
+            path_length_angstrom,
+        )
+        proposal_over_target = (
+            1.0
+            - tube_mixture_fraction
+            + tube_mixture_fraction * tube_ratio
+        )
+        if not math.isfinite(proposal_over_target) or proposal_over_target <= 0.0:
+            raise RuntimeError("Invalid collision-tube mixture density.")
+        record = CollisionTubeImportanceSample(
+            component=component,
+            tube_mixture_fraction=tube_mixture_fraction,
+            tube_density_over_uniform=tube_ratio,
+            target_over_proposal_weight=1.0 / proposal_over_target,
+            selected_target=selected_target,
+            selected_atom_index=selected_atom,
+            selected_area_quantile=selected_quantile,
+            selected_stratum_index=selected_stratum,
+            selected_stratum_count=selected_stratum_count,
+        )
+        return initial_position, record
 
     def _energy_bounds(self, projectile: str) -> tuple[float, float]:
         bounds = [

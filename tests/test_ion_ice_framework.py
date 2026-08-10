@@ -71,8 +71,8 @@ def test_phase_registry_separates_accepted_and_candidate_structures():
     hexagonal = get_phase("hexagonal_ih_100k")
     amorphous = get_phase("amorphous_lda_80k")
     assert hexagonal.resolve(hexagonal.structure_registry).is_file()
-    assert amorphous.structure_registry is None
-    assert amorphous.density["value_g_cm3"] is None
+    assert amorphous.resolve(amorphous.structure_registry).is_file()
+    assert amorphous.density["value_g_cm3"] == pytest.approx(0.9343471678603292)
 
 
 def test_phase_cannot_bypass_bounded_resource_profiles(tmp_path):
@@ -94,7 +94,11 @@ def test_status_is_component_resolved_and_never_overstates_geant4_readiness():
     assert _stage(carbon, "ice_structure")["state"] == "complete"
     assert _stage(carbon, "nlh_pair_potential")["state"] == "complete"
     assert _stage(carbon, "nlh_kernel")["state"] == "complete"
-    assert _stage(carbon, "hard_transport")["state"] in {"running", "complete"}
+    assert _stage(carbon, "hard_transport")["state"] in {
+        "runnable",
+        "running",
+        "complete",
+    }
     assert _stage(carbon, "geant4_hard_table")["state"] == "validation_pending"
     assert _stage(carbon, "soft_dft_definition")["state"] == "complete"
     assert _stage(carbon, "geant4_soft_runtime")["state"] == "missing_input"
@@ -105,29 +109,20 @@ def test_status_is_component_resolved_and_never_overstates_geant4_readiness():
     assert carbon["ctmc"]["included"] is False
 
 
-def test_plan_does_not_chain_unvalidated_structure_dynamics_into_transport(
+def test_plan_uses_the_accepted_amorphous_structure_for_transport(
     monkeypatch,
 ):
     monkeypatch.setattr("ion_ice.workflow._active_pbs_job_ids", lambda _: ())
     plan = build_plan(("C",), ("amorphous_lda_80k",))
     task_ids = {task["task_id"] for task in plan["tasks"]}
-    assert "structure:amorphous_lda_80k" in task_ids
-    assert "hard_transport:C:amorphous_lda_80k" not in task_ids
-    structure = next(
-        task
-        for task in plan["tasks"]
-        if task["task_id"] == "structure:amorphous_lda_80k"
-    )
-    assert "PBS success alone does not complete" in structure["completion_gate"]
+    assert "structure:amorphous_lda_80k" not in task_ids
+    assert "hard_transport:C:amorphous_lda_80k" in task_ids
 
 
-def test_active_phase_preparation_is_reported_and_never_planned_again(monkeypatch):
-    monkeypatch.setattr(
-        "ion_ice.workflow._active_pbs_job_ids",
-        lambda name: ("123[0].pbs",) if name == "nep_mbpol_lda" else (),
-    )
+def test_accepted_phase_is_complete_and_never_planned_again(monkeypatch):
+    monkeypatch.setattr("ion_ice.workflow._active_pbs_job_ids", lambda _: ())
     report = inspect_model("C", "amorphous_lda_80k")
-    assert _stage(report, "ice_structure")["state"] == "running"
+    assert _stage(report, "ice_structure")["state"] == "complete"
     plan = build_plan(("C",), ("amorphous_lda_80k",))
     assert "structure:amorphous_lda_80k" not in {
         task["task_id"] for task in plan["tasks"]

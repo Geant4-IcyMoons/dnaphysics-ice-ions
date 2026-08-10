@@ -3,7 +3,7 @@
   "phase_id": "hexagonal_ih_100k",
   "name": "hexagonal ice Ih at 100 K and the experimental cell",
   "target_temperature_k": 100.0,
-  "structure_registry": "../../structures/hexagonal_ih_100K_experimental/collision_structures.json",
+  "structure_registry": "../../../ice_structures/hexagonal_ih_100K_experimental/collision_structures.json",
   "preparation": {
     "pbs_script": "pbs/run_nep_mbpol_hexagonal.pbs",
     "pbs_job_name": "nep_ih_100K",
@@ -13,7 +13,7 @@
     "ensemble": "NVT at the experimental cell"
   },
   "validation": {
-    "protocol": "python_scripts/physics_ice/nep_mbpol/HEXAGONAL_ICE_VALIDATION.md",
+    "protocol": "python_scripts/physics_ice/process_evidence/ice_structures/validation/HEXAGONAL_ICE.md",
     "implementation": "python_scripts/physics_ice/nep_mbpol/validate_hexagonal_ice.py",
     "decision_required": true
   },

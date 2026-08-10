@@ -60,7 +60,7 @@ case "${HEXAGONAL_PROTOCOL}" in
         # These are generic, unequilibrated proton-disordered ice-Ih cells.
         # The suffix records their other use as amorphous-workflow inputs; no
         # melting occurs in this protocol.
-        INITIAL_MODEL="${INITIAL_MODEL:-${NEP_DIR}/structures/ice_ih_8x8x8_seed${SEED}_melt_start.xyz}"
+        INITIAL_MODEL="${INITIAL_MODEL:-${REPO_ROOT}/python_scripts/physics_ice/ice_structures/preparation/hexagonal_ih_genice2/ice_ih_8x8x8_seed${SEED}_melt_start.xyz}"
         RUN_DIR="${RUN_DIR:-${NEP_DIR}/runs/hexagonal_ih_80K_seed${SEED}}"
         TARGET_TEMPERATURE_K=80
         MODEL_PREPARATION=copy
