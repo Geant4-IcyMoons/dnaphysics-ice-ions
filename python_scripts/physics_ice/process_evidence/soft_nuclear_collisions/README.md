@@ -17,6 +17,35 @@ Those processes do not supply the unresolved long-range/soft elastic
 contribution. Production documentation must identify that missing component;
 it must not silently set it to zero.
 
+## Diagnostic universal-ZBL replacement
+
+The repository now contains a validation-pending universal-ZBL screened
+binary-collision baseline in `nep_mbpol/zbl_soft/` and the corresponding
+`G4DNAZBLFullElastic` Geant4 process. It supports H, He, C, O and S projectiles
+against the H and O nuclei of water ice from 1 keV to 100 MeV **total
+projectile kinetic energy**.
+
+This model is a practical replacement for the complete nuclear-elastic
+interaction during diagnostic runs. It is not the missing charge-resolved
+soft potential sought below, because it has no molecular orientation,
+polarization, many-centre force, or ionic-charge dependence. Its role is to
+quantify transport with a stable standard screened potential while the
+ab-initio route remains closed.
+
+The runtime modes are deliberately exclusive:
+
+```text
+off       : no custom nuclear-elastic process
+zbl_full  : complete universal-ZBL nuclear-elastic baseline
+nlh_hard  : retained-domain carbon NLH hard collisions only
+```
+
+`zbl_full` must not be added to `nlh_hard`. A future ZBL-soft/NLH-hard model
+requires a validated potential- or impact-parameter partition; the NLH 30 eV
+turning-potential boundary is not a 30 eV recoil-transfer cut. The shared ion
+registry therefore records the ZBL runtime as an available diagnostic backend
+but keeps final soft-runtime assembly blocked.
+
 ## Target quantity and validation logic
 
 We sought charge-resolved diabatic interaction surfaces

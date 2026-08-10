@@ -65,6 +65,7 @@
 #include "G4DNAEmfietzoglou_iceProtonExcitationModel.hh"
 #include "G4DNAEmfietzoglou_iceProtonIonisationModel.hh"
 #include "G4DNANLHHardElastic.hh"
+#include "G4DNAZBLFullElastic.hh"
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -398,6 +399,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
 
   else if (flagParticle == 7 && processName == "DNANLHCarbonHardElastic")
     flagProcess = 751;
+  else if (processName == "DNAZBLFullElastic")
+    flagProcess = 752;
 
   else if (processName == "GenericIon_G4DNAIonisation")
     flagProcess = 73;
@@ -529,6 +532,10 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
           postStep->GetProcessDefinedStep())) {
       sigmaPerVol = nlhProcess->MacroscopicCrossSection(
         preStep->GetMaterial(), preStep->GetKineticEnergy());
+    } else if (const auto* zblProcess = dynamic_cast<const G4DNAZBLFullElastic*>(
+          postStep->GetProcessDefinedStep())) {
+      sigmaPerVol = zblProcess->MacroscopicCrossSection(
+        preStep->GetMaterial(), preStep->GetKineticEnergy());
     } else {
       sigmaPerVol = emCal->ComputeCrossSectionPerVolume(
         preStep->GetKineticEnergy(),
@@ -543,7 +550,8 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     if (sigmaPerVol >= 0.) {
       auto* mat = preStep->GetMaterial();
       G4double n_per_mm3 = 0.;
-      if (processName == "DNANLHCarbonHardElastic") {
+      if (processName == "DNANLHCarbonHardElastic" ||
+          processName == "DNAZBLFullElastic") {
         n_per_mm3 = G4DNANLHHardElastic::WaterMoleculeNumberDensity(mat);
       } else {
         auto* table =

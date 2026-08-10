@@ -122,6 +122,35 @@ handover with HTran. See
 [`process_evidence/hard_nuclear_collisions/validation/README.md`](process_evidence/hard_nuclear_collisions/validation/README.md)
 and [`nep_mbpol/bca/README.md`](nep_mbpol/bca/README.md).
 
+## Full-ZBL diagnostic elastic baseline
+
+Build and test the validation-pending H/He/C/O/S runtime locally:
+
+```bash
+cmake -S proton-pipeline -B proton-pipeline/build
+cmake --build proton-pipeline/build -j10
+ctest --test-dir proton-pipeline/build --output-on-failure
+python -m pytest tests/test_zbl_soft_collision.py -q
+```
+
+Run one projectile with total kinetic-energy limits in MeV:
+
+```bash
+DNA_PHYSICS=ice_am \
+DNA_ION_ELASTIC_MODEL=zbl_full \
+DNA_ZBL_ALLOW_VALIDATION_PENDING=1 \
+DNA_ION_ENABLE_EXCITATION=0 \
+DNA_ION_ENABLE_IONISATION=0 \
+DNA_ION_CHARGE_EXCHANGE=0 \
+  proton-pipeline/build/dnaphysics_proton \
+  proton-pipeline/e1_proton.mac 10 oxygen 0.1 100 100000 1
+```
+
+`zbl_full` is a complete screened binary-collision baseline, not an additive
+soft term. Do not enable NLH or `G4NuclearStopping` in the same run. The
+validation protocol is in
+[`process_evidence/soft_nuclear_collisions/validation/README.md`](process_evidence/soft_nuclear_collisions/validation/README.md).
+
 ## Charge-resolved soft DFT
 
 Run the fresh, non-publishing carbon q=1 numerical branch pilot first:

@@ -62,6 +62,13 @@ not a scientific acceptance decision. In particular, a phase-preparation job
 cannot automatically unlock transport: its output must first pass the phase
 validator and appear in an accepted collision registry.
 
+`G4DNAZBLFullElastic` is intentionally outside this final assembly path. It is
+a validation-pending complete screened binary-collision baseline that replaces
+the nuclear-elastic model in a diagnostic run; it is not the residual soft
+component in the diagram. The species registry records the executable backend
+but leaves `geant4_soft_runtime` blocked so it cannot be combined silently
+with NLH or HTran.
+
 The 0.5% kernel, transport, and radial tolerances are numerical interpolation
 or sampling requirements. They are not physical uncertainties. NLH fit error,
 DFT-method uncertainty, finite-structure effects, and experimental comparison

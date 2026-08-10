@@ -1,6 +1,7 @@
 # Build artifacts
 build/
 proton-pipeline/build/
+proton-pipeline/build-*/
 *.o
 *.o.d
 *.pyc

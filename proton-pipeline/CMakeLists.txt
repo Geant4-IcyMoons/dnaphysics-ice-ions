@@ -27,6 +27,7 @@ set(PROTON_SOURCES
   src/G4DNAEmfietzoglou_iceProtonIonisationStructure.cc
   ../src/G4DNANLHHardElastic.cc
   ../src/G4DNANLHHardElasticTable.cc
+  ../src/G4DNAZBLFullElastic.cc
   src/ModelDataRegistry.cc
   src/PhysicsList_Proton.cc
   src/PrimaryGeneratorAction.cc
@@ -47,6 +48,7 @@ set(PROTON_HEADERS
   include/G4DNAEmfietzoglou_iceProtonIonisationStructure.hh
   ../include/G4DNANLHHardElastic.hh
   ../include/G4DNANLHHardElasticTable.hh
+  ../include/G4DNAZBLFullElastic.hh
   include/IcePhaseProperties.hh
   include/ModelDataRegistry.hh
   include/PhysicsList_Proton.hh
@@ -97,3 +99,12 @@ add_test(
   COMMAND nlh_carbon_table_test
           ${PROJECT_BINARY_DIR}/nlh_data/nlh_hard_elastic_C.dat
 )
+
+add_executable(
+  zbl_full_elastic_test
+  ../tests/test_zbl_full_elastic.cc
+  ../src/G4DNAZBLFullElastic.cc
+  src/ModelDataRegistry.cc
+)
+target_link_libraries(zbl_full_elastic_test ${Geant4_LIBRARIES})
+add_test(NAME zbl_full_elastic_test COMMAND zbl_full_elastic_test)

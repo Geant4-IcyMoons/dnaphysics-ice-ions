@@ -101,10 +101,14 @@ def test_status_is_component_resolved_and_never_overstates_geant4_readiness():
     }
     assert _stage(carbon, "geant4_hard_table")["state"] == "validation_pending"
     assert _stage(carbon, "soft_dft_definition")["state"] == "complete"
-    assert _stage(carbon, "geant4_soft_runtime")["state"] == "missing_input"
+    assert _stage(carbon, "geant4_soft_runtime")["state"] == "blocked"
+    assert "complete elastic baseline" in _stage(
+        carbon, "geant4_soft_runtime"
+    )["blockers"][0]
     assert not carbon["ready_for_geant4"]
     assert _stage(oxygen, "soft_dft_definition")["state"] == "complete"
     assert _stage(oxygen, "geant4_hard_runtime")["state"] == "missing_input"
+    assert _stage(oxygen, "geant4_soft_runtime")["state"] == "blocked"
     assert not oxygen["ready_for_geant4"]
     assert carbon["ctmc"]["included"] is False
 

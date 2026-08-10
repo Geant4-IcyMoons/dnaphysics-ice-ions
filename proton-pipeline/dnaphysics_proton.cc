@@ -63,11 +63,22 @@ void ApplySourceAndRun(G4UImanager* ui,
     emaxMeV = tmp;
   }
 
-  if (particle == "carbon") {
+  if (particle == "carbon" || particle == "oxygen" || particle == "sulfur") {
+    G4int z = 6;
+    G4int a = 12;
+    if (particle == "oxygen") {
+      z = 8;
+      a = 16;
+    } else if (particle == "sulfur") {
+      z = 16;
+      a = 32;
+    }
     ui->ApplyCommand("/gps/particle ion");
-    // Fully stripped C-12 is the default primary. The NLH nuclear scattering
-    // kernel itself is charge-state independent.
-    ui->ApplyCommand("/gps/ion 6 12 6");
+    // Fully stripped ions are the source default. ZBL and NLH use nuclear Z,
+    // not this ionic charge state.
+    ui->ApplyCommand("/gps/ion " + G4String(std::to_string(z)) + " " +
+                     G4String(std::to_string(a)) + " " +
+                     G4String(std::to_string(z)));
   } else {
     ui->ApplyCommand("/gps/particle " + G4String(particle));
   }
@@ -132,9 +143,11 @@ int main(int argc, char** argv)
 
   for (auto& c : sourceParticle) c = static_cast<char>(std::tolower(c));
   if (sourceParticle != "proton" && sourceParticle != "alpha" &&
-      sourceParticle != "carbon") {
+      sourceParticle != "carbon" && sourceParticle != "oxygen" &&
+      sourceParticle != "sulfur") {
     G4cerr << "### dnaphysics_proton Error: unsupported source particle '"
-           << sourceParticle << "'. Use proton, alpha, or carbon." << G4endl;
+           << sourceParticle
+           << "'. Use proton, alpha, carbon, oxygen, or sulfur." << G4endl;
     delete runManager;
     return 2;
   }
@@ -162,11 +175,12 @@ int main(int argc, char** argv)
   setenv("DNA_SOURCE_EMAX_MEV", sourceEmaxMeV.c_str(), 1);
   setenv("DNA_SOURCE_EVENTS", sourceEvents.c_str(), 1);
   setenv("DNA_SOURCE_NUMBER", sourceNumber.c_str(), 1);
-  if (sourceParticle == "carbon" && !std::getenv("DNA_ION_HARD_ELASTIC")) {
+  if (sourceParticle == "carbon" && !std::getenv("DNA_ION_ELASTIC_MODEL") &&
+      !std::getenv("DNA_ION_HARD_ELASTIC")) {
     setenv("DNA_ION_HARD_ELASTIC", "1", 1);
   }
 
-  G4cout << "Using proton/alpha/carbon ion physics list (DNA_PHYSICS="
+  G4cout << "Using H/He/C/O/S ion physics list (DNA_PHYSICS="
          << phys_choice << ")" << G4endl;
   G4cout << "Source settings: particle=" << sourceParticle
          << ", energy=" << sourceEminValueMeV << "-" << sourceEmaxValueMeV << " MeV"

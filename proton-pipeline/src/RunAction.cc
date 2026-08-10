@@ -436,6 +436,30 @@ void RunAction::BeginOfRunAction(const G4Run*)
                  ReadEnvFlag("DNA_NLH_ALLOW_VALIDATION_PENDING", false)
                      ? "yes"
                      : "no");
+    std::string elasticModel = ReadEnvString("DNA_ION_ELASTIC_MODEL");
+    if (elasticModel.empty()) {
+      elasticModel = ReadEnvFlag("DNA_ION_HARD_ELASTIC", false)
+                         ? "nlh_hard"
+                         : "off";
+    }
+    if (elasticModel == "zbl") elasticModel = "zbl_full";
+    appendConfig("ion_elastic_model",
+                 elasticModel);
+    appendConfig("zbl_allow_validation_pending",
+                 ReadEnvFlag("DNA_ZBL_ALLOW_VALIDATION_PENDING", false)
+                     ? "yes"
+                     : "no");
+    appendConfig("zbl_energy_convention", "total_projectile_kinetic_energy");
+    const std::string zblMin = ReadEnvString("DNA_ZBL_MIN_ENERGY_EV");
+    const std::string zblMax = ReadEnvString("DNA_ZBL_MAX_ENERGY_EV");
+    const std::string zblTransfer = ReadEnvString("DNA_ZBL_MIN_TRANSFER_EV");
+    const std::string zblRecoil = ReadEnvString("DNA_ZBL_RECOIL_THRESHOLD_EV");
+    appendConfig("zbl_min_energy_eV", zblMin.empty() ? "1000" : zblMin);
+    appendConfig("zbl_max_energy_eV", zblMax.empty() ? "100000000" : zblMax);
+    appendConfig("zbl_min_transfer_eV",
+                 zblTransfer.empty() ? "10" : zblTransfer);
+    appendConfig("zbl_recoil_threshold_eV",
+                 zblRecoil.empty() ? "10" : zblRecoil);
   }
 
   // Clear any previous step logs so this run starts fresh

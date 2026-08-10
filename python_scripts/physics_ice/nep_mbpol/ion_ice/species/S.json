@@ -204,9 +204,11 @@
       "status": "missing",
       "reason": "The current Geant4 NLH hard-elastic process is carbon-specific."
     },
-    "geant4_soft_runtime": {
-      "status": "missing",
-      "reason": "No validated charge-resolved soft-interaction Geant4 table/runtime has been released."
-    }
+  "geant4_soft_runtime": {
+    "status": "blocked",
+    "reason": "G4DNAZBLFullElastic is available only as a validation-pending complete elastic baseline; no validated ZBL-soft/NLH-hard non-overlap construction exists.",
+    "diagnostic_backend": "G4DNAZBLFullElastic",
+    "diagnostic_release_status": "validation_pending"
   }
+}
 }

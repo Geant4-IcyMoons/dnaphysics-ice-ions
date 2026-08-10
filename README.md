@@ -155,18 +155,15 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     trajectory/energy-refinement workflow for H, He, C, O, and S. The launcher
     submits one 64-core PBS job per particle; H/He products remain segregated
     from HTran pending a validated non-overlapping partition.
-  - `nep_mbpol/soft_dft/` contains the validation-pending, all-electron CP2K
-    constrained-DFT workflow for fixed-charge ion--water interaction surfaces.
-    H0--H1+, He0--He2+, C0--C6+, O0--O8+, and S0--S16+ have complete NIST-
-    sourced built-in charge ladders and verified CP2K 2025.2 all-electron basis
-    entries. These definitions make the pilots executable; they do not by
-    themselves validate PBE/CDFT for any ion.
-    Its default controller adaptively validates direct quarter/midpoint probes
-    to a 0.5% radial interpolation tolerance on a common charge-state mesh and
-    stores refinement generations as immutable restartable batches.
-    CTMC is intentionally absent from DFT generation: Geant4 will use CTMC to
-    change `q` and then select the corresponding independently validated
-    soft-potential table.
+  - The carbon fixed-charge soft-potential investigation in
+    `nep_mbpol/soft_dft/` failed its physical validation gates and remains
+    disconnected from Geant4. The retained CP2K, GPAW, and OpenMolcas material
+    is reproducibility evidence, not a production potential.
+  - `nep_mbpol/zbl_soft/` and `G4DNAZBLFullElastic` provide a
+    validation-pending universal-ZBL baseline for H, He, C, O, and S from
+    1 keV to 100 MeV total kinetic energy. This is a complete diagnostic
+    nuclear-elastic model, not an additive soft correction; it is mutually
+    exclusive with NLH until a validated non-overlap construction exists.
   - `nep_mbpol/ion_ice/` is the shared, species-general registry and
     dependency-aware workflow. It reports the exact missing, running,
     validation-pending, and complete components for each projectile/phase;

@@ -1,4 +1,4 @@
-# Proton/Alpha/Carbon Ion Pipeline
+# H/He/C/O/S Ion Pipeline
 
 Focused ion-transport executable within the main `dnaphysics-ice` tree. It
 keeps pipeline-specific actions locally and shares the repository's common
@@ -9,6 +9,7 @@ hard-collision process and data product as a single source of truth.
 - `dnaphysics_proton.cc`
 - proton/alpha physics list for generated ice excitation/ionisation tables
 - carbon-12 threshold-defined NLH hard-elastic process and recoil generation
+- validation-pending full universal-ZBL elastic baseline for H, He, C, O and S
 - optional Dingfelder charge exchange for proton and helium charge states
 - shared detector, action, ROOT logging, and diagnostics code needed to run and analyze the proton simulation
 - minimal plotting scripts used in this project
@@ -48,6 +49,17 @@ export DNA_ION_CHARGE_EXCHANGE=0  # fixed proton or alpha charge
 export DNA_ION_CHARGE_EXCHANGE=1  # Dingfelder charge-state transitions
 ```
 
+Select exactly one custom nuclear-elastic mode with:
+
+```bash
+export DNA_ION_ELASTIC_MODEL=off
+export DNA_ION_ELASTIC_MODEL=zbl_full
+export DNA_ION_ELASTIC_MODEL=nlh_hard
+```
+
+The legacy `DNA_ION_HARD_ELASTIC=1` maps to `nlh_hard` when the new selector
+is absent. `zbl_full` and `nlh_hard` cannot run together.
+
 The older `DNA_PROTON_BARKAS_DCS` and
 `DNA_PROTON_ENABLE_CHARGE_EXCHANGE` names remain supported as aliases.
 
@@ -61,6 +73,12 @@ DNA_PHYSICS=ice_am DNA_ION_BARKAS_DCS=0 DNA_ION_CHARGE_EXCHANGE=0 \
 # Alpha, Born+Barkas DCS with Dingfelder charge exchange
 DNA_PHYSICS=ice_am DNA_ION_BARKAS_DCS=1 DNA_ION_CHARGE_EXCHANGE=1 \
   ./build/dnaphysics_proton e1_proton.mac 12 alpha 10 10 100000 1
+
+# Oxygen-16, full ZBL diagnostic baseline at 1 MeV total kinetic energy
+DNA_PHYSICS=ice_am DNA_ION_ELASTIC_MODEL=zbl_full \
+DNA_ZBL_ALLOW_VALIDATION_PENDING=1 \
+DNA_ION_ENABLE_EXCITATION=0 DNA_ION_ENABLE_IONISATION=0 \
+  ./build/dnaphysics_proton e1_proton.mac 12 oxygen 1 1 100000 1
 ```
 
 For alpha transport with charge exchange, the generated alpha tables apply
@@ -69,6 +87,36 @@ transport the `alpha+` and neutral `helium` states. The Dingfelder and captured-
 state models used here are liquid-water parameterizations evaluated at the
 selected H2O material density; their use in ice is therefore an explicit model
 approximation for both proton and alpha simulations.
+
+## Universal-ZBL diagnostic elastic model
+
+`G4DNAZBLFullElastic` evaluates universal-ZBL screened binary collisions on
+the H and O atoms of the selected H2O material. It uses nuclear atomic number
+and isotope mass, not ionic charge state. All incident energy limits are total
+projectile kinetic energies:
+
+```bash
+export DNA_ZBL_MIN_ENERGY_EV=1000
+export DNA_ZBL_MAX_ENERGY_EV=100000000
+export DNA_ZBL_MIN_TRANSFER_EV=10
+export DNA_ZBL_RECOIL_THRESHOLD_EV=10
+```
+
+Each accepted collision changes the projectile direction and subtracts the
+exact recoil energy. Recoils above the transport threshold are emitted as H-1
+or O-16 secondaries; smaller recoils are local non-ionising deposition.
+Electronic excitation, ionisation, electronic stopping and charge exchange
+remain separate processes.
+
+The minimum-transfer cutoff defines which ZBL collisions are represented. It
+is unrelated to the NLH 10/30 eV turning-potential domains and requires a
+convergence study. The model is a complete diagnostic baseline, not a
+soft-only correction. It therefore cannot be enabled with `nlh_hard`.
+
+The current Dingfelder charge-state builder also registers complete HTran
+elastic scattering for captured H/He states. To prevent overlap,
+`zbl_full` plus `DNA_ION_CHARGE_EXCHANGE=1` currently fails loudly. That
+builder must be separated before the two processes can coexist.
 
 ## Carbon NLH hard elastic validation
 
@@ -109,7 +157,7 @@ Engineering validation must acknowledge that state explicitly:
 
 ```bash
 export DNA_PHYSICS=ice_hex
-export DNA_ION_HARD_ELASTIC=1
+export DNA_ION_ELASTIC_MODEL=nlh_hard
 export DNA_NLH_ALLOW_VALIDATION_PENDING=1
 export DNA_ION_ENABLE_EXCITATION=0
 export DNA_ION_ENABLE_IONISATION=0
