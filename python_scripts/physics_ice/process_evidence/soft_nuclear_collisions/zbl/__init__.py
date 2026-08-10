@@ -1,5 +1,7 @@
 """Validation-pending universal-ZBL ion--ice reference kernel."""
 
+from .backend import FullZBLKernel
+
 from .kernel import (
     PROJECTILES,
     TARGETS,
@@ -12,6 +14,7 @@ from .kernel import (
 )
 
 __all__ = (
+    "FullZBLKernel",
     "PROJECTILES",
     "TARGETS",
     "Species",

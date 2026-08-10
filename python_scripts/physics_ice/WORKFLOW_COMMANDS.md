@@ -124,16 +124,37 @@ and [`nep_mbpol/bca/README.md`](nep_mbpol/bca/README.md).
 
 ## Full-ZBL diagnostic elastic baseline
 
-Build and test the validation-pending H/He/C/O/S runtime locally:
+Generate full-domain atomistic C/O/S backend manifests for both accepted ice
+phases from 10 keV through 100 MeV total projectile energy:
+
+```bash
+python -m \
+  python_scripts.physics_ice.process_evidence.soft_nuclear_collisions.zbl.generate_backend \
+  --phases hexagonal_ih_100k amorphous_lda_80k \
+  --projectiles C O S \
+  --energy-min-ev 1e4 --energy-max-ev 1e8 \
+  --transfer-cutoffs-ev 1 10 30 \
+  --output-directory \
+  python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/validation/runs/zbl_full_atomistic
+```
+
+The manifests bind the analytic full-ZBL interaction to the accepted periodic
+hexagonal and amorphous coordinates. Carbon q=0..6, oxygen q=0..8, and sulfur
+q=0..16 alias the corresponding elemental kernel. H and He remain assigned to
+the complete HTran elastic model.
+
+Build and test the validation-pending runtime locally:
 
 ```bash
 cmake -S proton-pipeline -B proton-pipeline/build
 cmake --build proton-pipeline/build -j10
 ctest --test-dir proton-pipeline/build --output-on-failure
-python -m pytest tests/test_zbl_soft_collision.py -q
+python -m pytest \
+  tests/test_zbl_soft_collision.py \
+  tests/test_zbl_atomistic_backend.py -q
 ```
 
-Run one projectile with total kinetic-energy limits in MeV:
+Run one C/O/S projectile with total kinetic-energy limits in MeV:
 
 ```bash
 DNA_PHYSICS=ice_am \
