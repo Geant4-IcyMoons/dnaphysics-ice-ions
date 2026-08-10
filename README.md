@@ -159,7 +159,8 @@ Diagnostic scripts live under `python_scripts/` and save generated figures under
     `nep_mbpol/soft_dft/` failed its physical validation gates and remains
     disconnected from Geant4. The retained CP2K, GPAW, and OpenMolcas material
     is reproducibility evidence, not a production potential.
-  - `nep_mbpol/zbl_soft/` and `G4DNAZBLFullElastic` provide a
+  - `process_evidence/soft_nuclear_collisions/zbl/` and
+    `G4DNAZBLFullElastic` provide a
     validation-pending universal-ZBL baseline for H, He, C, O, and S from
     1 keV to 100 MeV total kinetic energy. This is a complete diagnostic
     nuclear-elastic model, not an additive soft correction; it is mutually

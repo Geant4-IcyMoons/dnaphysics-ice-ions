@@ -20,10 +20,11 @@ it must not silently set it to zero.
 ## Diagnostic universal-ZBL replacement
 
 The repository now contains a validation-pending universal-ZBL screened
-binary-collision baseline in `nep_mbpol/zbl_soft/` and the corresponding
-`G4DNAZBLFullElastic` Geant4 process. It supports H, He, C, O and S projectiles
-against the H and O nuclei of water ice from 1 keV to 100 MeV **total
-projectile kinetic energy**.
+binary-collision baseline in `zbl/` and the corresponding
+`G4DNAZBLFullElastic` Geant4 process in the repository-level `include/` and
+`src/` build directories. It supports H, He, C, O and S projectiles against
+the H and O nuclei of water ice from 1 keV to 100 MeV **total projectile
+kinetic energy**.
 
 This model is a practical replacement for the complete nuclear-elastic
 interaction during diagnostic runs. It is not the missing charge-resolved

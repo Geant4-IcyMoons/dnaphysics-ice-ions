@@ -5,6 +5,12 @@ This package is the independent Python reference for the
 with the universal Ziegler--Biersack--Littmark screening function for H, He, C,
 O, and S projectiles against the H and O nuclei of water ice.
 
+It is grouped with the retained evidence from the failed CP2K, GPAW, and
+OpenMolcas soft-collision approaches. The compiled Geant4 implementation
+remains in repository-level `include/G4DNAZBLFullElastic.hh` and
+`src/G4DNAZBLFullElastic.cc`, where the existing CMake build expects runtime
+processes.
+
 ## Scope
 
 - Incident energy is **total projectile kinetic energy**, not energy per

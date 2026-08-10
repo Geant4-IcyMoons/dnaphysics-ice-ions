@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from python_scripts.physics_ice.nep_mbpol.zbl_soft.kernel import (
+from python_scripts.physics_ice.process_evidence.soft_nuclear_collisions.zbl.kernel import (
     PROJECTILES,
     TARGETS,
     cos_theta_cm,
