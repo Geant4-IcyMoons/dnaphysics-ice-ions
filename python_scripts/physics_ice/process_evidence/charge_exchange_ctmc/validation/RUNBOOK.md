@@ -399,6 +399,23 @@ fallback. Never prepare a rebalance while a source shard is still writing; the
 preparation command also rejects source files whose size or modification time
 changes while it is running.
 
+If part of the original array never started and therefore has no checkpoint,
+declare those exact indices with `--missing-source-shards`, for example
+`--missing-source-shards 51-335`. The declaration must exactly equal the
+absent checkpoint set: an undeclared absence or a declared index that has a
+file aborts redistribution. Declared shards contribute zero progress, while
+all committed data in the existing checkpoints are consolidated normally.
+Establish from PBS history that every declared shard truly never ran. As with
+ordinary redistribution, stop all source writers and wait for the checkpoint
+set to freeze before invoking the command.
+
+The tail supervisor supports the same sparse initial generation through
+`MISSING_SOURCE_SHARDS`. It validates the declaration continuously, excludes
+only those absent files from progress and freeze checks, forwards the exact
+range to the importer, and clears it after publishing the first complete
+ownership generation. Thus subsequent redistributions require every generated
+checkpoint normally.
+
 Rebalancing can be repeated. When the current source is already a rebalanced
 generation, prepare the next generation with:
 

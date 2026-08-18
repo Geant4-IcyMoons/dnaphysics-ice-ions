@@ -15,6 +15,7 @@ from typing import Sequence
 import numpy as np
 from tqdm import tqdm
 
+from charge_exchange_ctmc import parse_shard_index_spec
 from constants import CTMC_INTEGRATOR_POLICY_VERSION
 
 
@@ -270,6 +271,14 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--pbs-script", type=Path, required=True)
     result.add_argument("--source-shards", type=int, required=True)
     result.add_argument("--source-job-id", action="append", required=True)
+    result.add_argument(
+        "--missing-source-shards",
+        default=None,
+        help=(
+            "Exact comma-separated indices/ranges of initial source shards "
+            "that never wrote checkpoints"
+        ),
+    )
     result.add_argument("--target-shards", type=int, required=True)
     result.add_argument("--array-max", type=int, default=42)
     result.add_argument("--queue", action="append", default=[])
@@ -303,10 +312,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--max-recovery-attempts must be positive")
     queues = args.queue or ["idle"]
     state: dict[str, object] = {
-        "format_version": 2,
+        "format_version": 3,
         "source_shards": args.source_shards,
         "source_job_ids": args.source_job_id,
         "source_manifest": None,
+        "missing_source_shards": args.missing_source_shards,
         "generation": None,
         "rebalances": 0,
         "recoveries": {},
@@ -314,9 +324,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     if args.state_file.is_file():
         state = json.loads(args.state_file.read_text())
-    state["format_version"] = 2
+    state["format_version"] = 3
     state.setdefault("recoveries", {})
     state.setdefault("quarantined_failures", {})
+    state.setdefault("missing_source_shards", args.missing_source_shards)
     atomic_json(args.state_file, state)
 
     progress = tqdm(total=1.0, unit="fraction", desc=f"{args.atom} CTMC")
@@ -391,10 +402,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         state["recoveries"] = recoveries
         state["quarantined_failures"] = quarantined
         atomic_json(args.state_file, state)
-        paths = checkpoint_paths(
+        all_paths = checkpoint_paths(
             args.output_dir, args.atom, shard_count,
             generation_text,
         )
+        missing_spec = state.get("missing_source_shards")
+        declared_missing = parse_shard_index_spec(
+            None if missing_spec is None else str(missing_spec),
+            len(all_paths),
+        )
+        unexpectedly_present = sorted(
+            index for index in declared_missing if all_paths[index].is_file()
+        )
+        if unexpectedly_present:
+            raise RuntimeError(
+                "Declared never-started source shards have checkpoint files: "
+                f"{unexpectedly_present}"
+            )
+        paths = [
+            path
+            for index, path in enumerate(all_paths)
+            if index not in declared_missing
+        ]
+        if not paths:
+            raise RuntimeError("No source checkpoints exist to redistribute")
         if not all(path.is_file() for path in paths):
             missing = sum(not path.is_file() for path in paths)
             tqdm.write(f"Waiting for {missing}/{len(paths)} source checkpoints")
@@ -482,6 +513,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--prepare-rebalance-from-shards", str(shard_count),
             "--shard-count", str(args.target_shards),
         ]
+        if missing_spec:
+            prepare += ["--missing-source-shards", str(missing_spec)]
         if state.get("source_manifest"):
             prepare += ["--source-ownership-manifest", str(state["source_manifest"])]
         subprocess.run(prepare, check=True)
@@ -508,6 +541,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             source_shards=args.target_shards,
             source_job_ids=new_jobs,
             source_manifest=str(manifest),
+            missing_source_shards=None,
             generation=manifest_generation(manifest),
             rebalances=int(state["rebalances"]) + 1,
         )

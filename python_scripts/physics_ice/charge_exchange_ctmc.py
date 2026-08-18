@@ -2782,6 +2782,57 @@ def owned_point_mask(
     return point_index % int(shard_count) == int(shard_index)
 
 
+def parse_shard_index_spec(spec: str | None, shard_count: int) -> set[int]:
+    """Parse an explicit comma-separated list of indices and closed ranges."""
+    if spec is None or not spec.strip():
+        return set()
+    indices: set[int] = set()
+    for item in spec.split(","):
+        item = item.strip()
+        if not item:
+            raise ValueError("Empty item in missing-source shard specification")
+        bounds = item.split("-", 1)
+        try:
+            first = int(bounds[0])
+            last = first if len(bounds) == 1 else int(bounds[1])
+        except ValueError as error:
+            raise ValueError(f"Invalid source-shard item {item!r}") from error
+        if first < 0 or last < first or last >= shard_count:
+            raise ValueError(
+                f"Source-shard item {item!r} lies outside 0-{shard_count - 1}"
+            )
+        indices.update(range(first, last + 1))
+    return indices
+
+
+def validate_missing_source_shards(
+    source_paths: Sequence[Path], spec: str | None
+) -> set[int]:
+    """Require the declared never-started shards to match absent files exactly."""
+    declared = parse_shard_index_spec(spec, len(source_paths))
+    actual = {
+        source_index
+        for source_index, path in enumerate(source_paths)
+        if not path.is_file()
+    }
+    if actual == declared:
+        return declared
+    undeclared = sorted(actual - declared)
+    unexpectedly_present = sorted(declared - actual)
+    details = []
+    if undeclared:
+        details.append(f"undeclared missing indices: {undeclared}")
+    if unexpectedly_present:
+        details.append(
+            "declared-missing indices with checkpoint files: "
+            f"{unexpectedly_present}"
+        )
+    raise RuntimeError(
+        "Source checkpoint set does not exactly match "
+        "--missing-source-shards (" + "; ".join(details) + ")"
+    )
+
+
 def _active_channels(
     charge_state: int,
     impact_parameter_au: float,
@@ -3758,6 +3809,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--missing-source-shards",
+        default=None,
+        metavar="INDICES",
+        help=(
+            "Explicit comma-separated indices/ranges of source shards that "
+            "never wrote a checkpoint, for example 51-335. Valid only with "
+            "--prepare-rebalance-from-shards. The declaration must exactly "
+            "match the absent files; those shards contribute zero progress."
+        ),
+    )
+    parser.add_argument(
         "--ownership-manifest",
         type=Path,
         default=None,
@@ -3999,6 +4061,14 @@ def validate_args(args: argparse.Namespace) -> None:
     ):
         raise ValueError(
             "--source-ownership-manifest is only valid with "
+            "--prepare-rebalance-from-shards"
+        )
+    if (
+        args.missing_source_shards is not None
+        and args.prepare_rebalance_from_shards is None
+    ):
+        raise ValueError(
+            "--missing-source-shards is only valid with "
             "--prepare-rebalance-from-shards"
         )
     adaptive_execution_mode = (
@@ -4482,18 +4552,18 @@ def main(
             )
             for source_index in range(source_shard_count)
         ]
-        missing_paths = [path for path in source_paths if not path.is_file()]
-        if missing_paths:
-            raise RuntimeError(
-                "Cannot rebalance because source checkpoints are missing: "
-                + ", ".join(str(path) for path in missing_paths)
-            )
+        declared_missing = validate_missing_source_shards(
+            source_paths, args.missing_source_shards
+        )
         source_stats = {
             path: (path.stat().st_mtime_ns, path.stat().st_size)
             for path in source_paths
+            if path.is_file()
         }
 
         for source_index, source_path in enumerate(source_paths):
+            if source_index in declared_missing:
+                continue
             checkpoint = load_checkpoint(source_path, signature)
             assert checkpoint is not None
             for field, expected in (
@@ -4652,6 +4722,11 @@ def main(
             f"shard: {int(np.min(remaining_by_shard)):,}--"
             f"{int(np.max(remaining_by_shard)):,}."
         )
+        if declared_missing:
+            print(
+                f"Explicitly treated {len(declared_missing):,} never-started "
+                "source shards as zero progress."
+            )
         print(f"Ownership manifest: {manifest_path}")
         return manifest_path
 

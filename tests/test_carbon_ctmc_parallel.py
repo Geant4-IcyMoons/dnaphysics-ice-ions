@@ -639,6 +639,26 @@ def test_rebalanced_owners_cover_grid_and_balance_each_energy_layer() -> None:
         )
 
 
+def test_missing_source_shard_spec_is_explicit_and_bounded(
+    tmp_path: Path,
+) -> None:
+    assert ctmc.parse_shard_index_spec("0,2-4,4", 6) == {0, 2, 3, 4}
+    assert ctmc.parse_shard_index_spec(None, 6) == set()
+    with pytest.raises(ValueError, match="outside"):
+        ctmc.parse_shard_index_spec("2-6", 6)
+    with pytest.raises(ValueError, match="Invalid"):
+        ctmc.parse_shard_index_spec("two", 6)
+
+    paths = [tmp_path / f"checkpoint-{index}.npz" for index in range(4)]
+    paths[0].touch()
+    paths[2].touch()
+    assert ctmc.validate_missing_source_shards(paths, "1,3") == {1, 3}
+    with pytest.raises(RuntimeError, match="undeclared missing indices"):
+        ctmc.validate_missing_source_shards(paths, "1")
+    with pytest.raises(RuntimeError, match="with checkpoint files"):
+        ctmc.validate_missing_source_shards(paths, "0-1,3")
+
+
 def test_rebalance_manifest_and_checkpoint_reject_wrong_generation(
     tmp_path: Path,
 ) -> None:

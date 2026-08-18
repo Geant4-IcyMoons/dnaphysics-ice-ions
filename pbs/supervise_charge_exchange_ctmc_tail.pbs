@@ -58,6 +58,9 @@ IFS=';' read -r -a source_jobs <<< "${SOURCE_JOB_IDS}"
 for job in "${source_jobs[@]}"; do
     supervisor+=(--source-job-id "${job}")
 done
+if [[ -n "${MISSING_SOURCE_SHARDS:-}" ]]; then
+    supervisor+=(--missing-source-shards "${MISSING_SOURCE_SHARDS}")
+fi
 IFS=';' read -r -a queues <<< "${TAIL_QUEUES:-idle}"
 for queue in "${queues[@]}"; do
     supervisor+=(--queue "${queue}")
