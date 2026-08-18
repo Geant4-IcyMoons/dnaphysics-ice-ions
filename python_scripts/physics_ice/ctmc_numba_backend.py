@@ -203,10 +203,15 @@ def _regularized_relative_rhs(
     minimum_radius_au: float,
     target_mass_au: float,
     projectile_mass_au: float,
+    sundman_power: int,
 ) -> float:
     """Evaluate the same equations in a close-encounter Sundman time.
 
-    ``dt/ds`` is the shortest pair distance, capped at one.
+    ``dt/ds`` is the shortest pair distance raised to ``sundman_power``,
+    capped at one.  Powers one and two are exact positive time
+    reparameterizations away from the excluded zero-radius singularity; the
+    squared-distance form more strongly regularizes exceptionally eccentric
+    Coulomb encounters.
     Multiplying every physical-time derivative by this strictly positive
     factor changes only the trajectory parameterization.  It removes the
     vanishing physical-time steps produced by a near-Coulomb encounter while
@@ -245,9 +250,12 @@ def _regularized_relative_rhs(
         electron_reference_distance_squared,
         electron_other_distance_squared,
     )
-    time_scale = math.sqrt(
-        max(shortest_distance_squared, minimum_radius_au**2)
-    )
+    if sundman_power == 1:
+        time_scale = math.sqrt(
+            max(shortest_distance_squared, minimum_radius_au**2)
+        )
+    else:
+        time_scale = max(shortest_distance_squared, minimum_radius_au**2)
     for component in range(12):
         derivative[component] *= time_scale
     return time_scale
@@ -507,6 +515,7 @@ def _select_initial_regularized_step(
     minimum_radius_au: float,
     target_mass_au: float,
     projectile_mass_au: float,
+    sundman_power: int,
 ) -> float:
     """SciPy/Hairer initial-step selection in Sundman time."""
     scale = np.empty(state.size, dtype=np.float64)
@@ -537,6 +546,7 @@ def _select_initial_regularized_step(
         minimum_radius_au,
         target_mass_au,
         projectile_mass_au,
+        sundman_power,
     )
 
     delta_derivative = np.empty(state.size, dtype=np.float64)
@@ -567,13 +577,17 @@ def integrate_relative_dop853(
     initial_reference_mass_au: float,
     initial_other_mass_au: float,
     maximum_steps: int,
+    stop_at_minimum_time: bool = False,
+    terminal_core_distance_au: float = -1.0,
 ) -> tuple[bool, np.ndarray, int, int]:
     """Integrate one 12-component trajectory with adaptive DOP853.
 
-    The trajectory ends after the paper's minimum integration time once the
-    two screened nuclei have again reached at least their initial separation
-    and are moving apart.  This implements the paper's stated termination
-    condition without assuming an unpublished symmetric flight time.
+    By default the trajectory ends after the minimum integration time once
+    the two screened nuclei have again reached at least their initial
+    separation and are moving apart.  ``stop_at_minimum_time`` instead ends
+    at the exact disclosed fixed interval used by a formal reference run.
+    A positive ``terminal_core_distance_au`` replaces the default initial-
+    separation boundary after the minimum interval.
 
     The exact Appendix-A ``p``/``t`` interchange keeps the electron
     displacement relative to the nearer core during integration.
@@ -603,6 +617,11 @@ def integrate_relative_dop853(
         state[0] * state[0]
         + state[1] * state[1]
         + state[2] * state[2]
+    )
+    terminal_core_distance = (
+        terminal_core_distance_au
+        if terminal_core_distance_au > 0.0
+        else initial_core_distance
     )
     derivative = np.empty(12, dtype=np.float64)
     _relative_rhs(
@@ -659,11 +678,13 @@ def integrate_relative_dop853(
             + state[1] * state[7]
             + state[2] * state[8]
         )
-        if (
-            time >= minimum_integration_time_au
-            and core_distance_squared
-            >= initial_core_distance * initial_core_distance
-            and radial_motion > 0.0
+        if time >= minimum_integration_time_au and (
+            stop_at_minimum_time
+            or (
+                core_distance_squared
+                >= terminal_core_distance * terminal_core_distance
+                and radial_motion > 0.0
+            )
         ):
             if reference_was_switched:
                 _switch_reference_core(state)
@@ -675,14 +696,19 @@ def integrate_relative_dop853(
         # a long low-energy flight.  Treat every step relative to a local time
         # origin and retain the physical elapsed time with compensated
         # summation instead.
-        minimum_step = 10.0 * _MACHINE_EPSILON
         step_size = min(step_size, finite_max_step)
         if time < minimum_integration_time_au:
             step_size = min(
                 step_size,
                 minimum_integration_time_au - time,
             )
-        if step_size < minimum_step:
+        # The equations are autonomous and every Runge--Kutta update is
+        # evaluated relative to the current state, so an absolute epsilon
+        # floor on the local step is incorrect.  A close Coulomb passage can
+        # require h < eps while h*velocity is still readily resolvable in the
+        # state.  Fail only on genuine floating-point stagnation; compensated
+        # summation retains the correspondingly small elapsed-time increment.
+        if step_size <= 0.0 or not math.isfinite(step_size):
             if reference_was_switched:
                 _switch_reference_core(state)
             return False, state, accepted_steps, rejected_steps
@@ -832,19 +858,25 @@ def integrate_relative_dop853_regularized(
     minimum_radius_au: float,
     initial_reference_mass_au: float,
     initial_other_mass_au: float,
+    sundman_power: int,
     maximum_relative_energy_drift: float,
     maximum_steps: int,
+    stop_at_minimum_time: bool = False,
+    terminal_core_distance_au: float = -1.0,
 ) -> tuple[bool, np.ndarray, int, int]:
     """DOP853 fallback with a Sundman parameter for close encounters.
 
     The physical equations, potentials, stopping condition, and tolerances
     are identical to :func:`integrate_relative_dop853`. The independent
-    variable changes through ``dt/ds > 0``. If accumulated roundoff reaches
+    variable changes through ``dt/ds > 0``; ``sundman_power`` must be one or
+    two. If accumulated roundoff reaches
     one quarter of the caller's final energy-drift budget, the common
     relative-velocity scale is projected onto the conserved Hamiltonian
     surface; the final endpoint must still pass the caller's independent
     energy check.
     """
+    if sundman_power != 1 and sundman_power != 2:
+        return False, initial_state.copy(), 0, 0
     state = initial_state.copy()
     reference_parameters = initial_reference_parameters
     other_parameters = initial_other_parameters
@@ -867,6 +899,11 @@ def integrate_relative_dop853_regularized(
         + state[1] * state[1]
         + state[2] * state[2]
     )
+    terminal_core_distance = (
+        terminal_core_distance_au
+        if terminal_core_distance_au > 0.0
+        else initial_core_distance
+    )
     conserved_energy = _relative_energy(
         state,
         reference_parameters,
@@ -884,6 +921,7 @@ def integrate_relative_dop853_regularized(
         minimum_radius_au,
         reference_mass_au,
         other_mass_au,
+        sundman_power,
     )
     if (
         not np.all(np.isfinite(derivative))
@@ -907,6 +945,7 @@ def integrate_relative_dop853_regularized(
         minimum_radius_au,
         reference_mass_au,
         other_mass_au,
+        sundman_power,
     )
 
     stages = np.empty((_N_STAGES + 1, 12), dtype=np.float64)
@@ -942,17 +981,18 @@ def integrate_relative_dop853_regularized(
             * max(minimum_integration_time_au, 1.0)
         ):
             physical_time = minimum_integration_time_au
-        if (
-            physical_time >= minimum_integration_time_au
-            and core_distance_squared
-            >= initial_core_distance * initial_core_distance
-            and radial_motion > 0.0
+        if physical_time >= minimum_integration_time_au and (
+            stop_at_minimum_time
+            or (
+                core_distance_squared
+                >= terminal_core_distance * terminal_core_distance
+                and radial_motion > 0.0
+            )
         ):
             if reference_was_switched:
                 _switch_reference_core(state)
             return True, state, accepted_steps, rejected_steps
 
-        minimum_step = 10.0 * _MACHINE_EPSILON
         step_size = min(step_size, finite_max_step)
         if physical_time < minimum_integration_time_au:
             step_size = min(
@@ -960,7 +1000,7 @@ def integrate_relative_dop853_regularized(
                 (minimum_integration_time_au - physical_time)
                 / initial_time_scale,
             )
-        if step_size < minimum_step:
+        if step_size <= 0.0 or not math.isfinite(step_size):
             if reference_was_switched:
                 _switch_reference_core(state)
             return False, state, accepted_steps, rejected_steps
@@ -988,6 +1028,7 @@ def integrate_relative_dop853_regularized(
                 minimum_radius_au,
                 reference_mass_au,
                 other_mass_au,
+                sundman_power,
             )
 
         for component in range(12):
@@ -1004,6 +1045,7 @@ def integrate_relative_dop853_regularized(
             minimum_radius_au,
             reference_mass_au,
             other_mass_au,
+            sundman_power,
         )
 
         err5_norm_squared = 0.0
@@ -1120,6 +1162,7 @@ def integrate_relative_dop853_regularized(
                     minimum_radius_au,
                     reference_mass_au,
                     other_mass_au,
+                    sundman_power,
                 )
             else:
                 for component in range(12):
@@ -1189,6 +1232,7 @@ def warm_up_numba_backend() -> None:
         1.0e-10,
         1836.0,
         21868.0,
+        1,
         1.0e-3,
         100,
     )

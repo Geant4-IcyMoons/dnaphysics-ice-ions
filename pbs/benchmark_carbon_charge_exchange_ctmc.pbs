@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#PBS -N carbon_ctmc_benchmark
+#PBS -q idle
+#PBS -l select=1:ncpus=1:mem=16gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+cd "${REPO_ROOT}"
+
+CONDA_SH="${CONDA_SH:-/apps01/apps/anaconda3-2022.10/etc/profile.d/conda.sh}"
+CONDA_ENV="${CONDA_ENV:-yoffe_venv}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+INPUT_DIR="${INPUT_DIR:-${REPO_ROOT}/cross_sections/carbon_charge_exchange}"
+OUTPUT_DIR="${OUTPUT_DIR:-${REPO_ROOT}/python_scripts/physics_ice/process_evidence/charge_exchange_ctmc/benchmarking/runs/carbon_charge_exchange}"
+ALLOW_UNREFINED_REFERENCE="${ALLOW_UNREFINED_REFERENCE:-0}"
+FORMAL_REFERENCE_ARCHIVE="${FORMAL_REFERENCE_ARCHIVE:-${REPO_ROOT}/C3_100keVpu.zip}"
+
+if [[ -n "${CONDA_ENV}" ]]; then
+    # shellcheck disable=SC1090
+    source "${CONDA_SH}"
+    conda activate "${CONDA_ENV}"
+fi
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
+cmd=(
+    "${PYTHON_BIN}" -u
+    python_scripts/physics_ice/process_evidence/charge_exchange_ctmc/benchmarking/benchmark_carbon_charge_exchange_ctmc.py
+    "${INPUT_DIR}"
+    --output-dir "${OUTPUT_DIR}"
+    --formal-reference-archive "${FORMAL_REFERENCE_ARCHIVE}"
+)
+if [[ -n "${BOUNDARY_REFERENCE:-}" ]]; then
+    cmd+=(--boundary-reference "${BOUNDARY_REFERENCE}" --strict-release)
+fi
+if [[ "${ALLOW_UNREFINED_REFERENCE}" == "1" ]]; then
+    cmd+=(--allow-unrefined-reference)
+fi
+
+printf 'Command:'
+printf ' %q' "${cmd[@]}"
+printf '\n'
+"${cmd[@]}"

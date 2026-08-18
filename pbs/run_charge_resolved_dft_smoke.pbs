@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #PBS -N soft_dft_smoke
 #PBS -q idle
-#PBS -l select=1:ncpus=8:mem=128gb
-#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=16:mem=160gb
+#PBS -l walltime=500:00:00
 #PBS -j oe
 
 # Check every registered charge state at one asymptotic ion--H2O geometry.
@@ -31,7 +31,7 @@ PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
 PREPARE="${NEP_DIR}/prepare_charge_resolved_dft.py"
 RUNNER="${NEP_DIR}/run_charge_resolved_dft.py"
 CP2K_EXE="${CP2K_EXE:-${REPO_ROOT}/pbs/cp2k_container_wrapper.sh}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-${NEP_DIR}/soft_collision_dft_runs/${PROJECTILE,,}_runtime_smoke}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/validation/runs/${PROJECTILE,,}_runtime_smoke}"
 
 if [[ ! -x "${PYTHON_BIN}" || ! -x "${CP2K_EXE}" ]]; then
     echo "Missing Python interpreter or CP2K wrapper." >&2
@@ -47,16 +47,11 @@ if [[ ! -f "${MANIFEST}" ]]; then
     exit 2
 fi
 
-ALLOCATED_CPUS="${PBS_NCPUS:-${NCPUS:-8}}"
-# PBS jobs 108802--108806 showed that two concurrent production-setting
-# all-electron grids can reach 23.8 GB. Jobs 108808--108809 then showed that a
-# single O/S calculation can exceed 20 GB, and job 108814 showed that a single
-# He counterpoise calculation can exceed 32 GB. Run one calculation at a time
-# with 64 GB for the all-charge gate. An exact-input scaling benchmark then
-# showed that eight MPI ranks distribute the grid, use all eight CPUs, and
-# require a larger total-memory envelope. Keep one calculation per job and
-# reduce the request only from successful final accounting.
-MPI_RANKS_PER_CALCULATION="${MPI_RANKS_PER_CALCULATION:-8}"
+ALLOCATED_CPUS="${PBS_NCPUS:-${NCPUS:-16}}"
+# Run one calculation per allocation. The corrected carbon all-charge
+# diagonalization gate measured 127.46 GB peak PBS memory; 160 GB retains 25%
+# headroom. Revise this request only from successful exact-input accounting.
+MPI_RANKS_PER_CALCULATION="${MPI_RANKS_PER_CALCULATION:-16}"
 OMP_THREADS_PER_RANK="${OMP_THREADS_PER_RANK:-1}"
 if [[ ! "${MPI_RANKS_PER_CALCULATION}" =~ ^[1-9][0-9]*$ \
       || ! "${OMP_THREADS_PER_RANK}" =~ ^[1-9][0-9]*$ ]]; then

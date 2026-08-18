@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare all requested low-energy single-capture mixed-CDFT channels."""
+"""Plan requested low-energy capture channels pending CDFT branch handoff."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
+from ion_ice import PROCESS_EVIDENCE_ROOT
 from low_energy_charge_exchange import build_workflow, load_workflow_manifest
 from soft_dft import (
     DEFAULT_CP2K_SETTINGS,
@@ -88,8 +89,10 @@ def main() -> None:
             )
         geometries = tuple(candidates)
     output_root = args.output_root or (
-        HERE
-        / "low_energy_charge_exchange_runs"
+        PROCESS_EVIDENCE_ROOT
+        / "low_energy_charge_exchange"
+        / "validation"
+        / "runs"
         / f"{projectile.symbol.lower()}_single_capture"
     )
     manifest_path = build_workflow(
@@ -108,7 +111,10 @@ def main() -> None:
     for channel in manifest["configuration"]["channels"]:
         print(f"  {channel['reaction']} [{channel['status']}]")
     print(f"Channel/geometry work units: {manifest['work_unit_count']}")
-    print("Physics status: validation_pending; no cross sections generated yet")
+    print(
+        "Integration status: branch_handoff_pending; no CDFT inputs, "
+        "couplings, or cross sections generated"
+    )
 
 
 if __name__ == "__main__":

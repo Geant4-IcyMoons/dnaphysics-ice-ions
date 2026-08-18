@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one restart-safe shard of a low-energy mixed-CDFT capture workflow."""
+"""Fail closed while low-energy mixed-CDFT branch handoff is pending."""
 
 from __future__ import annotations
 

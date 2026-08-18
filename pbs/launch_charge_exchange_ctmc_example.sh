@@ -11,8 +11,10 @@
 #   bash pbs/launch_charge_exchange_ctmc_example.sh submit carbon 84
 #   # After all compute shards finish successfully:
 #   bash pbs/launch_charge_exchange_ctmc_example.sh merge carbon 84
-#   bash pbs/launch_charge_exchange_ctmc_example.sh refine carbon 84
-#   # After all adaptive shards finish successfully:
+#   bash pbs/launch_charge_exchange_ctmc_example.sh refine-base carbon 84
+#   # After all unique base curves finish successfully:
+#   bash pbs/launch_charge_exchange_ctmc_example.sh refine-intervals carbon 84
+#   # After all adaptive intervals finish successfully:
 #   bash pbs/launch_charge_exchange_ctmc_example.sh merge-refined carbon 84
 #
 # This launcher intentionally contains no default boundary/cutoff values.
@@ -21,7 +23,7 @@ set -euo pipefail
 
 usage() {
     printf '%s\n' \
-        "Usage: $0 {plan|submit|merge|refine|merge-refined} {carbon|lithium|oxygen|sulfur} SHARD_COUNT" \
+        "Usage: $0 {plan|submit|merge|refine-base|refine-intervals|merge-refined} {carbon|lithium|oxygen|sulfur} SHARD_COUNT" \
         "" \
         "Required exported variables:" \
         "  START_SEPARATION_AU  one convergence-derived value per energy" \
@@ -41,7 +43,7 @@ atom="$2"
 shard_count="$3"
 
 case "${action}" in
-    plan|submit|merge|refine|merge-refined) ;;
+    plan|submit|merge|refine-base|refine-intervals|merge-refined) ;;
     *)
         printf 'Unknown action: %s\n' "${action}" >&2
         usage >&2
@@ -104,6 +106,7 @@ optional_variables=(
     ATOL
     RETRY_RTOL
     RETRY_ATOL
+    MAXIMUM_INTEGRATION_STEPS
     MAXIMUM_RELATIVE_ENERGY_DRIFT
     BOUNDARY_EXTENSION_FACTOR
     ADAPTIVE_AXIS_RELATIVE_TOLERANCE
@@ -113,6 +116,8 @@ optional_variables=(
     ADAPTIVE_MAX_IMPACT_LEVELS
     ADAPTIVE_MAX_ENERGY_LEVELS
     ADAPTIVE_MAX_SAMPLING_LEVELS
+    INITIAL_ENSEMBLE
+    OWNERSHIP_MANIFEST
     EXTRA_ARGS
     REPO_ROOT
 )
@@ -145,15 +150,28 @@ if [[ "${action}" == "merge" || "${action}" == "merge-refined" ]]; then
         merge_label="base-grid merge"
     else
         mode_variable="MERGE_ADAPTIVE_ONLY=1"
-        merge_label="adaptive-family merge"
+        merge_label="adaptive-interval merge"
     fi
     export_spec="${variable_list},SHARD_COUNT=${shard_count},${mode_variable}"
     printf 'Submitting one-core %s for %s (%s shards)\n' \
         "${merge_label}" "${atom}" "${shard_count}"
-    qsub \
+    merge_job="$(qsub \
         -l select=1:ncpus=1:mem=4gb \
         -v "${export_spec}" \
-        "${pbs_script}"
+        "${pbs_script}")"
+    printf '%s\n' "${merge_job}"
+    if [[ "${action}" == "merge-refined" && "${atom}" == "carbon" ]]; then
+        benchmark_input="${BENCHMARK_INPUT_DIR:-${repo_root}/cross_sections/carbon_charge_exchange}"
+        benchmark_output="${BENCHMARK_OUTPUT_DIR:-${repo_root}/python_scripts/physics_ice/process_evidence/charge_exchange_ctmc/benchmarking/runs/carbon_charge_exchange}"
+        formal_archive="${FORMAL_REFERENCE_ARCHIVE:-${repo_root}/C3_100keVpu.zip}"
+        benchmark_job="$(qsub \
+            -N carbon_ctmc_benchmark \
+            -W "depend=afterok:${merge_job}" \
+            -v "REPO_ROOT=${repo_root},INPUT_DIR=${benchmark_input},OUTPUT_DIR=${benchmark_output},FORMAL_REFERENCE_ARCHIVE=${formal_archive}" \
+            "${repo_root}/pbs/benchmark_carbon_charge_exchange_ctmc.pbs")"
+        printf 'Carbon validation benchmark: %s after %s\n' \
+            "${benchmark_job}" "${merge_job}"
+    fi
     exit 0
 fi
 
@@ -174,8 +192,10 @@ while (( offset < shard_count )); do
     fi
     array_last=$((batch_size - 1))
     export_spec="${variable_list},SHARD_COUNT=${shard_count},SHARD_OFFSET=${offset}"
-    if [[ "${action}" == "refine" ]]; then
-        export_spec="${export_spec},ADAPTIVE_ONLY=1"
+    if [[ "${action}" == "refine-base" ]]; then
+        export_spec="${export_spec},ADAPTIVE_BASE_CURVES_ONLY=1"
+    elif [[ "${action}" == "refine-intervals" ]]; then
+        export_spec="${export_spec},ADAPTIVE_INTERVALS_ONLY=1"
     fi
 
     if [[ "${action}" == "plan" ]]; then
@@ -194,10 +214,14 @@ done
 
 if [[ "${action}" == "submit" ]]; then
     printf '%s\n' \
-        "Base-grid shards submitted. After they finish, run merge, refine," \
-        "and merge-refined in that order."
-elif [[ "${action}" == "refine" ]]; then
+        "Base-grid shards submitted. After they finish, run merge, refine-base," \
+        "refine-intervals, and merge-refined in that order."
+elif [[ "${action}" == "refine-base" ]]; then
     printf '%s\n' \
-        "Adaptive families submitted. Do not run merge-refined until every" \
-        "adaptive array element has completed successfully."
+        "Unique adaptive base curves submitted. Do not submit refine-intervals" \
+        "until every base-curve array element has completed successfully."
+elif [[ "${action}" == "refine-intervals" ]]; then
+    printf '%s\n' \
+        "Adaptive intervals submitted. Do not run merge-refined until every" \
+        "interval array element has completed successfully."
 fi

@@ -1,8 +1,15 @@
 """Charge-resolved constrained-DFT infrastructure for soft ion--water forces."""
 
 from .config import (
+    CDFT_CONSTRAINT_TYPES,
+    CDFT_OPTIMIZERS,
     DEFAULT_CP2K_SETTINGS,
     DEFAULT_PROJECTILE,
+    MIXING_METHODS,
+    OT_ALGORITHMS,
+    OT_LINESEARCHES,
+    OT_MINIMIZERS,
+    SCF_SOLVERS,
     CP2KSettings,
     IonChargeState,
     ProjectileDefinition,
@@ -10,6 +17,16 @@ from .config import (
     load_projectile_definition,
 )
 from .adaptive import AdaptiveSettings, DEFAULT_ADAPTIVE_SETTINGS
+from .branch_execution import CP2KBranchExecutor
+from .branch_solver import BranchValidationSettings, solve_cdft_branch
+from .cdft_branch import (
+    CalibrationSettings,
+    CDFTBracket,
+    ProbeRecord,
+    build_state_identity,
+    load_validated_state,
+    publish_validated_state,
+)
 from .geometry import (
     ORIENTATIONS,
     ScanGeometry,
@@ -18,31 +35,51 @@ from .geometry import (
 )
 from .workflow import (
     SCHEMA_VERSION,
+    audit_workflow_electronic_states,
     build_workflow,
     collect_workflow,
     load_workflow_manifest,
     pending_workflow_tasks,
+    reuse_compatible_workflow_results,
     run_workflow_tasks,
 )
 
 __all__ = [
+    "CDFT_CONSTRAINT_TYPES",
+    "CDFT_OPTIMIZERS",
     "DEFAULT_ADAPTIVE_SETTINGS",
     "DEFAULT_CP2K_SETTINGS",
     "DEFAULT_PROJECTILE",
+    "MIXING_METHODS",
     "ORIENTATIONS",
+    "OT_ALGORITHMS",
+    "OT_LINESEARCHES",
+    "OT_MINIMIZERS",
+    "SCF_SOLVERS",
     "SCHEMA_VERSION",
     "CP2KSettings",
+    "CP2KBranchExecutor",
     "AdaptiveSettings",
+    "BranchValidationSettings",
+    "CalibrationSettings",
+    "CDFTBracket",
     "IonChargeState",
     "ProjectileDefinition",
+    "ProbeRecord",
     "ScanGeometry",
+    "audit_workflow_electronic_states",
     "build_scan_geometries",
     "build_scan_geometry",
+    "build_state_identity",
     "build_workflow",
     "collect_workflow",
     "load_workflow_manifest",
     "load_builtin_projectile",
     "load_projectile_definition",
+    "load_validated_state",
     "pending_workflow_tasks",
+    "reuse_compatible_workflow_results",
+    "publish_validated_state",
     "run_workflow_tasks",
+    "solve_cdft_branch",
 ]

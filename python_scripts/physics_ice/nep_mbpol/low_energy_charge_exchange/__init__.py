@@ -12,6 +12,7 @@ from .landau_zener import (
     transition_probability,
 )
 from .workflow import (
+    BRANCH_HANDOFF_PENDING,
     SCHEMA_VERSION,
     build_workflow,
     collect_workflow,
@@ -20,6 +21,7 @@ from .workflow import (
 )
 
 __all__ = [
+    "BRANCH_HANDOFF_PENDING",
     "ElectronDonorState",
     "SCHEMA_VERSION",
     "SingleElectronCaptureChannel",

@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 import sys
+from functools import lru_cache
 from typing import Sequence
 
 import numpy as np
@@ -24,6 +25,7 @@ from bca.runtime import (  # noqa: E402
 )
 from bca.scattering import (  # noqa: E402
     PairKinematics,
+    maximum_impact_parameter_angstrom as nlh_maximum_impact_parameter_angstrom,
     pair_kinematics,
     two_body_outcome_from_cm_angle,
 )
@@ -112,6 +114,7 @@ class FullZBLKernel:
             )
         return pair_kinematics(projectile, target, float(projectile_energy_ev))
 
+    @lru_cache(maxsize=4096)
     def maximum_impact_parameter_angstrom(
         self, projectile: str, target: str, projectile_energy_ev: float
     ) -> float:
@@ -124,6 +127,47 @@ class FullZBLKernel:
         )
         return math.sqrt(cross_section / math.pi)
 
+    def minimum_impact_parameter_angstrom(
+        self, projectile: str, target: str, projectile_energy_ev: float
+    ) -> float:
+        self.pair_kinematics(projectile, target, projectile_energy_ev)
+        return 0.0
+
+    def impact_parameter_from_area_quantile(
+        self,
+        projectile: str,
+        target: str,
+        projectile_energy_ev: float,
+        area_quantile: float,
+    ) -> float:
+        if not math.isfinite(area_quantile) or not 0.0 <= area_quantile <= 1.0:
+            raise KernelTableError("area_quantile must lie in [0, 1].")
+        lower = self.minimum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
+        upper = self.maximum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
+        return math.sqrt(lower * lower + area_quantile * (upper * upper - lower * lower))
+
+    def area_quantile_from_impact_parameter(
+        self,
+        projectile: str,
+        target: str,
+        projectile_energy_ev: float,
+        impact_parameter_angstrom: float,
+    ) -> float:
+        lower = self.minimum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
+        upper = self.maximum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
+        area = upper * upper - lower * lower
+        if area <= 0.0:
+            raise KernelTableError("The retained collision domain is empty.")
+        return (impact_parameter_angstrom**2 - lower * lower) / area
+
     def turning_threshold_radius_angstrom(
         self, projectile: str, target: str
     ) -> float:
@@ -135,10 +179,13 @@ class FullZBLKernel:
     def hard_cross_section_angstrom2(
         self, projectile: str, target: str, projectile_energy_ev: float
     ) -> float:
+        minimum_impact = self.minimum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
         maximum_impact = self.maximum_impact_parameter_angstrom(
             projectile, target, projectile_energy_ev
         )
-        return math.pi * maximum_impact * maximum_impact
+        return math.pi * max(0.0, maximum_impact**2 - minimum_impact**2)
 
     def area_quantile_breakpoints(
         self, projectile: str, target: str, projectile_energy_ev: float
@@ -158,10 +205,9 @@ class FullZBLKernel:
         self.pair_kinematics(projectile, target, projectile_energy_ev)
         if not math.isfinite(area_quantile) or not 0.0 <= area_quantile <= 1.0:
             raise KernelTableError("area_quantile must lie in [0, 1].")
-        maximum_impact = self.maximum_impact_parameter_angstrom(
-            projectile, target, projectile_energy_ev
+        impact = self.impact_parameter_from_area_quantile(
+            projectile, target, projectile_energy_ev, area_quantile
         )
-        impact = maximum_impact * math.sqrt(area_quantile)
         cosine = cos_theta_cm(
             PROJECTILES[projectile], TARGETS[target], projectile_energy_ev, impact
         )
@@ -241,16 +287,20 @@ class FullZBLKernel:
         maximum_impact = self.maximum_impact_parameter_angstrom(
             projectile, target, projectile_energy_ev
         )
+        minimum_impact = self.minimum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
         tolerance = 1.0e-12 * max(1.0, maximum_impact)
         if (
             not math.isfinite(impact_parameter_angstrom)
-            or impact_parameter_angstrom < 0.0
+            or impact_parameter_angstrom < minimum_impact - tolerance
             or impact_parameter_angstrom > maximum_impact + tolerance
         ):
             raise KernelTableError(
-                f"Impact parameter must lie in [0, {maximum_impact:g}] angstrom."
+                "Impact parameter must lie in "
+                f"[{minimum_impact:g}, {maximum_impact:g}] angstrom."
             )
-        impact = min(float(impact_parameter_angstrom), maximum_impact)
+        impact = min(max(float(impact_parameter_angstrom), minimum_impact), maximum_impact)
         theta = math.acos(
             max(
                 -1.0,
@@ -278,4 +328,121 @@ class FullZBLKernel:
             recoil_energy_ev=outcome.recoil_energy_ev,
             projectile_out_energy_ev=outcome.projectile_out_energy_ev,
             energy_conservation_error_ev=outcome.energy_conservation_error_ev,
+        )
+
+
+class SoftZBLKernel(FullZBLKernel):
+    """ZBL annulus complementary to the 30 eV retained NLH hard disk.
+
+    The inner boundary is the energy- and target-dependent NLH impact
+    parameter whose turning point reaches ``nlh_boundary_ev``. The outer
+    boundary is the ZBL impact parameter for ``minimum_transfer_ev``.
+    This construction is exactly non-overlapping in impact area, but remains
+    a validation-pending model because the two potentials need not match at
+    the handoff.
+    """
+
+    def __init__(
+        self,
+        *,
+        minimum_transfer_ev: float,
+        nlh_boundary_ev: float = 30.0,
+        projectiles: Sequence[str] = ("C",),
+        energy_bounds_ev: tuple[float, float] = DEFAULT_ENERGY_BOUNDS_EV,
+    ) -> None:
+        if not math.isfinite(nlh_boundary_ev) or nlh_boundary_ev < 30.0:
+            raise ValueError("nlh_boundary_ev cannot be below 30 eV.")
+        self.nlh_boundary_ev = float(nlh_boundary_ev)
+        super().__init__(
+            minimum_transfer_ev=minimum_transfer_ev,
+            projectiles=projectiles,
+            energy_bounds_ev=energy_bounds_ev,
+        )
+        configuration = {
+            "model": "universal_zbl_soft_annulus_nlh_complement",
+            "minimum_transfer_ev": self.minimum_transfer_ev,
+            "nlh_boundary_ev": self.nlh_boundary_ev,
+            "projectiles": list(self.projectiles),
+            "energy_bounds_ev": list(self._energy_bounds_ev),
+            "partition": "b_nlh_30eV(E,target) < b <= b_zbl_transfer(E,target)",
+        }
+        self.csv_sha256 = hashlib.sha256(
+            json.dumps(configuration, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        self.manifest = configuration
+        self.manifest_path = Path("analytic-zbl-soft-nlh-complement")
+
+    @lru_cache(maxsize=4096)
+    def minimum_impact_parameter_angstrom(
+        self, projectile: str, target: str, projectile_energy_ev: float
+    ) -> float:
+        self.pair_kinematics(projectile, target, projectile_energy_ev)
+        inner = nlh_maximum_impact_parameter_angstrom(
+            projectile,
+            target,
+            projectile_energy_ev,
+            minimum_turning_potential_ev=self.nlh_boundary_ev,
+        )
+        outer = super().maximum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
+        return min(inner, outer)
+
+    def hard_moment_cross_sections(
+        self,
+        projectile: str,
+        target: str,
+        projectile_energy_ev: float,
+        *,
+        quadrature_order: int = 32,
+        quadrature_relative_tolerance: float = 5.0e-4,
+    ) -> HardMomentCrossSections:
+        """Integrate the smooth retained annulus with an n/2n Gauss check."""
+
+        if quadrature_order < 8:
+            raise ValueError("quadrature_order must be at least eight.")
+        if quadrature_relative_tolerance <= 0.0:
+            raise ValueError("quadrature_relative_tolerance must be positive.")
+        cross_section = self.hard_cross_section_angstrom2(
+            projectile, target, projectile_energy_ev
+        )
+        if cross_section == 0.0:
+            return HardMomentCrossSections(0.0, 0.0, 0.0, 0.0)
+        context = self.pair_kinematics(projectile, target, projectile_energy_ev)
+
+        def integrate(order: int) -> NDArray[np.float64]:
+            nodes, weights = np.polynomial.legendre.leggauss(order)
+            total = np.zeros(2, dtype=np.float64)
+            for node, weight in zip(nodes, weights, strict=True):
+                quantile = 0.5 * (float(node) + 1.0)
+                theta = self.theta_cm_rad(
+                    projectile, target, projectile_energy_ev, quantile
+                )
+                outcome = two_body_outcome_from_cm_angle(context, theta)
+                total += float(weight) * np.asarray(
+                    (
+                        outcome.recoil_energy_ev,
+                        1.0 - math.cos(outcome.theta_projectile_lab_rad),
+                    )
+                )
+            return 0.5 * total
+
+        coarse = integrate(quadrature_order)
+        fine = integrate(2 * quadrature_order)
+        component_errors = np.abs(fine - coarse) / np.maximum(np.abs(fine), 1.0e-300)
+        error = float(np.max(component_errors))
+        if error > quadrature_relative_tolerance:
+            raise KernelTableError(
+                f"Soft-ZBL moment quadrature error {error:.3g} exceeds "
+                f"{quadrature_relative_tolerance:.3g}."
+            )
+        return HardMomentCrossSections(
+            cross_section_angstrom2=cross_section,
+            recoil_energy_cross_section_ev_angstrom2=(
+                cross_section * float(fine[0])
+            ),
+            transport_cross_section_angstrom2=(
+                cross_section * float(fine[1])
+            ),
+            quadrature_relative_error=error,
         )

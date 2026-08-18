@@ -70,28 +70,41 @@ def _config(*, trajectories: int = 2, chunk_size: int = 1) -> ctmc.CTMCConfig:
     )
 
 
-def test_channel_rng_is_chunk_size_independent() -> None:
-    full = ctmc._channel_rng(7, 3, 4, 5, 2, 0).random(50)
+@pytest.mark.parametrize(
+    "initial_ensemble",
+    ctmc.INITIAL_ENSEMBLE_CHOICES,
+)
+def test_channel_rng_is_chunk_size_independent(
+    initial_ensemble: str,
+) -> None:
+    full = ctmc._channel_rng(
+        7, 3, 4, 5, 2, 0, initial_ensemble
+    ).random(50)
     split_trajectories = 4
     split_draws = (
-        split_trajectories * ctmc.RANDOM_DRAWS_PER_TRAJECTORY
+        split_trajectories
+        * ctmc.random_draws_per_trajectory(initial_ensemble)
     )
     split = np.concatenate(
         (
-            ctmc._channel_rng(7, 3, 4, 5, 2, 0).random(split_draws),
             ctmc._channel_rng(
-                7, 3, 4, 5, 2, split_trajectories
+                7, 3, 4, 5, 2, 0, initial_ensemble
+            ).random(split_draws),
+            ctmc._channel_rng(
+                7, 3, 4, 5, 2, split_trajectories, initial_ensemble
             ).random(50 - split_draws),
         )
     )
     np.testing.assert_array_equal(full, split)
 
 
-def test_published_initial_momentum_is_perpendicular_to_radius() -> None:
+def test_paper_sampler_is_tangent_and_consumes_four_draws() -> None:
     core = ctmc.CorePotential.from_zn(
         ctmc.WATER_PSEUDO_NUCLEAR_CHARGE,
         9,
     )
+    rng = np.random.default_rng(123)
+    control = np.random.default_rng(123)
     position, velocity = ctmc.sample_bound_electron(
         core,
         ctmc.WATER_MASS_AU,
@@ -99,9 +112,156 @@ def test_published_initial_momentum_is_perpendicular_to_radius() -> None:
         np.zeros(3),
         np.zeros(3),
         128,
-        np.random.default_rng(123),
+        rng,
     )
+    control.random(4)
+
     assert abs(float(np.dot(position, velocity))) < 1.0e-12
+    assert rng.random() == control.random()
+    assert ctmc.RANDOM_DRAWS_PER_TRAJECTORY == 4
+
+
+def test_sensitivity_sampler_is_independent_isotropic_and_uses_five_draws() -> None:
+    core = ctmc.CorePotential.from_zn(
+        ctmc.WATER_PSEUDO_NUCLEAR_CHARGE,
+        9,
+    )
+    rng = np.random.default_rng(123)
+    direction_cosines = []
+    for _ in range(2_000):
+        position, velocity = ctmc.sample_bound_electron(
+            core,
+            ctmc.WATER_MASS_AU,
+            ctmc.WATER_ORBITALS[0].binding_eV,
+            np.zeros(3),
+            np.zeros(3),
+            128,
+            rng,
+            ctmc.INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC,
+        )
+        direction_cosines.append(
+            float(np.dot(position, velocity))
+            / (float(np.linalg.norm(position)) * float(np.linalg.norm(velocity)))
+        )
+
+    direction_cosines = np.asarray(direction_cosines)
+    assert np.any(direction_cosines < -0.9)
+    assert np.any(direction_cosines > 0.9)
+    assert float(np.mean(direction_cosines)) == pytest.approx(0.0, abs=0.05)
+    assert float(np.mean(direction_cosines**2)) == pytest.approx(
+        1.0 / 3.0, abs=0.03
+    )
+    rng = np.random.default_rng(321)
+    control = np.random.default_rng(321)
+    ctmc.sample_bound_electron(
+        core,
+        ctmc.WATER_MASS_AU,
+        ctmc.WATER_ORBITALS[0].binding_eV,
+        np.zeros(3),
+        np.zeros(3),
+        128,
+        rng,
+        ctmc.INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC,
+    )
+    control.random(5)
+    assert rng.random() == control.random()
+
+
+@pytest.mark.parametrize(
+    "initial_ensemble",
+    ctmc.INITIAL_ENSEMBLE_CHOICES,
+)
+def test_adaptive_coordinate_rng_is_chunk_size_independent(
+    initial_ensemble: str,
+) -> None:
+    full = adaptive._coordinate_rng(
+        7, 100.0, 3, 2.5, 1, 0, initial_ensemble
+    ).random(50)
+    split_trajectories = 3
+    split_draws = (
+        split_trajectories
+        * ctmc.random_draws_per_trajectory(initial_ensemble)
+    )
+    split = np.concatenate(
+        (
+            adaptive._coordinate_rng(
+                7, 100.0, 3, 2.5, 1, 0, initial_ensemble
+            ).random(split_draws),
+            adaptive._coordinate_rng(
+                7,
+                100.0,
+                3,
+                2.5,
+                1,
+                split_trajectories,
+                initial_ensemble,
+            ).random(50 - split_draws),
+        )
+    )
+    np.testing.assert_array_equal(full, split)
+
+
+def test_formal_reference_can_override_disclosed_projectile_velocity() -> None:
+    target_core, projectile_core = ctmc._trajectory_cores(3, "target")
+    arguments = {
+        "energy_keV_u": 100.0,
+        "impact_parameter_au": 0.0,
+        "separation_au": 1000.0,
+        "bound_to": "target",
+        "binding_eV": ctmc.WATER_ORBITALS[0].binding_eV,
+        "target_core": target_core,
+        "projectile_core": projectile_core,
+        "radial_grid_points": 128,
+    }
+    standard = ctmc._build_initial_relative_state(
+        **arguments,
+        rng=np.random.default_rng(7),
+    )
+    disclosed_velocity = 2.00055347542277
+    formal = ctmc._build_initial_relative_state(
+        **arguments,
+        rng=np.random.default_rng(7),
+        projectile_velocity_override_au=disclosed_velocity,
+    )
+    np.testing.assert_allclose(standard[:6], formal[:6], rtol=0.0, atol=0.0)
+    assert formal[8] - standard[8] == pytest.approx(
+        disclosed_velocity - ctmc.projectile_velocity_au(100.0),
+        rel=1.0e-13,
+    )
+
+
+def test_numba_fixed_time_endpoint_stops_at_disclosed_loss_tend() -> None:
+    target_core, projectile_core = ctmc._trajectory_cores(3, "projectile")
+    initial = ctmc._build_initial_relative_state(
+        energy_keV_u=100.0,
+        impact_parameter_au=0.0,
+        separation_au=10000.0,
+        bound_to="projectile",
+        binding_eV=ctmc.CARBON_OUTER_ORBITAL[3].binding_eV,
+        target_core=target_core,
+        projectile_core=projectile_core,
+        radial_grid_points=128,
+        rng=np.random.default_rng(11),
+        projectile_velocity_override_au=2.00055347542277,
+    )
+    success, final, _, _ = ctmc.integrate_relative_dop853(
+        initial,
+        6000.0,
+        ctmc._cached_core_parameters(projectile_core),
+        ctmc._cached_core_parameters(target_core),
+        1.0e-9,
+        1.0e-11,
+        float("inf"),
+        1.0e-10,
+        ctmc.CARBON_MASS_AU,
+        ctmc.WATER_MASS_AU,
+        10_000_000,
+        True,
+    )
+    assert success
+    # At v~=2 a.u., a 6000-a.u. interval carries the projectile from
+    # z=-10000 to approximately z=+2000, not back to its initial boundary.
+    assert 1000.0 < float(np.linalg.norm(final[:3])) < 4000.0
 
 
 @pytest.mark.parametrize("shard_count", [1, 2, 4, 7, 14, 21, 256])
@@ -218,6 +378,81 @@ def test_signature_excludes_safe_scheduler_tuning() -> None:
         energies, charges, impact, config
     ) == ctmc.configuration_signature(energies, charges, impact, tuned)
 
+    legacy = dataclasses.replace(config, maximum_integration_steps=0)
+    bounded = dataclasses.replace(
+        config,
+        maximum_integration_steps=(
+            ctmc.CARBON_CTMC_LEGACY_MAXIMUM_INTEGRATION_STEPS
+        ),
+    )
+    adaptive_bounded = dataclasses.replace(
+        config,
+        maximum_integration_steps=ctmc.CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS,
+    )
+    assert ctmc.configuration_signature(
+        energies, charges, impact, legacy
+    ) == ctmc.configuration_signature(energies, charges, impact, bounded)
+    assert ctmc.configuration_signature(
+        energies, charges, impact, bounded
+    ) == ctmc.configuration_signature(
+        energies, charges, impact, adaptive_bounded
+    )
+    assert ctmc.configuration_signature(
+        energies, charges, impact, config
+    ) != ctmc.configuration_signature(energies, charges, impact, bounded)
+    sensitivity = dataclasses.replace(
+        config,
+        initial_ensemble=ctmc.INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC,
+    )
+    assert ctmc.configuration_signature(
+        energies, charges, impact, config
+    ) != ctmc.configuration_signature(
+        energies, charges, impact, sensitivity
+    )
+    ctmc81 = dataclasses.replace(
+        config,
+        projectile_loss_initialization=(
+            ctmc.PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS
+        ),
+    )
+    assert ctmc.configuration_signature(
+        energies, charges, impact, config
+    ) != ctmc.configuration_signature(
+        energies, charges, impact, ctmc81
+    )
+
+
+def test_adaptive_signature_preserves_audited_step_budget_resume() -> None:
+    energies = np.asarray([1.0, math.sqrt(10.0), 10.0])
+    impact = np.asarray([0.0, 0.5, 1.0])
+    legacy = dataclasses.replace(
+        _config(),
+        start_separation_au=(2.0, 2.0, 2.0),
+        minimum_integration_time_au=(1.0, 1.0, 1.0),
+        maximum_integration_steps=(
+            ctmc.CARBON_CTMC_LEGACY_MAXIMUM_INTEGRATION_STEPS
+        ),
+    )
+    current = dataclasses.replace(
+        legacy,
+        maximum_integration_steps=ctmc.CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS,
+    )
+    refinement = adaptive.AdaptiveRefinementConfig(
+        axis_relative_tolerance=2.5e-3,
+        combined_relative_tolerance=5.0e-3,
+        statistical_relative_tolerance=5.0e-3,
+        statistical_confidence=0.95,
+        max_impact_levels=1,
+        max_energy_levels=1,
+        max_sampling_levels=1,
+    )
+
+    assert adaptive._family_signature(
+        "base", 0, 1, energies, impact, legacy, refinement, "unique_base_curve"
+    ) == adaptive._family_signature(
+        "base", 0, 1, energies, impact, current, refinement, "unique_base_curve"
+    )
+
 
 def test_checkpoint_roundtrip_preserves_partial_trajectory_counts(
     tmp_path: Path,
@@ -242,6 +477,19 @@ def test_checkpoint_roundtrip_preserves_partial_trajectory_counts(
         "successes": np.zeros(shape, dtype=np.int64),
         "drift": np.zeros(shape),
     }
+    buffered_result: ctmc.TrajectoryChunkResult = (
+        0,
+        0,
+        0,
+        1,
+        9,
+        1,
+        1,
+        0,
+        0,
+        1,
+        2.0e-9,
+    )
 
     ctmc.save_checkpoint(
         path,
@@ -258,6 +506,7 @@ def test_checkpoint_roundtrip_preserves_partial_trajectory_counts(
         maximum_energy_drift=arrays["drift"],
         accumulators=accumulators,
         execution_workers=256,
+        buffered_results={(0, 0, 0, 1): {9: buffered_result}},
     )
     loaded = ctmc.load_checkpoint(path, signature)
 
@@ -267,6 +516,92 @@ def test_checkpoint_roundtrip_preserves_partial_trajectory_counts(
     assert loaded["channel_successes"][0, 0, 0, 1] == 7
     assert loaded["channel_completed"][0, 0, 0, 1] == 7
     assert int(loaded["execution_workers"]) == 256
+    assert ctmc.checkpoint_buffered_chunk_results(loaded) == {
+        (0, 0, 0, 1): {9: buffered_result}
+    }
+    with pytest.raises(RuntimeError, match="different configuration"):
+        ctmc.load_checkpoint(path, "sensitivity-signature")
+
+
+def test_bounded_chunk_results_emits_checkpoint_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result: ctmc.TrajectoryChunkResult = (
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1.0e-9,
+    )
+
+    class Future:
+        def result(self) -> ctmc.TrajectoryChunkResult:
+            return result
+
+    class Executor:
+        def submit(self, *_: object) -> Future:
+            return Future()
+
+    wait_calls = 0
+
+    def fake_wait(pending, *, timeout, return_when):
+        nonlocal wait_calls
+        assert timeout == 0.25
+        assert return_when == ctmc.FIRST_COMPLETED
+        wait_calls += 1
+        if wait_calls == 1:
+            return set(), pending
+        return set(pending), set()
+
+    monkeypatch.setattr(ctmc, "wait", fake_wait)
+    task = (0, 0, 1.0, 0, 0, 0.0, 0, 0, 1, 10.0, 1.0)
+    results = list(
+        ctmc.bounded_chunk_results(
+            Executor(), [task], maximum_pending=1, heartbeat_seconds=0.25
+        )
+    )
+    assert results == [None, result]
+
+
+def test_buffered_chunks_are_excluded_across_changed_chunk_sizes() -> None:
+    task: ctmc.TrajectoryTask = (
+        0,
+        0,
+        1.0,
+        0,
+        0,
+        0.0,
+        1,
+        4,
+        8,
+        10.0,
+        1.0,
+    )
+    buffered: ctmc.TrajectoryChunkResult = (
+        0,
+        0,
+        0,
+        1,
+        7,
+        3,
+        0,
+        0,
+        0,
+        3,
+        1.0e-9,
+    )
+    remaining = list(
+        ctmc.iter_tasks_excluding_buffered_chunks(
+            [task], {(0, 0, 0, 1): {7: buffered}}
+        )
+    )
+    assert [(item[7], item[8]) for item in remaining] == [(4, 3), (10, 2)]
 
 
 def test_rebalanced_owners_cover_grid_and_balance_each_energy_layer() -> None:
@@ -443,11 +778,104 @@ def test_failure_diagnostic_records_deterministic_resume(
     assert payload["detail"] == detail
     assert payload["configuration_signature"] == "signature"
     assert payload["checkpoint"] == str(checkpoint)
+    assert payload["integrator_policy_version"] == (
+        ctmc.CTMC_INTEGRATOR_POLICY_VERSION
+    )
     assert "not committed" in payload["resume_behavior"]
 
 
 def test_default_failure_policy_is_strict() -> None:
     assert ctmc.build_parser().get_default("max_failure_fraction") == 0.0
+
+
+def test_paper_sampler_is_default_and_sensitivity_is_explicit() -> None:
+    parser = ctmc.build_parser()
+    assert parser.get_default("initial_ensemble") == (
+        ctmc.INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP
+    )
+    args = parser.parse_args(
+        [
+            "--initial-ensemble",
+            ctmc.INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC,
+        ]
+    )
+    assert args.initial_ensemble == (
+        ctmc.INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC
+    )
+
+
+def test_projectile_loss_initialization_modes_are_explicit() -> None:
+    parser = ctmc.build_parser()
+    assert parser.get_default("projectile_loss_initialization") == (
+        ctmc.PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED
+    )
+    args = parser.parse_args(
+        [
+            "--projectile-loss-initialization",
+            ctmc.PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS,
+        ]
+    )
+    assert args.projectile_loss_initialization == (
+        ctmc.PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS
+    )
+
+
+def test_projectile_loss_initialization_assigns_declared_beam_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    electron_offset = np.asarray([2.0, -3.0, 4.0])
+    electron_velocity = np.asarray([0.5, -0.25, 0.75])
+    monkeypatch.setattr(
+        ctmc,
+        "sample_bound_electron",
+        lambda *_args, **_kwargs: (
+            electron_offset.copy(), electron_velocity.copy()
+        ),
+    )
+    target_core, projectile_core = ctmc._trajectory_cores(3, "projectile")
+    common = {
+        "energy_keV_u": 100.0,
+        "impact_parameter_au": 1.25,
+        "separation_au": 10_000.0,
+        "bound_to": "projectile",
+        "binding_eV": ctmc.CARBON_OUTER_ORBITAL[3].binding_eV,
+        "target_core": target_core,
+        "projectile_core": projectile_core,
+        "radial_grid_points": 128,
+        "rng": np.random.default_rng(11),
+        "projectile_velocity_override_au": 2.0,
+    }
+    nucleus = ctmc._build_initial_relative_state(
+        **common,
+        projectile_loss_initialization=(
+            ctmc.PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS
+        ),
+    )
+    balanced = ctmc._build_initial_relative_state(
+        **common,
+        projectile_loss_initialization=(
+            ctmc.PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED
+        ),
+    )
+
+    np.testing.assert_array_equal(nucleus[:3], [-1.25, 0.0, 10_000.0])
+    np.testing.assert_array_equal(nucleus[3:6], electron_offset)
+    np.testing.assert_array_equal(nucleus[6:9], [0.0, 0.0, -2.0])
+    np.testing.assert_array_equal(nucleus[9:12], electron_velocity)
+
+    fraction = ctmc.ELECTRON_MASS_AU / (
+        ctmc.PROJECTILE_MASS_AU + ctmc.ELECTRON_MASS_AU
+    )
+    np.testing.assert_allclose(
+        balanced[:3],
+        np.asarray([-1.25, 0.0, 10_000.0]) + fraction * electron_offset,
+    )
+    np.testing.assert_allclose(
+        balanced[6:9],
+        np.asarray([0.0, 0.0, -2.0]) + fraction * electron_velocity,
+    )
+    np.testing.assert_array_equal(balanced[3:6], electron_offset)
+    np.testing.assert_array_equal(balanced[9:12], electron_velocity)
 
 
 def test_adaptive_refinement_is_default_with_half_percent_target() -> None:
@@ -694,6 +1122,26 @@ def test_adaptive_family_refines_and_checkpoints_without_recomputing_base(
         max_energy_levels=1,
         max_sampling_levels=1,
     )
+    for base_energy_index in range(2):
+        adaptive._run_family(
+            output_dir=tmp_path,
+            family_index=base_energy_index,
+            family_count=2,
+            charge_index=0,
+            interval_index=base_energy_index,
+            base_signature="base",
+            base_checkpoint=base_checkpoint,
+            base_config=config,
+            workers=1,
+            start_method="fork",
+            pending_factor=1,
+            checkpoint_every=1,
+            checkpoint_seconds=0.0,
+            adaptive=adaptive_config,
+            base_energy_index=base_energy_index,
+            shared_base_curves=False,
+        )
+
     result_path = adaptive._run_family(
         output_dir=tmp_path,
         family_index=0,
@@ -709,6 +1157,8 @@ def test_adaptive_family_refines_and_checkpoints_without_recomputing_base(
         checkpoint_every=1,
         checkpoint_seconds=0.0,
         adaptive=adaptive_config,
+        base_energy_index=None,
+        shared_base_curves=True,
     )
 
     assert result_path.exists()
@@ -823,6 +1273,28 @@ def test_oxygen_trajectory_cores_use_published_spectator_rows(
     assert neutral_target_projectile.spectators == 8
     assert singly_charged_target_projectile.spectators == 7
     assert neutral_loss_projectile.spectators == 7
+
+
+def test_c3_role_term_sensitivity_uses_proposed_screening_pairs() -> None:
+    target_h2o, target_carbon = ctmc._trajectory_cores(
+        3, "target", garvey_role_term=True
+    )
+    loss_h2o, loss_carbon = ctmc._trajectory_cores(
+        3, "projectile", garvey_role_term=True
+    )
+
+    assert (target_h2o.eta, target_h2o.zeta) == pytest.approx(
+        (2.7100, 1.7920)
+    )
+    assert (target_carbon.eta, target_carbon.zeta) == pytest.approx(
+        (2.4347, 1.9465)
+    )
+    assert (loss_carbon.eta, loss_carbon.zeta) == pytest.approx(
+        (3.7963, 5.0932)
+    )
+    assert (loss_h2o.eta, loss_h2o.zeta) == pytest.approx(
+        (2.1562, 0.9274)
+    )
 
 
 def test_oxygen_many_electron_loss_uses_outer_shell_occupancy(
@@ -1054,7 +1526,7 @@ def test_sulfur_loss_cutoffs_require_sixteen_values(
         ctmc.parse_loss_bmax(";".join(["20"] * 15))
 
 
-def test_sulfur_additions_preserve_oxygen_production_signature(
+def test_sampler_identity_updates_oxygen_production_signature(
     oxygen_projectile,
 ) -> None:
     energies = np.geomspace(1.0, 1.0e4, 41)
@@ -1085,12 +1557,32 @@ def test_sulfur_additions_preserve_oxygen_production_signature(
         seed=20130641,
         projectile="oxygen",
     )
-    assert ctmc.configuration_signature(
+    signature = ctmc.configuration_signature(
         energies,
         charges,
         impact,
         config,
-    ) == "0fb3dae255288ef1ada699228c6a1a404fb2781ab9c92fa6806307d7d441b526"
+    )
+    assert signature == (
+        "d182f91926ffae896bf285d636fcdd1f84b61e122a9db0b50cd007cd1d374673"
+    )
+    assert signature != (
+        "0fb3dae255288ef1ada699228c6a1a404fb2781ab9c92fa6806307d7d441b526"
+    )
+    assert signature != (
+        "bffce57b004aa8646ac55d5c2e85341ec5a56939d02055f889288247c994eece"
+    )
+    sensitivity = dataclasses.replace(
+        config,
+        initial_ensemble=ctmc.INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC,
+    )
+    sensitivity_signature = ctmc.configuration_signature(
+        energies, charges, impact, sensitivity
+    )
+    assert sensitivity_signature == (
+        "b0be9aee08e016e74277c5c29f7380a9e8c324f55af758e3c32ec001b112354b"
+    )
+    assert signature != sensitivity_signature
 
 
 @pytest.mark.parametrize("projectile", tuple(ctmc.PROJECTILES))
@@ -1105,13 +1597,15 @@ def test_all_ctmc_projectiles_declare_microscopic_phase_scaling(
 
     assert not scaling["microscopic_tables_scaled"]
     phases = scaling["phases"]
-    assert phases["ice_am"]["mass_density_g_cm3"] == pytest.approx(0.940)
+    assert phases["ice_am"]["mass_density_g_cm3"] == pytest.approx(
+        ctmc.ICE_AMORPHOUS_DENSITY_G_CM3
+    )
     assert phases["ice_hex"]["mass_density_g_cm3"] == pytest.approx(
         ctmc.ICE_HEXAGONAL_DENSITY_G_CM3
     )
     assert phases["water"]["mass_density_g_cm3"] == pytest.approx(1.000)
     assert phases["ice_am"]["molecular_number_density_cm3"] == pytest.approx(
-        3.142228327508648e22
+        ctmc.h2o_number_density_cm3(ctmc.ICE_AMORPHOUS_DENSITY_G_CM3)
     )
     assert phases["ice_hex"]["molecular_number_density_cm3"] == pytest.approx(
         ctmc.h2o_number_density_cm3(ctmc.ICE_HEXAGONAL_DENSITY_G_CM3)
@@ -1119,7 +1613,10 @@ def test_all_ctmc_projectiles_declare_microscopic_phase_scaling(
     assert (
         phases["ice_am"]["molecular_number_density_cm3"]
         / phases["ice_hex"]["molecular_number_density_cm3"]
-    ) == pytest.approx(0.940 / ctmc.ICE_HEXAGONAL_DENSITY_G_CM3)
+    ) == pytest.approx(
+        ctmc.ICE_AMORPHOUS_DENSITY_G_CM3
+        / ctmc.ICE_HEXAGONAL_DENSITY_G_CM3
+    )
 
 
 def test_cpp_and_python_ice_phase_densities_match() -> None:
@@ -1129,7 +1626,7 @@ def test_cpp_and_python_ice_phase_densities_match() -> None:
         Path("proton-pipeline/include/IcePhaseProperties.hh"),
     ):
         header = (project_root / relative_path).read_text(encoding="utf-8")
-        assert "kAmorphousIceDensityGPerCm3 = 0.94;" in header
+        assert "kAmorphousIceDensityGPerCm3 = 0.9343471678603292;" in header
         assert "kHexagonalIceDensityGPerCm3 = 0.9335;" in header
         assert "kWaterDensityGPerCm3 = 1.0;" in header
 
@@ -1177,6 +1674,17 @@ def test_ctmc_output_metadata_records_required_runtime_density_scaling(
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert not metadata["density_applied"]
     assert metadata["cross_section_unit"] == "cm2 per H2O molecule"
+    assert metadata["initial_ensemble"] == {
+        "mode": ctmc.INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
+        "role": "historical_paper_reproduction",
+        "paper_equations": [4, 5],
+        "position_direction": "isotropic",
+        "momentum_direction": (
+            "uniform in tangent plane (Olson--Salop equation 7)"
+        ),
+        "paper_reproduction": True,
+        "random_draws_per_trajectory": 4,
+    }
     assert not metadata["phase_density_scaling"]["microscopic_tables_scaled"]
     assert (
         metadata["phase_density_scaling"]["phases"]["ice_am"][
@@ -1303,6 +1811,138 @@ def test_failed_integration_uses_identical_regularized_fallback(
     assert len(regularized_states) == 1
     for state in direct_states + regularized_states:
         np.testing.assert_array_equal(state, direct_states[0])
+
+
+def test_exhausted_bounded_retries_use_uncapped_regularized_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    regularized_limits: list[int] = []
+
+    def failed_integrator(
+        initial: np.ndarray,
+        *_: object,
+    ) -> tuple[bool, np.ndarray, int, int]:
+        return False, initial.copy(), 500, 500
+
+    def regularized_integrator(
+        initial: np.ndarray,
+        _minimum_time: float,
+        _reference: np.ndarray,
+        _other: np.ndarray,
+        _rtol: float,
+        _atol: float,
+        _max_step: float,
+        _minimum_radius: float,
+        _reference_mass: float,
+        _other_mass: float,
+            _sundman_power: int,
+            _maximum_drift: float,
+            maximum_steps: int,
+            _stop_at_minimum_time: bool,
+            _terminal_core_distance_au: float,
+    ) -> tuple[bool, np.ndarray, int, int]:
+        regularized_limits.append(maximum_steps)
+        return maximum_steps == 0, initial.copy(), 1, 0
+
+    monkeypatch.setattr(ctmc, "integrate_relative_dop853", failed_integrator)
+    monkeypatch.setattr(
+        ctmc,
+        "integrate_relative_dop853_regularized",
+        regularized_integrator,
+    )
+    config = dataclasses.replace(
+        _config(),
+        backend="numba",
+        maximum_integration_steps=1_000,
+    )
+    outcome, success, drift = ctmc.simulate_one_trajectory(
+        energy_keV_u=1.0,
+        charge_state=0,
+        impact_parameter_au=0.0,
+        bound_to="target",
+        binding_eV=ctmc.WATER_ORBITALS[0].binding_eV,
+        start_separation_au=100.0,
+        minimum_integration_time_au=1.0,
+        config=config,
+        rng=np.random.default_rng(37),
+    )
+
+    assert success
+    assert outcome == "retained_target"
+    assert drift == pytest.approx(0.0)
+    assert regularized_limits == [1_000] * 6 + [0]
+
+
+def test_unconserved_finite_endpoint_uses_uncapped_regularized_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rejected finite endpoint must not block numerical continuation."""
+    regularized_limits: list[int] = []
+
+    def finite_direct_integrator(
+        initial: np.ndarray,
+        *_: object,
+    ) -> tuple[bool, np.ndarray, int, int]:
+        return True, initial.copy(), 1, 0
+
+    def regularized_integrator(
+        initial: np.ndarray,
+        _minimum_time: float,
+        _reference: np.ndarray,
+        _other: np.ndarray,
+        _rtol: float,
+        _atol: float,
+        _max_step: float,
+        _minimum_radius: float,
+        _reference_mass: float,
+        _other_mass: float,
+            _sundman_power: int,
+            _maximum_drift: float,
+            maximum_steps: int,
+            _stop_at_minimum_time: bool,
+            _terminal_core_distance_au: float,
+    ) -> tuple[bool, np.ndarray, int, int]:
+        regularized_limits.append(maximum_steps)
+        return maximum_steps == 0, initial.copy(), 1, 0
+
+    # Initial energy, three rejected physical-time endpoints, then the
+    # accepted endpoint returned by the first uncapped Sundman continuation.
+    energies = iter((100.0, 100.2, 100.3, 100.15, 100.0001))
+    monkeypatch.setattr(
+        ctmc,
+        "integrate_relative_dop853",
+        finite_direct_integrator,
+    )
+    monkeypatch.setattr(
+        ctmc,
+        "integrate_relative_dop853_regularized",
+        regularized_integrator,
+    )
+    monkeypatch.setattr(
+        ctmc,
+        "relative_three_body_energy",
+        lambda *_: next(energies),
+    )
+    config = dataclasses.replace(
+        _config(),
+        backend="numba",
+        maximum_integration_steps=1_000,
+    )
+    _, success, drift = ctmc.simulate_one_trajectory(
+        energy_keV_u=1.0,
+        charge_state=0,
+        impact_parameter_au=0.0,
+        bound_to="target",
+        binding_eV=ctmc.WATER_ORBITALS[0].binding_eV,
+        start_separation_au=100.0,
+        minimum_integration_time_au=1.0,
+        config=config,
+        rng=np.random.default_rng(43),
+    )
+
+    assert success
+    assert drift == pytest.approx(1.0e-6)
+    assert regularized_limits == [1_000] * 6 + [0]
 
 
 def test_excess_energy_drift_retries_identical_trajectory(
@@ -1458,7 +2098,9 @@ def test_projectile_loss_uses_paper_switched_relative_frame(
         reference_mass: float,
         other_mass: float,
         _maximum_steps: int,
-    ) -> tuple[bool, np.ndarray, int, int]:
+        _stop_at_minimum_time: bool,
+        _terminal_core_distance_au: float,
+        ) -> tuple[bool, np.ndarray, int, int]:
         integrated.update(
             initial=initial.copy(),
             reference_parameters=reference_parameters.copy(),
@@ -1650,8 +2292,26 @@ def test_numba_dop853_matches_scipy_in_paper_coordinates(
             1.0e-10,
             ctmc.WATER_MASS_AU,
             ctmc.CARBON_MASS_AU,
+            1,
             # Disable the conditional invariant projection here to compare
             # the pure Sundman reparameterization with physical-time SciPy.
+            1.0,
+            0,
+        )
+    )
+    squared_success, squared_final, _, _ = (
+        ctmc.integrate_relative_dop853_regularized(
+            initial,
+            1.0,
+            ctmc._cached_core_parameters(target_core),
+            ctmc._cached_core_parameters(projectile_core),
+            1.0e-11,
+            1.0e-13,
+            float("inf"),
+            1.0e-10,
+            ctmc.WATER_MASS_AU,
+            ctmc.CARBON_MASS_AU,
+            2,
             1.0,
             0,
         )
@@ -1659,6 +2319,7 @@ def test_numba_dop853_matches_scipy_in_paper_coordinates(
 
     assert success
     assert regularized_success
+    assert squared_success
     assert reference.success
     np.testing.assert_allclose(
         final,
@@ -1672,6 +2333,99 @@ def test_numba_dop853_matches_scipy_in_paper_coordinates(
         rtol=1.0e-7,
         atol=1.0e-9,
     )
+    np.testing.assert_allclose(
+        squared_final,
+        reference.y[:, -1],
+        rtol=1.0e-7,
+        atol=1.0e-9,
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "energy_index",
+        "energy_keV_u",
+        "charge_state",
+        "impact_index",
+        "impact_parameter_au",
+        "trajectory_index",
+    ),
+    (
+        (25, 316.2277660168379, 2, 92, 23.0, 9461),
+        (34, 2511.886431509582, 3, 50, 12.5, 6069),
+    ),
+)
+def test_numba_dop853_resolves_production_close_encounters(
+    energy_index: int,
+    energy_keV_u: float,
+    charge_state: int,
+    impact_index: int,
+    impact_parameter_au: float,
+    trajectory_index: int,
+) -> None:
+    """Regression for finite-periapsis paths needing sub-epsilon time steps."""
+    ctmc.select_projectile("carbon")
+    channel_index = 2
+    rng = ctmc._channel_rng(
+        ctmc.CARBON_CTMC_SEED,
+        energy_index,
+        charge_state,
+        impact_index,
+        channel_index,
+        trajectory_index,
+    )
+    target_core, projectile_core = ctmc._trajectory_cores(
+        charge_state,
+        "target",
+    )
+    initial = ctmc._build_initial_relative_state(
+        energy_keV_u=energy_keV_u,
+        impact_parameter_au=impact_parameter_au,
+        separation_au=10_000.0,
+        bound_to="target",
+        binding_eV=ctmc.WATER_ORBITALS[channel_index].binding_eV,
+        target_core=target_core,
+        projectile_core=projectile_core,
+        radial_grid_points=ctmc.CARBON_CTMC_RADIAL_GRID_POINTS,
+        rng=rng,
+    )
+    success, final, accepted_steps, rejected_steps = (
+        ctmc.integrate_relative_dop853(
+            initial,
+            ctmc.paper_minimum_integration_time_au(energy_keV_u),
+            ctmc._cached_core_parameters(target_core),
+            ctmc._cached_core_parameters(projectile_core),
+            1.0e-11,
+            1.0e-13,
+            float("inf"),
+            1.0e-10,
+            ctmc.WATER_MASS_AU,
+            ctmc.CARBON_MASS_AU,
+            2_000_000,
+        )
+    )
+
+    assert success
+    assert accepted_steps + rejected_steps < 2_000_000
+    initial_energy = ctmc.relative_three_body_energy(
+        initial,
+        target_core,
+        projectile_core,
+        1.0e-10,
+        "target",
+    )
+    final_energy = ctmc.relative_three_body_energy(
+        final,
+        target_core,
+        projectile_core,
+        1.0e-10,
+        "target",
+    )
+    relative_drift = abs(final_energy - initial_energy) / max(
+        abs(initial_energy),
+        1.0,
+    )
+    assert relative_drift <= 1.0e-3
 
 
 def test_numba_dop853_matches_scipy_in_projectile_loss_frame() -> None:

@@ -234,10 +234,21 @@ CTMC_ADAPTIVE_STATISTICAL_CONFIDENCE = 0.95
 CTMC_ADAPTIVE_MAX_IMPACT_LEVELS = 4
 CTMC_ADAPTIVE_MAX_ENERGY_LEVELS = 4
 CTMC_ADAPTIVE_MAX_SAMPLING_LEVELS = 4
-# Zero disables the implementation-only step ceiling.  The paper terminates
-# trajectories by elapsed time and negligible screened-nucleus interaction,
-# not by an unpublished Runge--Kutta step count.
-CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS = 0
+# Numerical work budget for one DOP853 attempt.  Exhausting this budget does
+# not accept an endpoint: the identical initial condition is retried with the
+# next declared tolerance/regularization, and the trajectory fails explicitly
+# if no attempt reaches the paper's physical exit condition.  Adaptive-grid
+# validation exposed a valid 1 keV/u trajectory that required 53,384,632
+# attempts to return to the converged 20,000-a.u. boundary (relative energy
+# drift 2.65e-6).  The 100,000,000 ceiling retains a finite fail-fast bound and
+# exceeds that measured requirement by 87%; it changes no accepted trajectory.
+CARBON_CTMC_LEGACY_MAXIMUM_INTEGRATION_STEPS = 25_000_000
+CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS = 100_000_000
+# Increment only when the deterministic trajectory fallback ladder changes.
+# Failure diagnostics and the PBS supervisor use this to distinguish a stale
+# failure that can be retried with a newer numerical policy from a failure that
+# already exhausted the current policy and must be quarantined for review.
+CTMC_INTEGRATOR_POLICY_VERSION = 3
 CARBON_CTMC_RADIAL_GRID_POINTS = 4096
 CARBON_CTMC_SEED = 20130641
 

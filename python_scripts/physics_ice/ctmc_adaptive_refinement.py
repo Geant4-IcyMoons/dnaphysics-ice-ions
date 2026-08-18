@@ -9,11 +9,12 @@ through the published many-electron estimator, and accepts a curve only when
 every physically active reported cross section satisfies the disclosed
 discretization and statistical limits.
 
-One adaptive family is one projectile charge state in one interval of the
-original energy grid.  Families are independent, deterministically sharded,
-and checkpointed separately.  This gives multi-node scaling without a
-distributed barrier and preserves every completed point in the canonical
-fixed-grid checkpoint.
+Refinement has two dependency-ordered stages.  The first calculates each
+``(base energy, charge)`` impact curve exactly once.  The second assigns one
+charge state and one original energy interval to each independent family,
+reuses the two shared endpoint curves, and calculates only new logarithmic
+midpoints.  This avoids recomputing interior base-grid endpoints while retaining
+deterministic multi-node sharding and restart-safe family checkpoints.
 """
 
 from __future__ import annotations
@@ -119,34 +120,73 @@ def adaptive_family_indices(
     ]
 
 
+def adaptive_base_curve_indices(
+    energies: np.ndarray,
+    charges: np.ndarray,
+) -> list[tuple[int, int]]:
+    """Return unique ``(charge_index, energy_index)`` base-curve tasks."""
+    return [
+        (charge_index, energy_index)
+        for energy_index in range(int(energies.size))
+        for charge_index in range(int(charges.size))
+    ]
+
+
 def _adaptive_directory(output_dir: Path) -> Path:
     return output_dir / "adaptive_refinement"
 
 
-def _family_stem(family_index: int, family_count: int) -> str:
+def _base_curve_stem(curve_index: int, curve_count: int) -> str:
     return (
-        f"{ctmc.PROJECTILE.key}_adaptive_family-"
-        f"{family_index:05d}-of-{family_count:05d}"
+        f"{ctmc.PROJECTILE.key}_adaptive_base_curve-"
+        f"{curve_index:05d}-of-{curve_count:05d}"
     )
 
 
-def _family_checkpoint_path(
+def _base_curve_checkpoint_path(
     output_dir: Path,
-    family_index: int,
-    family_count: int,
+    curve_index: int,
+    curve_count: int,
 ) -> Path:
     return _adaptive_directory(output_dir) / (
-        _family_stem(family_index, family_count) + ".checkpoint.npz"
+        _base_curve_stem(curve_index, curve_count) + ".checkpoint.npz"
     )
 
 
-def _family_result_path(
+def _base_curve_result_path(
     output_dir: Path,
-    family_index: int,
-    family_count: int,
+    curve_index: int,
+    curve_count: int,
 ) -> Path:
     return _adaptive_directory(output_dir) / (
-        _family_stem(family_index, family_count) + ".result.npz"
+        _base_curve_stem(curve_index, curve_count) + ".result.npz"
+    )
+
+
+def _interval_stem(interval_index: int, interval_count: int) -> str:
+    return (
+        f"{ctmc.PROJECTILE.key}_adaptive_interval-"
+        f"{interval_index:05d}-of-{interval_count:05d}"
+    )
+
+
+def _interval_checkpoint_path(
+    output_dir: Path,
+    interval_index: int,
+    interval_count: int,
+) -> Path:
+    return _adaptive_directory(output_dir) / (
+        _interval_stem(interval_index, interval_count) + ".checkpoint.npz"
+    )
+
+
+def _interval_result_path(
+    output_dir: Path,
+    interval_index: int,
+    interval_count: int,
+) -> Path:
+    return _adaptive_directory(output_dir) / (
+        _interval_stem(interval_index, interval_count) + ".result.npz"
     )
 
 
@@ -574,9 +614,23 @@ def _family_signature(
     impact_au: np.ndarray,
     config: ctmc.CTMCConfig,
     adaptive: AdaptiveRefinementConfig,
+    task_kind: str,
 ) -> str:
     config_payload = asdict(config)
     config_payload.pop("trajectory_chunk_size", None)
+    # Adaptive checkpoints created by the first production pass contain the
+    # audited 25-million-attempt ceiling.  The 100-million default was selected
+    # after an exact failed adaptive seed required 53,384,632 attempts to reach
+    # the unchanged physical exit boundary.  Both ceilings produce identical
+    # accepted endpoints; canonicalizing only this audited transition preserves
+    # the completed trajectory ledger.  Other ceilings remain signature-bound.
+    if config_payload["maximum_integration_steps"] in (
+        ctmc.CARBON_CTMC_LEGACY_MAXIMUM_INTEGRATION_STEPS,
+        ctmc.CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS,
+    ):
+        config_payload["maximum_integration_steps"] = (
+            ctmc.CARBON_CTMC_LEGACY_MAXIMUM_INTEGRATION_STEPS
+        )
     if not np.isfinite(config_payload["max_step_au"]):
         config_payload["max_step_au"] = None
     payload = {
@@ -589,6 +643,7 @@ def _family_signature(
         "ctmc_config": config_payload,
         "adaptive_config": asdict(adaptive),
     }
+    payload["task_kind"] = task_kind
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -605,6 +660,7 @@ def _coordinate_rng(
     impact_au: float,
     channel_index: int,
     trajectory_start: int,
+    initial_ensemble: str = ctmc.INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
 ) -> np.random.Generator:
     """Stable stream keyed by physical coordinates, independent of refinement."""
     energy_low, energy_high = _float_seed_words(energy_keV_u)
@@ -623,7 +679,8 @@ def _coordinate_rng(
     )
     bit_generator = np.random.PCG64(seed)
     bit_generator.advance(
-        int(trajectory_start) * ctmc.RANDOM_DRAWS_PER_TRAJECTORY
+        int(trajectory_start)
+        * ctmc.random_draws_per_trajectory(initial_ensemble)
     )
     return np.random.Generator(bit_generator)
 
@@ -654,6 +711,7 @@ def _compute_adaptive_trajectory_chunk(
         impact,
         channel_index,
         trajectory_start,
+        config.initial_ensemble,
     )
 
     if channel_index < ctmc.LOSS_CHANNEL_INDEX:
@@ -733,7 +791,9 @@ def _bounded_results(
         tuple[int, int, float, int, int, float, int, int, int, float, float]
     ],
     maximum_pending: int,
-) -> Iterable[tuple[int, int, int, int, int, int, int, int, int, int, float]]:
+    heartbeat_seconds: float = 1.0,
+) -> Iterable[ctmc.TrajectoryChunkResult | None]:
+    """Return adaptive chunks and periodic checkpoint heartbeats."""
     task_iterator = iter(tasks)
     pending = set()
     for _ in range(maximum_pending):
@@ -743,7 +803,14 @@ def _bounded_results(
             break
         pending.add(executor.submit(_compute_adaptive_trajectory_chunk, task))
     while pending:
-        completed, pending = wait(pending, return_when=FIRST_COMPLETED)
+        completed, pending = wait(
+            pending,
+            timeout=heartbeat_seconds,
+            return_when=FIRST_COMPLETED,
+        )
+        if not completed:
+            yield None
+            continue
         for future in completed:
             yield future.result()
             try:
@@ -797,6 +864,7 @@ def write_adaptive_manifest(
     adaptive: AdaptiveRefinementConfig,
 ) -> Path:
     family_count = adaptive_family_count(energies, charges)
+    base_curve_count = int(energies.size * charges.size)
     path = _manifest_path(output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -806,6 +874,13 @@ def write_adaptive_manifest(
         "base_energy_count": int(energies.size),
         "charge_count": int(charges.size),
         "adaptive_family_count": family_count,
+        "adaptive_base_curve_count": base_curve_count,
+        "execution_stages": [
+            "unique_base_energy_charge_curves",
+            "energy_intervals_reusing_shared_endpoints",
+            "merge",
+        ],
+        "endpoint_recalculation": False,
         "adaptive_config": asdict(adaptive),
         "error_definition": (
             "separate nested-impact-grid and logarithmic-energy interpolation "
@@ -917,22 +992,37 @@ def _run_family(
     checkpoint_every: int,
     checkpoint_seconds: float,
     adaptive: AdaptiveRefinementConfig,
+    base_energy_index: int | None,
+    shared_base_curves: bool,
 ) -> Path:
     base_energies = np.asarray(base_checkpoint["energies_keV_u"], dtype=float)
     charges = np.asarray(base_checkpoint["charges"], dtype=int)
     base_impact = np.asarray(base_checkpoint["impact_au"], dtype=float)
     charge_state = int(charges[charge_index])
 
-    if base_energies.size == 1:
-        lower_index = upper_index = 0
-        energies = np.asarray([base_energies[0]], dtype=float)
+    if base_energy_index is not None:
+        if base_energy_index < 0 or base_energy_index >= base_energies.size:
+            raise ValueError("base_energy_index is out of range")
+        lower_index = upper_index = int(base_energy_index)
+        energies = np.asarray([base_energies[base_energy_index]], dtype=float)
+        task_kind = "unique_base_curve"
+    elif shared_base_curves:
+        if base_energies.size == 1:
+            lower_index = upper_index = 0
+            energies = np.asarray([base_energies[0]], dtype=float)
+        else:
+            lower_index = interval_index
+            upper_index = interval_index + 1
+            energies = nested_interval_energies(
+                float(base_energies[lower_index]),
+                float(base_energies[upper_index]),
+                adaptive.max_energy_levels,
+            )
+        task_kind = "interval_with_shared_endpoints"
     else:
-        lower_index = interval_index
-        upper_index = interval_index + 1
-        energies = nested_interval_energies(
-            float(base_energies[lower_index]),
-            float(base_energies[upper_index]),
-            adaptive.max_energy_levels,
+        raise ValueError(
+            "An adaptive task must be a unique base curve or a shared-endpoint "
+            "energy interval"
         )
 
     mandatory_b = tuple(base_config.target_bmax_au) + tuple(
@@ -1003,11 +1093,22 @@ def _run_family(
         impact_au,
         config,
         adaptive,
+        task_kind,
     )
-    checkpoint_path = _family_checkpoint_path(
-        output_dir, family_index, family_count
-    )
-    result_path = _family_result_path(output_dir, family_index, family_count)
+    if base_energy_index is not None:
+        checkpoint_path = _base_curve_checkpoint_path(
+            output_dir, family_index, family_count
+        )
+        result_path = _base_curve_result_path(
+            output_dir, family_index, family_count
+        )
+    else:
+        checkpoint_path = _interval_checkpoint_path(
+            output_dir, family_index, family_count
+        )
+        result_path = _interval_result_path(
+            output_dir, family_index, family_count
+        )
     if result_path.exists():
         with np.load(result_path, allow_pickle=False) as result:
             if str(np.asarray(result["family_signature"]).item()) != family_signature:
@@ -1017,6 +1118,7 @@ def _run_family(
         return result_path
 
     checkpoint = ctmc.load_checkpoint(checkpoint_path, family_signature)
+    buffered_results: ctmc.BufferedChunkResults = {}
     if checkpoint is None:
         _copy_base_endpoint(
             local_energy_index=0,
@@ -1041,6 +1143,48 @@ def _run_family(
             )
     else:
         _restore_family_checkpoint(checkpoint, arrays, accumulators)
+        buffered_results = ctmc.checkpoint_buffered_chunk_results(checkpoint)
+        maximum_trajectory_target = (
+            config.trajectories * 2**adaptive.max_sampling_levels
+        )
+        for key, channel_buffer in buffered_results.items():
+            energy_index, charge_local_index, impact_index, channel_index = key
+            point = (energy_index, charge_local_index, impact_index)
+            if (
+                energy_index < 0
+                or energy_index >= energies.size
+                or charge_local_index != 0
+                or impact_index < 0
+                or impact_index >= impact_au.size
+            ):
+                raise RuntimeError(
+                    f"Adaptive checkpoint contains out-of-range buffered key {key}"
+                )
+            if arrays["done"][point]:
+                raise RuntimeError(
+                    f"Completed adaptive point {point} contains buffered chunks"
+                )
+            if channel_index not in ctmc._active_channels(
+                charge_state,
+                float(impact_au[impact_index]),
+                config,
+            ):
+                raise RuntimeError(
+                    f"Adaptive checkpoint contains inactive buffered channel {key}"
+                )
+            expected = int(accumulators.completed[key])
+            for start, result in channel_buffer.items():
+                count = int(result[5])
+                if (
+                    start < expected
+                    or count <= 0
+                    or start + count > maximum_trajectory_target
+                    or count != int(result[8]) + int(result[9])
+                ):
+                    raise RuntimeError(
+                        "Adaptive checkpoint contains invalid buffered chunk "
+                        f"{key}@{start}"
+                    )
 
     def save_checkpoint(announce: bool = False) -> None:
         ctmc.save_checkpoint(
@@ -1058,6 +1202,7 @@ def _run_family(
             maximum_energy_drift=arrays["maximum_energy_drift"],
             accumulators=accumulators,
             execution_workers=workers,
+            buffered_results=buffered_results,
         )
         if announce:
             tqdm.write(
@@ -1106,7 +1251,47 @@ def _run_family(
                         for channel in active_channels
                     ),
                 )
+                for channel in active_channels:
+                    key = (energy_index, 0, impact_index, channel)
+                    if key in buffered_results:
+                        effective_target = max(
+                            effective_target,
+                            max(
+                                start + int(result[5])
+                                for start, result in buffered_results[key].items()
+                            ),
+                        )
         sampling_config = replace(config, trajectories=effective_target)
+
+        # A checkpoint can contain chunks that completed after a missing
+        # prefix.  Commit any prefix that became contiguous before rebuilding
+        # the pending task stream, then exclude every remaining buffered range.
+        for key in list(buffered_results):
+            point = key[:3]
+            if not owner[point]:
+                continue
+            channel_buffer = buffered_results[key]
+            expected = int(accumulators.completed[key])
+            while expected in channel_buffer:
+                contiguous = channel_buffer.pop(expected)
+                ctmc._commit_trajectory_chunk(
+                    contiguous,
+                    energies=energies,
+                    charges=np.asarray([charge_state]),
+                    impact_au=impact_au,
+                    config=sampling_config,
+                    accumulators=accumulators,
+                    pi=arrays["pi"],
+                    pc=arrays["pc"],
+                    pl=arrays["pl"],
+                    done=arrays["done"],
+                    failures=arrays["failures"],
+                    successes=arrays["successes"],
+                    maximum_energy_drift=arrays["maximum_energy_drift"],
+                )
+                expected += int(contiguous[5])
+            if not channel_buffer:
+                buffered_results.pop(key)
         for energy_index, _, impact_index in np.argwhere(owner):
             active_channels = ctmc._active_channels(
                 charge_state, float(impact_au[impact_index]), sampling_config
@@ -1124,16 +1309,30 @@ def _run_family(
             sampling_config,
             owner,
         )
+        buffered_trajectories = sum(
+            int(result[5])
+            for key, channel_buffer in buffered_results.items()
+            if owner[key[:3]]
+            for result in channel_buffer.values()
+        )
+        remaining -= buffered_trajectories
+        if remaining < 0:
+            raise RuntimeError(
+                "Buffered adaptive work exceeds the remaining trajectory count"
+            )
         if remaining == 0:
             return effective_target
-        tasks = ctmc.iter_pending_trajectory_tasks(
-            energies,
-            np.asarray([charge_state]),
-            impact_au,
-            arrays["done"],
-            accumulators,
-            sampling_config,
-            owner,
+        tasks = ctmc.iter_tasks_excluding_buffered_chunks(
+            ctmc.iter_pending_trajectory_tasks(
+                energies,
+                np.asarray([charge_state]),
+                impact_au,
+                arrays["done"],
+                accumulators,
+                sampling_config,
+                owner,
+            ),
+            buffered_results,
         )
         progress = tqdm(
             total=remaining,
@@ -1142,7 +1341,6 @@ def _run_family(
             unit_scale=True,
             dynamic_ncols=True,
         )
-        buffered: dict[tuple[int, int, int, int], dict[int, tuple]] = {}
         completed_since_checkpoint = 0
         last_checkpoint_time = time.monotonic()
 
@@ -1156,7 +1354,7 @@ def _run_family(
                 raise RuntimeError(
                     f"Duplicate adaptive CTMC result for {key}@{start}"
                 )
-            channel_buffer = buffered.setdefault(key, {})
+            channel_buffer = buffered_results.setdefault(key, {})
             if start in channel_buffer:
                 raise RuntimeError(
                     f"Duplicate buffered adaptive result for {key}@{start}"
@@ -1182,7 +1380,7 @@ def _run_family(
                 completed_since_checkpoint += int(finalized)
                 expected += contiguous[5]
             if not channel_buffer:
-                buffered.pop(key, None)
+                buffered_results.pop(key, None)
             now = time.monotonic()
             if (
                 completed_since_checkpoint >= checkpoint_every
@@ -1205,6 +1403,17 @@ def _run_family(
                     tasks,
                     max(pending_factor * workers, 1),
                 ):
+                    if result is None:
+                        now = time.monotonic()
+                        if (
+                            checkpoint_seconds > 0.0
+                            and now - last_checkpoint_time
+                            >= checkpoint_seconds
+                        ):
+                            save_checkpoint(announce=True)
+                            completed_since_checkpoint = 0
+                            last_checkpoint_time = now
+                        continue
                     accept(result)
         except BaseException:
             if process_executor is not None:
@@ -1220,6 +1429,76 @@ def _run_family(
         int,
         tuple[int, float, np.ndarray, np.ndarray, float, dict[str, float], int],
     ] = {}
+
+    def load_shared_base_curve(
+        local_energy_index: int,
+        source_base_energy_index: int,
+    ) -> None:
+        """Load one dependency-complete endpoint without recalculating it."""
+        curve_count = int(base_energies.size * charges.size)
+        curve_index = int(source_base_energy_index * charges.size + charge_index)
+        path = _base_curve_result_path(output_dir, curve_index, curve_count)
+        if not path.is_file():
+            raise RuntimeError(
+                "Missing shared adaptive base curve; complete the base-curve "
+                f"stage before interval refinement: {path}"
+            )
+        with np.load(path, allow_pickle=False) as data:
+            if str(np.asarray(data["base_signature"]).item()) != base_signature:
+                raise RuntimeError(f"Shared adaptive curve {path} uses another base run")
+            if int(np.asarray(data["charge_state"]).item()) != charge_state:
+                raise RuntimeError(f"Shared adaptive curve {path} has another charge")
+            source_energy = np.asarray(data["energy_keV_u"], dtype=float)
+            if source_energy.shape != (1,) or float(source_energy[0]).hex() != float(
+                base_energies[source_base_energy_index]
+            ).hex():
+                raise RuntimeError(f"Shared adaptive curve {path} has another energy")
+            offsets = np.asarray(data["curve_offsets"], dtype=np.int64)
+            if not np.array_equal(offsets, np.asarray([0, offsets[-1]])):
+                raise RuntimeError(f"Shared adaptive curve {path} is malformed")
+            source_impact = np.asarray(data["impact_au"], dtype=float)
+            local_indices = _indices_in_finest_grid(source_impact, impact_au)
+            arrays["pi"][local_energy_index, 0, local_indices] = np.asarray(
+                data["pi"], dtype=float
+            )
+            arrays["pc"][local_energy_index, 0, local_indices] = np.asarray(
+                data["pc"], dtype=float
+            )
+            arrays["pl"][local_energy_index, 0, local_indices] = np.asarray(
+                data["pl"], dtype=float
+            )
+            arrays["failures"][local_energy_index, 0, local_indices] = np.asarray(
+                data["failures"], dtype=np.int64
+            )
+            arrays["successes"][local_energy_index, 0, local_indices] = np.asarray(
+                data["successes"], dtype=np.int64
+            )
+            arrays["maximum_energy_drift"][
+                local_energy_index, 0, local_indices
+            ] = np.asarray(data["maximum_energy_drift"], dtype=float)
+            accumulators.successes[local_energy_index, 0, local_indices] = np.asarray(
+                data["channel_successes"], dtype=np.int64
+            )
+            arrays["done"][local_energy_index, 0, local_indices] = True
+            statistical_names = tuple(
+                str(value) for value in np.asarray(data["statistical_channel_names"])
+            )
+            statistical_values = np.asarray(
+                data["statistical_channel_relative_half_width"], dtype=float
+            )[0]
+            curve_cache[local_energy_index] = (
+                int(np.asarray(data["impact_level"], dtype=np.int64)[0]),
+                float(np.asarray(data["impact_relative_error"], dtype=float)[0]),
+                np.asarray(data["rows"], dtype=float)[0].copy(),
+                local_indices,
+                float(
+                    np.asarray(
+                        data["statistical_relative_half_width"], dtype=float
+                    )[0]
+                ),
+                dict(zip(statistical_names, statistical_values, strict=True)),
+                int(np.asarray(data["statistical_trajectory_target"])[0]),
+            )
 
     def converge_impact_curve(
         energy_index: int,
@@ -1346,10 +1625,15 @@ def _run_family(
     try:
         left = 0
         right = energies.size - 1
-        converge_impact_curve(left)
+        if shared_base_curves:
+            load_shared_base_curve(left, lower_index)
+            load_shared_base_curve(right, upper_index)
+        else:
+            converge_impact_curve(left)
         selected_energy_indices.add(left)
         if right != left:
-            converge_impact_curve(right)
+            if not shared_base_curves:
+                converge_impact_curve(right)
             selected_energy_indices.add(right)
             pending_intervals = [(left, right, 1)]
             while pending_intervals:
@@ -1502,18 +1786,39 @@ def run_adaptive_shard(
     shard_count: int,
     shard_index: int,
     adaptive: AdaptiveRefinementConfig,
+    phase: str = "intervals",
     dry_run: bool = False,
 ) -> int:
     energies = np.asarray(base_checkpoint["energies_keV_u"], dtype=float)
     charges = np.asarray(base_checkpoint["charges"], dtype=int)
-    families = adaptive_family_indices(energies, charges)
+    if phase == "base_curves":
+        families = adaptive_base_curve_indices(energies, charges)
+        unit = "curve"
+        description = "Adaptive base curves"
+    elif phase == "intervals":
+        families = adaptive_family_indices(energies, charges)
+        unit = "interval"
+        description = "Adaptive intervals"
+        curve_count = int(energies.size * charges.size)
+        missing = [
+            _base_curve_result_path(output_dir, index, curve_count)
+            for index in range(curve_count)
+            if not _base_curve_result_path(output_dir, index, curve_count).is_file()
+        ]
+        if missing and not dry_run:
+            raise RuntimeError(
+                f"Adaptive interval stage requires all {curve_count} shared "
+                f"base curves; {len(missing)} are missing (first: {missing[0]})"
+            )
+    else:
+        raise ValueError("phase must be 'base_curves' or 'intervals'")
     owned = [
         (index, family)
         for index, family in enumerate(families)
         if index % shard_count == shard_index
     ]
     print(
-        f"Adaptive refinement: {len(families)} charge/energy families; "
+        f"Adaptive {phase}: {len(families)} independent tasks; "
         f"shard {shard_index}/{shard_count - 1} owns {len(owned)}"
     )
     print(
@@ -1553,10 +1858,10 @@ def run_adaptive_shard(
                 handle_scheduler_termination,
             )
     try:
-        for family_index, (charge_index, interval_index) in tqdm(
+        for family_index, (charge_index, energy_or_interval_index) in tqdm(
             owned,
-            desc="Adaptive families",
-            unit="family",
+            desc=description,
+            unit=unit,
             dynamic_ncols=True,
         ):
             _run_family(
@@ -1564,7 +1869,7 @@ def run_adaptive_shard(
                 family_index=family_index,
                 family_count=len(families),
                 charge_index=charge_index,
-                interval_index=interval_index,
+                interval_index=energy_or_interval_index,
                 base_signature=base_signature,
                 base_checkpoint=base_checkpoint,
                 base_config=base_config,
@@ -1574,6 +1879,10 @@ def run_adaptive_shard(
                 checkpoint_every=checkpoint_every,
                 checkpoint_seconds=checkpoint_seconds,
                 adaptive=adaptive,
+                base_energy_index=(
+                    energy_or_interval_index if phase == "base_curves" else None
+                ),
+                shared_base_curves=phase == "intervals",
             )
     finally:
         for termination_signal, previous_handler in (
@@ -1605,7 +1914,7 @@ def merge_adaptive_families(
         unit="family",
         dynamic_ncols=True,
     ):
-        path = _family_result_path(output_dir, family_index, len(families))
+        path = _interval_result_path(output_dir, family_index, len(families))
         if not path.exists():
             raise RuntimeError(f"Missing adaptive family result {path}")
         with np.load(path, allow_pickle=False) as data:
@@ -1810,6 +2119,9 @@ def merge_adaptive_families(
         "energy_unit": "keV/u",
         "density_applied": False,
         "phase_density_scaling": ctmc.phase_density_scaling_metadata(),
+        "initial_ensemble": ctmc.initial_ensemble_metadata(
+            base_config.initial_ensemble
+        ),
         "base_configuration_signature": base_signature,
         "base_ctmc_config": asdict(base_config),
         "water_orbitals": [

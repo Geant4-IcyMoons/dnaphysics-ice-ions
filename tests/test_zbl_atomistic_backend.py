@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from python_scripts.physics_ice.process_evidence.soft_nuclear_collisions.zbl \
-    import FullZBLKernel
+    import FullZBLKernel, SoftZBLKernel
 from python_scripts.physics_ice.process_evidence.soft_nuclear_collisions.zbl \
     import generate_backend
 from python_scripts.physics_ice.process_evidence.soft_nuclear_collisions.zbl \
@@ -54,6 +54,35 @@ def test_high_energy_moments_resolve_the_head_on_area() -> None:
     assert moments.recoil_energy_cross_section_ev_angstrom2 > 0.0
     assert moments.transport_cross_section_angstrom2 > 0.0
     assert moments.quadrature_relative_error <= 5.0e-4
+
+
+@pytest.mark.parametrize("target", ("H", "O"))
+@pytest.mark.parametrize("energy_ev", (1.0e4, 1.0e6, 1.0e8))
+def test_soft_zbl_is_exact_impact_area_complement(
+    target: str, energy_ev: float
+) -> None:
+    full = FullZBLKernel(minimum_transfer_ev=1.0e-4, projectiles=("C",))
+    soft = SoftZBLKernel(minimum_transfer_ev=1.0e-4)
+    inner = soft.minimum_impact_parameter_angstrom("C", target, energy_ev)
+    outer = soft.maximum_impact_parameter_angstrom("C", target, energy_ev)
+    assert 0.0 < inner < outer
+    assert soft.hard_cross_section_angstrom2(
+        "C", target, energy_ev
+    ) == pytest.approx(math.pi * (outer * outer - inner * inner), rel=1.0e-14)
+    for quantile in (0.0, 0.25, 1.0):
+        impact = soft.impact_parameter_from_area_quantile(
+            "C", target, energy_ev, quantile
+        )
+        assert soft.area_quantile_from_impact_parameter(
+            "C", target, energy_ev, impact
+        ) == pytest.approx(quantile, abs=1.0e-14)
+
+
+def test_soft_zbl_rejects_nlh_hard_disk() -> None:
+    soft = SoftZBLKernel(minimum_transfer_ev=1.0e-4)
+    inner = soft.minimum_impact_parameter_angstrom("C", "O", 1.0e6)
+    with pytest.raises(ValueError, match="Impact parameter"):
+        soft.collide("C", "O", 1.0e6, 0.5 * inner)
 
 
 def test_phase_manifests_bind_only_accepted_structures() -> None:

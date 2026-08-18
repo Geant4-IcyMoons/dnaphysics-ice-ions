@@ -30,6 +30,7 @@ ELEMENT_SYMBOLS = (
 )
 _ELEMENT_SYMBOL = re.compile(r"[A-Z][a-z]?")
 _COMPONENT_STATUSES = frozenset(("implemented", "missing", "blocked"))
+_SCF_SPIN_MODES = frozenset(("RESTRICTED", "UNRESTRICTED"))
 
 
 def _integer(value: object, name: str) -> int:
@@ -72,9 +73,24 @@ class IonChargeState:
     multiplicity: int
     configuration: str
     term: str
+    scf_spin_mode: str
+    atomic_guess_alpha: tuple[tuple[int, int, int], ...] = ()
+    atomic_guess_beta: tuple[tuple[int, int, int], ...] = ()
 
-    def as_dict(self) -> dict[str, int | str]:
+    def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def atomic_guess_dict(self) -> dict[str, list[dict[str, int]]]:
+        def records(values: tuple[tuple[int, int, int], ...]) -> list[dict[str, int]]:
+            return [
+                {"n": n, "l": angular_momentum, "nel": electrons}
+                for n, angular_momentum, electrons in values
+            ]
+
+        return {
+            "alpha": records(self.atomic_guess_alpha),
+            "beta": records(self.atomic_guess_beta),
+        }
 
 
 @dataclass(frozen=True)
@@ -173,8 +189,59 @@ class ProjectileDefinition:
                 )
             if state.multiplicity < 1:
                 raise ValueError("Every soft-DFT state needs positive multiplicity.")
+            if (
+                state.scf_spin_mode == "RESTRICTED"
+                and state.multiplicity != 1
+            ):
+                raise ValueError(
+                    "Restricted SCF is valid only for multiplicity-one states."
+                )
             if not state.configuration.strip() or not state.term.strip():
                 raise ValueError("Every soft-DFT state needs configuration and term.")
+            changes = state.atomic_guess_alpha + state.atomic_guess_beta
+            if self.symbol == "C" and not changes:
+                raise ValueError(
+                    "Every carbon state requires explicit CP2K atomic-guess "
+                    "occupation changes."
+                )
+            if changes:
+                alpha_shift = sum(change[2] for change in state.atomic_guess_alpha)
+                beta_shift = sum(change[2] for change in state.atomic_guess_beta)
+                if alpha_shift + beta_shift != -2 * state.charge:
+                    raise ValueError(
+                        "CP2K KIND/BS NEL values must sum to -2q because CP2K "
+                        "applies one half of each spin-resolved shift."
+                    )
+                if alpha_shift - beta_shift != 2 * (state.multiplicity - 1):
+                    raise ValueError(
+                        "CP2K KIND/BS NEL spin imbalance must construct the "
+                        "declared alpha-majority multiplicity."
+                    )
+                for spin, spin_changes in (
+                    ("alpha", state.atomic_guess_alpha),
+                    ("beta", state.atomic_guess_beta),
+                ):
+                    orbitals = [
+                        (n, angular_momentum)
+                        for n, angular_momentum, _ in spin_changes
+                    ]
+                    if len(set(orbitals)) != len(orbitals):
+                        raise ValueError(f"Duplicate {spin} atomic-guess orbital.")
+                    if any(
+                        n < 1
+                        or angular_momentum < 0
+                        or angular_momentum >= n
+                        or electrons == 0
+                        for n, angular_momentum, electrons in spin_changes
+                    ):
+                        raise ValueError("Invalid CP2K atomic-guess occupation change.")
+                if self.symbol == "C" and any(
+                    change[2] % 2 != 0 for change in changes
+                ):
+                    raise ValueError(
+                        "Carbon's integer shell occupations require even CP2K "
+                        "KIND/BS NEL values."
+                    )
         _provenance(soft.get("state_provenance"), "Electronic-state provenance")
         cp2k = soft.get("cp2k", {})
         basis = cp2k.get("projectile_basis_set")
@@ -209,18 +276,58 @@ class ProjectileDefinition:
         soft = self.components["soft_dft"]
         if soft["status"] != "implemented":
             raise ValueError(f"No soft-DFT definition is available for {self.symbol}.")
-        return tuple(
-            IonChargeState(
-                charge=_integer(item["charge"], "Charge"),
-                electrons_on_projectile=_integer(
-                    item["electrons_on_projectile"], "Projectile electron count"
-                ),
-                multiplicity=_integer(item["multiplicity"], "Multiplicity"),
-                configuration=str(item["configuration"]),
-                term=str(item["term"]),
+
+        def scf_spin_mode(item: Mapping[str, Any], multiplicity: int) -> str:
+            if "scf_spin_mode" not in item:
+                if self.symbol == "C":
+                    raise ValueError(
+                        "Every carbon state requires an explicit scf_spin_mode."
+                    )
+                return "RESTRICTED" if multiplicity == 1 else "UNRESTRICTED"
+            mode = item["scf_spin_mode"]
+            if not isinstance(mode, str) or mode not in _SCF_SPIN_MODES:
+                raise ValueError(
+                    "scf_spin_mode must be RESTRICTED or UNRESTRICTED."
+                )
+            return mode
+
+        def occupation_changes(
+            item: Mapping[str, Any], spin: str
+        ) -> tuple[tuple[int, int, int], ...]:
+            guess = item.get("cp2k_atomic_guess", {})
+            if not isinstance(guess, dict):
+                raise ValueError("cp2k_atomic_guess must be an object.")
+            values = guess.get(spin, [])
+            if not isinstance(values, list):
+                raise ValueError(f"cp2k_atomic_guess.{spin} must be a list.")
+            return tuple(
+                (
+                    _integer(value["n"], "Atomic-guess principal quantum number"),
+                    _integer(value["l"], "Atomic-guess angular momentum"),
+                    _integer(value["nel"], "Atomic-guess occupation change"),
+                )
+                for value in values
             )
-            for item in soft["states"]
-        )
+
+        states = []
+        for item in soft["states"]:
+            multiplicity = _integer(item["multiplicity"], "Multiplicity")
+            states.append(
+                IonChargeState(
+                    charge=_integer(item["charge"], "Charge"),
+                    electrons_on_projectile=_integer(
+                        item["electrons_on_projectile"],
+                        "Projectile electron count",
+                    ),
+                    multiplicity=multiplicity,
+                    configuration=str(item["configuration"]),
+                    term=str(item["term"]),
+                    scf_spin_mode=scf_spin_mode(item, multiplicity),
+                    atomic_guess_alpha=occupation_changes(item, "alpha"),
+                    atomic_guess_beta=occupation_changes(item, "beta"),
+                )
+            )
+        return tuple(states)
 
     def state(self, charge: int) -> IonChargeState:
         if not 0 <= charge <= self.atomic_number:

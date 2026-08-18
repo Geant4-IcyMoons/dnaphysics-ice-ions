@@ -8,6 +8,7 @@ from typing import Any
 
 from soft_dft.config import CP2KSettings, HARTREE_TO_EV
 from soft_dft.cp2k import (
+    CDFT_MODE_FIXED_LAMBDA,
     COMPLEX_ROLE,
     render_molecular_subsys,
     render_qs_force_eval,
@@ -30,7 +31,7 @@ def render_mixed_cdft_input(
     entrance_strength: float,
     product_strength: float,
 ) -> str:
-    """Render a two-state coupling calculation from preconverged CDFT states."""
+    """Render a two-state coupling from explicit preconverged CDFT state data."""
 
     coordinates = task["coordinates_angstrom"]
     total_charge = int(task["total_charge"])
@@ -52,6 +53,7 @@ def render_mixed_cdft_input(
         {**common, "electrons_on_projectile": entrance_electrons},
         settings,
         cdft_strength=entrance_strength,
+        cdft_mode=CDFT_MODE_FIXED_LAMBDA,
         cdft_output_prefix="./entrance_cdft",
         wavefunction_restart=entrance_wavefunction,
         force_output_prefix="./entrance_forces",
@@ -60,6 +62,7 @@ def render_mixed_cdft_input(
         {**common, "electrons_on_projectile": product_electrons},
         settings,
         cdft_strength=product_strength,
+        cdft_mode=CDFT_MODE_FIXED_LAMBDA,
         cdft_output_prefix="./product_cdft",
         wavefunction_restart=product_wavefunction,
         force_output_prefix="./product_forces",

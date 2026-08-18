@@ -7,7 +7,9 @@
 
 # The only writer of adaptive hard-collision state. It reduces a completed
 # wave, prepares the next breadth-first energy-refinement wave, submits
-# deterministic case shards, and chains itself after all shards succeed.
+# deterministic case shards, and chains itself after every shard terminates.
+# The reducer reconciles immutable receipts and restart-safe case checkpoints,
+# so it must also run after PBS preemption or walltime termination.
 
 set -euo pipefail
 umask 002
@@ -36,12 +38,14 @@ MAX_GLOBAL_SHARDS="${MAX_GLOBAL_SHARDS:-256}"
 MAX_ARRAY_SIZE="${MAX_ARRAY_SIZE:-50}"
 CASE_CPUS="${CASE_CPUS:-128}"
 CASE_MEMORY_GB="${CASE_MEMORY_GB:-16}"
+CASE_WALLTIME="${CASE_WALLTIME:-500:00:00}"
 UNLIMITED_TRAJECTORIES="${UNLIMITED_TRAJECTORIES:-1}"
 
 if [[ ! "${MAX_GLOBAL_SHARDS}" =~ ^[1-9][0-9]*$ \
       || ! "${MAX_ARRAY_SIZE}" =~ ^[1-9][0-9]*$ \
       || ! "${CASE_CPUS}" =~ ^[1-9][0-9]*$ \
       || ! "${CASE_MEMORY_GB}" =~ ^[1-9][0-9]*$ \
+      || ! "${CASE_WALLTIME}" =~ ^[1-9][0-9]*:[0-5][0-9]:[0-5][0-9]$ \
       || ! "${UNLIMITED_TRAJECTORIES}" =~ ^[01]$ \
       || "${CASE_CPUS}" -gt 256 || "${CASE_MEMORY_GB}" -gt 512 ]]; then
     echo "Shard limits must be positive integers." >&2
@@ -117,6 +121,7 @@ while (( offset < SHARD_COUNT )); do
         -N "nlh_${PROJECTILE}_w${offset}" \
         -J "0-${last_index}" \
         -l "select=1:ncpus=${CASE_CPUS}:mem=${CASE_MEMORY_GB}gb" \
+        -l "walltime=${CASE_WALLTIME}" \
         -v "WAVE_MANIFEST=${WAVE_MANIFEST},SHARD_COUNT=${SHARD_COUNT},SHARD_OFFSET=${offset},WORKERS=${CASE_CPUS},REPO_ROOT=${REPO_ROOT}" \
         "${PBS_DIR}/run_adaptive_nlh_particle_shard.pbs")"
     array_jobs+=("${array_job}")
@@ -125,13 +130,13 @@ while (( offset < SHARD_COUNT )); do
 done
 
 dependency="$(IFS=:; echo "${array_jobs[*]}")"
-next_variables="PROJECTILE=${PROJECTILE},REPO_ROOT=${REPO_ROOT},OUTPUT_ROOT=${OUTPUT_ROOT},MAX_GLOBAL_SHARDS=${MAX_GLOBAL_SHARDS},MAX_ARRAY_SIZE=${MAX_ARRAY_SIZE},CASE_CPUS=${CASE_CPUS},CASE_MEMORY_GB=${CASE_MEMORY_GB},UNLIMITED_TRAJECTORIES=${UNLIMITED_TRAJECTORIES},TOLERANCE=${TOLERANCE:-0.005},CONFIDENCE=${CONFIDENCE:-0.95},CALIBRATION_TRAJECTORIES=${CALIBRATION_TRAJECTORIES:-10000},MINIMUM_TRAJECTORIES=${MINIMUM_TRAJECTORIES:-200000},MAXIMUM_TRAJECTORIES=${MAXIMUM_TRAJECTORIES:-64000000},TRAJECTORY_BATCH_SIZE=${TRAJECTORY_BATCH_SIZE:-100000},SAMPLING_MODE=${SAMPLING_MODE:-collision_tube_mixture},TUBE_MIXTURE_FRACTION=${TUBE_MIXTURE_FRACTION:-0.5},MAXIMUM_REFINEMENT_DEPTH=${MAXIMUM_REFINEMENT_DEPTH:-8},MAXIMUM_ENERGY_POINTS=${MAXIMUM_ENERGY_POINTS:-257}"
+next_variables="PROJECTILE=${PROJECTILE},REPO_ROOT=${REPO_ROOT},OUTPUT_ROOT=${OUTPUT_ROOT},MAX_GLOBAL_SHARDS=${MAX_GLOBAL_SHARDS},MAX_ARRAY_SIZE=${MAX_ARRAY_SIZE},CASE_CPUS=${CASE_CPUS},CASE_MEMORY_GB=${CASE_MEMORY_GB},CASE_WALLTIME=${CASE_WALLTIME},UNLIMITED_TRAJECTORIES=${UNLIMITED_TRAJECTORIES},TOLERANCE=${TOLERANCE:-0.005},CONFIDENCE=${CONFIDENCE:-0.95},CALIBRATION_TRAJECTORIES=${CALIBRATION_TRAJECTORIES:-10000},MINIMUM_TRAJECTORIES=${MINIMUM_TRAJECTORIES:-200000},MAXIMUM_TRAJECTORIES=${MAXIMUM_TRAJECTORIES:-64000000},TRAJECTORY_BATCH_SIZE=${TRAJECTORY_BATCH_SIZE:-100000},SAMPLING_MODE=${SAMPLING_MODE:-collision_tube_mixture},TUBE_MIXTURE_FRACTION=${TUBE_MIXTURE_FRACTION:-0.5},MAXIMUM_REFINEMENT_DEPTH=${MAXIMUM_REFINEMENT_DEPTH:-8},MAXIMUM_ENERGY_POINTS=${MAXIMUM_ENERGY_POINTS:-257}"
 if [[ -n "${EXTENDED_MAXIMUM_TRAJECTORIES:-}" ]]; then
     next_variables+=",EXTENDED_MAXIMUM_TRAJECTORIES=${EXTENDED_MAXIMUM_TRAJECTORIES}"
 fi
 next_job="$(qsub \
     -N "nlh_${PROJECTILE}_next" \
-    -W "depend=afterok:${dependency}" \
+    -W "depend=afterany:${dependency}" \
     -v "${next_variables}" \
     "${PBS_DIR}/supervise_adaptive_nlh_particle_shards.pbs")"
 echo "Continuation: ${next_job} after ${#array_jobs[@]} array group(s)"

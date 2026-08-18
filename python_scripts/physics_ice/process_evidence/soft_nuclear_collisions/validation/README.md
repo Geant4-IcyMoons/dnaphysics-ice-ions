@@ -20,3 +20,7 @@ The universal-ZBL diagnostic baseline has separate release gates:
 
 Passing software tests does not satisfy these physical gates. Until they pass,
 `DNA_ZBL_ALLOW_VALIDATION_PENDING=1` is required to run the Geant4 process.
+
+The atomistic PBS campaign and its 0.5% adaptive numerical gates are described
+in `../zbl/README.md`. These gates establish Monte Carlo precision only; they
+do not establish physical accuracy or release readiness.

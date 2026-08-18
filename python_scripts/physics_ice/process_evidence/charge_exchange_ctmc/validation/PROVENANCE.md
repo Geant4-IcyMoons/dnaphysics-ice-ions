@@ -31,17 +31,46 @@ grid sizes, work partitioning, and checkpoint cadence are implementation
 controls and are recorded in every metadata file; they are not presented as
 published physical parameters.
 
-Equation (4) is sampled as a full microcanonical phase-space distribution.
-After drawing the radial coordinate from equation (5), the position and
-momentum directions are drawn independently and isotropically. Constraining
-the momentum to the tangent plane would select a measure-zero subset of the
-published ensemble and is not used. This follows the standard CTMC
-microcanonical construction cited by the paper:
+### Initial-electron ensemble and reproduction modes
+
+Liamsuwan and Nikjoo define a microcanonical energy-shell density in equation
+(4), use equation (5) for its radial marginal, and compute the momentum
+magnitude from equation (3). Section 2.1 does not say that the position and
+momentum directions are independent; it delegates their selection to Olson
+and Salop (1977). Olson and Salop equations (6)--(7) make the sampled momentum
+tangent to the sampled radius, so `r dot p = 0`. The directions are
+individually rotationally symmetric but correlated.
+
+The default `liamsuwan_olson_salop_tangent` mode implements that cited
+historical prescription and is the only paper-reproduction mode. It consumes
+four random variates per trajectory: radius, two position angles, and one
+tangent-plane angle.
 
 R. E. Olson and A. Salop, *Charge-transfer and impact-ionization cross
 sections for fully and partially stripped positive ions colliding with atomic
 hydrogen*, Physical Review A **16** (1977) 531--541,
 [doi:10.1103/PhysRevA.16.531](https://doi.org/10.1103/PhysRevA.16.531).
+
+Cohen (1982) showed that this Olson--Salop construction is not uniform over
+the complete microcanonical energy shell: it removes one initial-condition
+degree of freedom, starts the electron at an orbital extremum, and biases the
+orbit distribution. The separate `independent_isotropic_sensitivity` mode
+therefore retains the full equation-(4) interpretation by drawing position
+and momentum directions independently after the equation-(5) radial sample.
+It is a corrected-ensemble sensitivity calculation, not a reproduction of
+the cited Olson--Salop initialization or CTMC81:
+
+J. S. Cohen, *Comment on the classical-trajectory Monte Carlo method for
+ion-atom collisions*, Physical Review A **26** (1982) 3008--3010,
+[doi:10.1103/PhysRevA.26.3008](https://doi.org/10.1103/PhysRevA.26.3008).
+
+The modes have different random-stream strides and configuration signatures;
+their checkpoints cannot be combined. A 2,000-trajectory-per-impact
+diagnostic changed only this angular prescription. Relative to the supplied
+CTMC81 primitive tables, the tangent mode reduced the RMS z score from 12.466
+to 1.390 and simultaneous-band failures from 560/1640 to 25/1640. This
+identifies the dominant discrepancy but is not a release result; acceptance
+requires the exact-size tangent-mode reproduction.
 
 ### Carbon benchmark observables
 
@@ -60,6 +89,17 @@ but no machine-readable numerical table. The benchmark keeps its manually
 digitized comparison points, source-pixel coordinates, and digitization
 uncertainty in a dedicated provenance file; no point is fitted to the present
 calculation. Numerical table acceptance remains a separate calculation.
+
+The user-supplied `C3_100keVpu.zip` is a second, independent benchmark input.
+It contains six `CTMC81` impact-probability tables for C3+ at 100 keV/u:
+target ionization/capture for orbitals L1--L5 and projectile electron loss.
+The retained archive SHA-256 is
+`d6f40fd2da4b0acbda6626b1d08b9271a92d356c46aab28d4346e27eca3a80dd`.
+The validation report records every member hash and header parameter before
+comparing the primitive curves. The archive contains no citation or license
+metadata, so it is identified as a supplied formal reference rather than
+silently attributed to the paper. Its residuals remain informational until
+that provenance and a physical acceptance threshold are documented.
 
 The benchmark also verifies the reported channel identities, terminal charge
 states, equation-(23) stationarity, adaptive error metadata, trajectory energy
@@ -157,9 +197,10 @@ stored table itself by a phase density would be an error.
 ## Carbon data
 
 The C0--C5+ binding energies and outer-shell occupancies are Table 1 of
-Liamsuwan and Nikjoo (2013). C6+ is fully stripped. The carbon entry point
-remains checkpoint-signature compatible with the production run begun before
-the shared-engine refactor.
+Liamsuwan and Nikjoo (2013). C6+ is fully stripped. Sampler choice is part of
+the checkpoint signature. Existing carbon tables generated with the
+independent-isotropic sensitivity ensemble cannot be resumed or released as
+paper-reproduction products.
 
 The numerical engine uses 100,000,000 accepted plus rejected steps as the
 liveness trigger for each ordinary DOP853 attempt. An exact adaptive-grid
@@ -175,8 +216,8 @@ endpoint satisfying the paper's exit condition and the independent
 energy-conservation check is accepted. The finite value therefore selects the
 rare-event fallback without truncating the Monte Carlo ensemble.
 
-The first failure exposed by the full microcanonical carbon run is retained as
-a deterministic recovery benchmark: 1 keV/u, C3+, zero impact parameter,
+The first failure exposed by the independent-isotropic sensitivity run is
+retained as a deterministic recovery benchmark: 1 keV/u, C3+, zero impact parameter,
 H2O 1a1 target electron, trajectory 0. The uncapped Sundman continuation
 reached the unchanged outbound 20,000-a.u. boundary in 139,593,283 accepted
 and 21,722,557 rejected steps, with relative total-energy drift `4.36e-5`.
@@ -194,6 +235,13 @@ steps, respectively, with relative total-energy drifts `9.43e-6` and
 `2.89e-6`; the exact step counts are asserted only to remain below the
 2,000,000-step regression budget because compiler-level arithmetic may alter
 the detailed adaptive sequence.
+
+Integrator policy version 3 corrects one failover condition in this declared
+ladder. A finite physical-time endpoint outside the unchanged energy gate is
+not an acceptable result and therefore no longer prevents the already-defined
+uncapped Sundman continuation after every bounded regularized attempt is
+exhausted. This changes no initial phase, equation, potential, event,
+boundary, tolerance, or acceptance limit.
 
 The restart controller treats numerical recovery as a versioned algorithm,
 not an invitation to edit code automatically. A failure generated under an
@@ -310,11 +358,11 @@ energies. This distinguishes the bare nucleus from the neutral atomic mass.
 For non-carbon projectiles, the checkpoint signature fingerprints the nuclear
 charge, bare nuclear mass, outer-orbital data, and every required Garvey
 screening row. A physical-data correction therefore cannot silently resume a
-checkpoint generated with different projectile physics. Carbon model-version
-10 deliberately rejects model-version 9 checkpoints, which used a tangent-only
-initial momentum direction inconsistent with the full microcanonical
-ensemble. Non-carbon signatures inherit the same model-version barrier, so no
-species can silently combine the two ensembles.
+checkpoint generated with different projectile physics. Model version 11
+gives both declared ensembles explicit identities and rejects the earlier
+tangent model-version-9 and independent-isotropic model-version-10
+checkpoints. Non-carbon signatures inherit the same barrier, so no species can
+silently combine ensembles.
 
 CTMC has also been applied independently to bare O8+ impact on water by
 A. Jorge et al., Physical Review A **99** (2019) 062701,

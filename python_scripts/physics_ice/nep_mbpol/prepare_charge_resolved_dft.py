@@ -7,13 +7,22 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
+from ion_ice import PROCESS_EVIDENCE_ROOT
 from soft_dft import (
+    CDFT_CONSTRAINT_TYPES,
     DEFAULT_CP2K_SETTINGS,
+    MIXING_METHODS,
+    CDFT_OPTIMIZERS,
+    OT_ALGORITHMS,
+    OT_LINESEARCHES,
+    OT_MINIMIZERS,
+    SCF_SOLVERS,
     build_workflow,
     build_scan_geometries,
     load_builtin_projectile,
     load_projectile_definition,
     load_workflow_manifest,
+    reuse_compatible_workflow_results,
 )
 
 
@@ -25,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        help="Output parent; defaults to soft_collision_dft_runs/ELEMENT_molecular_pilot.",
+        help="Output parent; defaults to process_evidence/soft_nuclear_collisions/validation/runs/ELEMENT_molecular_pilot.",
     )
     parser.add_argument("--projectile", help="Built-in element symbol; defaults to C.")
     parser.add_argument("--projectile-definition", type=Path)
@@ -64,7 +73,139 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--scf-eps", type=float, default=DEFAULT_CP2K_SETTINGS.scf_eps)
     parser.add_argument(
+        "--complex-ot-inner-scf-max",
+        type=int,
+        default=DEFAULT_CP2K_SETTINGS.complex_ot_inner_scf_max,
+        help=(
+            "Inner OT steps between preconditioner refreshes for constrained "
+            "complexes; this is signature-bound and does not change EPS_SCF."
+        ),
+    )
+    parser.add_argument(
+        "--ot-algorithm",
+        choices=OT_ALGORITHMS,
+        default=DEFAULT_CP2K_SETTINGS.ot_algorithm,
+    )
+    parser.add_argument(
+        "--ot-minimizer",
+        choices=OT_MINIMIZERS,
+        default=DEFAULT_CP2K_SETTINGS.ot_minimizer,
+    )
+    parser.add_argument(
+        "--ot-linesearch",
+        choices=OT_LINESEARCHES,
+        default=DEFAULT_CP2K_SETTINGS.ot_linesearch,
+    )
+    parser.add_argument(
         "--cdft-eps", type=float, default=DEFAULT_CP2K_SETTINGS.cdft_eps
+    )
+    parser.add_argument(
+        "--cdft-optimizer",
+        choices=CDFT_OPTIMIZERS,
+        default=DEFAULT_CP2K_SETTINGS.cdft_optimizer,
+        help=(
+            "CP2K optimizer for the one-dimensional CDFT constraint. "
+            "BISECT is the documented difficult-case validation option."
+        ),
+    )
+    parser.add_argument(
+        "--cdft-constraint-type",
+        choices=CDFT_CONSTRAINT_TYPES,
+        default=DEFAULT_CP2K_SETTINGS.cdft_constraint_type,
+        help=(
+            "Population weight used to define the projectile electron count. "
+            "HIRSHFELD uses CP2K's density-based, parameter-free weights."
+        ),
+    )
+    parser.add_argument(
+        "--complex-scf-solver",
+        choices=SCF_SOLVERS,
+        default=DEFAULT_CP2K_SETTINGS.complex_scf_solver,
+        help=(
+            "SCF solver for constrained ion--water complexes. Changes are "
+            "numerical convergence tests and create a new workflow signature."
+        ),
+    )
+    parser.add_argument(
+        "--water-counterpoise-scf-solver",
+        choices=SCF_SOLVERS,
+        default=DEFAULT_CP2K_SETTINGS.water_counterpoise_scf_solver,
+        help=(
+            "SCF solver for neutral-water counterpoise terms."
+        ),
+    )
+    parser.add_argument(
+        "--projectile-counterpoise-scf-solver",
+        choices=SCF_SOLVERS,
+        default=DEFAULT_CP2K_SETTINGS.projectile_counterpoise_scf_solver,
+        help=(
+            "SCF solver for isolated projectile counterpoise terms. "
+            "DIAGONALIZATION preserves the explicitly audited ionic "
+            "electron populations."
+        ),
+    )
+    parser.add_argument(
+        "--complex-mixing-method",
+        choices=MIXING_METHODS,
+        default=DEFAULT_CP2K_SETTINGS.complex_mixing_method,
+        help="Density-matrix mixing method for diagonalization complex SCF.",
+    )
+    parser.add_argument(
+        "--complex-mixing-alpha",
+        type=float,
+        default=DEFAULT_CP2K_SETTINGS.complex_mixing_alpha,
+        help="New-density fraction for diagonalization/Pulay complex SCF.",
+    )
+    parser.add_argument(
+        "--complex-mixing-npulay",
+        type=int,
+        default=DEFAULT_CP2K_SETTINGS.complex_mixing_npulay,
+        help="Prior steps retained by constrained-complex Pulay mixing.",
+    )
+    parser.add_argument(
+        "--counterpoise-mixing-method",
+        choices=MIXING_METHODS,
+        default=DEFAULT_CP2K_SETTINGS.counterpoise_mixing_method,
+        help="Density-matrix mixing method for diagonalization counterpoise SCF.",
+    )
+    parser.add_argument(
+        "--counterpoise-mixing-alpha",
+        type=float,
+        default=DEFAULT_CP2K_SETTINGS.counterpoise_mixing_alpha,
+        help="New-density fraction for diagonalization/Pulay counterpoise SCF.",
+    )
+    parser.add_argument(
+        "--counterpoise-mixing-npulay",
+        type=int,
+        default=DEFAULT_CP2K_SETTINGS.counterpoise_mixing_npulay,
+        help="Prior steps retained by counterpoise Pulay mixing.",
+    )
+    parser.add_argument(
+        "--counterpoise-ot-algorithm",
+        choices=OT_ALGORITHMS,
+        default=DEFAULT_CP2K_SETTINGS.counterpoise_ot_algorithm,
+    )
+    parser.add_argument(
+        "--counterpoise-ot-minimizer",
+        choices=OT_MINIMIZERS,
+        default=DEFAULT_CP2K_SETTINGS.counterpoise_ot_minimizer,
+    )
+    parser.add_argument(
+        "--counterpoise-ot-linesearch",
+        choices=OT_LINESEARCHES,
+        default=DEFAULT_CP2K_SETTINGS.counterpoise_ot_linesearch,
+    )
+    parser.add_argument(
+        "--reuse-compatible-from",
+        action="append",
+        type=Path,
+        default=[],
+        metavar="MANIFEST",
+        help=(
+            "Reuse completed tasks from another workflow only when task IDs "
+            "and rendered CP2K input SHA-256 values are identical. May be "
+            "specified more than once."
+        ),
     )
     return parser.parse_args()
 
@@ -90,11 +231,35 @@ def main() -> None:
         mgrid_cutoff_ry=args.mgrid_cutoff_ry,
         mgrid_rel_cutoff_ry=args.mgrid_rel_cutoff_ry,
         scf_eps=args.scf_eps,
+        complex_ot_inner_scf_max=args.complex_ot_inner_scf_max,
+        ot_algorithm=args.ot_algorithm,
+        ot_minimizer=args.ot_minimizer,
+        ot_linesearch=args.ot_linesearch,
+        complex_scf_solver=args.complex_scf_solver,
+        complex_mixing_method=args.complex_mixing_method,
+        complex_mixing_alpha=args.complex_mixing_alpha,
+        complex_mixing_npulay=args.complex_mixing_npulay,
+        counterpoise_ot_algorithm=args.counterpoise_ot_algorithm,
+        counterpoise_ot_minimizer=args.counterpoise_ot_minimizer,
+        counterpoise_ot_linesearch=args.counterpoise_ot_linesearch,
+        water_counterpoise_scf_solver=(
+            args.water_counterpoise_scf_solver
+        ),
+        projectile_counterpoise_scf_solver=(
+            args.projectile_counterpoise_scf_solver
+        ),
+        counterpoise_mixing_alpha=args.counterpoise_mixing_alpha,
+        counterpoise_mixing_npulay=args.counterpoise_mixing_npulay,
+        counterpoise_mixing_method=args.counterpoise_mixing_method,
         cdft_eps=args.cdft_eps,
+        cdft_optimizer=args.cdft_optimizer,
+        cdft_constraint_type=args.cdft_constraint_type,
     )
     output_root = args.output_root or (
-        HERE
-        / "soft_collision_dft_runs"
+        PROCESS_EVIDENCE_ROOT
+        / "soft_nuclear_collisions"
+        / "validation"
+        / "runs"
         / (
             f"{projectile.symbol.lower()}_runtime_smoke"
             if args.runtime_smoke
@@ -134,6 +299,14 @@ def main() -> None:
         workflow_context=workflow_context,
     )
     manifest = load_workflow_manifest(manifest_path)
+    for source_manifest in args.reuse_compatible_from:
+        reused, incompatible = reuse_compatible_workflow_results(
+            source_manifest, manifest_path
+        )
+        print(
+            f"Compatible reuse from {source_manifest}: {reused} reused, "
+            f"{incompatible} incompatible or incomplete"
+        )
     print(f"Workflow: {manifest_path}")
     print(f"Configuration: {manifest['configuration_signature']}")
     print(

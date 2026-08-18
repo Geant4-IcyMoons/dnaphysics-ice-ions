@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect mixed-CDFT gaps and couplings for low-energy capture channels."""
+"""Fail closed while low-energy mixed-CDFT branch handoff is pending."""
 
 from __future__ import annotations
 

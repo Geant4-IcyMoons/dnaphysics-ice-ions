@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #PBS -N ion_cdft_adaptive
 #PBS -q idle
-#PBS -l select=1:ncpus=8:mem=128gb
+#PBS -l select=1:ncpus=16:mem=160gb
 #PBS -l walltime=500:00:00
 #PBS -j oe
 
 # Recursively run and refine one fixed-charge ion DFT pilot. The measured
-# default runs one eight-rank CP2K calculation. Use fixed-batch array shards
+# default runs one 16-rank CP2K calculation. Use fixed-batch array shards
 # for multi-node throughput; do not duplicate this immutable controller.
 
 set -euo pipefail
@@ -46,7 +46,7 @@ elif [[ -n "${NCPUS:-}" ]]; then
 else
     ALLOCATED_CPUS="$("${PYTHON_BIN}" -c 'import os; print(len(os.sched_getaffinity(0)))')"
 fi
-MPI_RANKS_PER_CALCULATION="${MPI_RANKS_PER_CALCULATION:-8}"
+MPI_RANKS_PER_CALCULATION="${MPI_RANKS_PER_CALCULATION:-16}"
 OMP_THREADS_PER_RANK="${OMP_THREADS_PER_RANK:-1}"
 if [[ ! "${MPI_RANKS_PER_CALCULATION}" =~ ^[1-9][0-9]*$ \
       || ! "${OMP_THREADS_PER_RANK}" =~ ^[1-9][0-9]*$ ]]; then

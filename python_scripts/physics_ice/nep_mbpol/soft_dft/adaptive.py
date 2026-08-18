@@ -81,7 +81,7 @@ def initial_mesh_state(
             "mesh_separations_angstrom": separations,
             "active_intervals": [
                 {"lower": lower, "upper": upper, "depth": 0}
-                for lower, upper in zip(separations[:-1], separations[1:], strict=True)
+                for lower, upper in zip(separations[:-1], separations[1:])
             ],
             "accepted_intervals": [],
             "refined_intervals": [],
@@ -158,8 +158,10 @@ def interval_interpolation_report(
             *(abs(value) for value in endpoint_values),
             *(abs(value) for value in actual_values),
         )
+        if not (len(PROBE_FRACTIONS) == len(probes) == len(actual_values)):
+            raise RuntimeError("Adaptive probe arrays have inconsistent lengths.")
         for fraction, separation, actual in zip(
-            PROBE_FRACTIONS, probes, actual_values, strict=True
+            PROBE_FRACTIONS, probes, actual_values
         ):
             predicted = (
                 (1.0 - fraction) * endpoint_values[0]

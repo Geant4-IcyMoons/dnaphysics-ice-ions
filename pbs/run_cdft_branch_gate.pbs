@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#PBS -N c_cdft_branch
+#PBS -q idle
+#PBS -l select=1:ncpus=16:mpiprocs=16:ompthreads=1:mem=160gb
+#PBS -l walltime=500:00:00
+#PBS -j oe
+
+# Run one restart-safe carbon--water CDFT branch gate. The exact CP2K 2025.2
+# Hirshfeld-force regression must already pass for the selected runtime image.
+
+set -euo pipefail
+umask 002
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
+RUNNER="${NEP_DIR}/run_cdft_branch_gate.py"
+VALIDATOR="${NEP_DIR}/validate_cp2k_hirshfeld_force_regression.py"
+REFERENCE_INPUTS="${NEP_DIR}/soft_dft/benchmarking/cp2k_2025_2_hirshfeld_force"
+REFERENCE_RUN="${REPO_ROOT}/python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/validation/benchmarks/cp2k_2025_2_hirshfeld_force"
+VALIDATION_RECEIPT="${REFERENCE_RUN}/validation.json"
+CP2K_WRAPPER="${REPO_ROOT}/pbs/cp2k_container_wrapper.sh"
+CP2K_IMAGE="${CP2K_IMAGE:-${REPO_ROOT}/software/cp2k/cp2k-2025.2-mpich-x86_64-psmp.sif}"
+
+PROJECTILE="${PROJECTILE:-C}"
+CHARGE="${CHARGE:?CHARGE is required}"
+ORIENTATION="${ORIENTATION:-oxygen_back}"
+SEPARATION_ANGSTROM="${SEPARATION_ANGSTROM:-12.0}"
+COMPLEX_MIXING_ALPHA="${COMPLEX_MIXING_ALPHA:-0.5}"
+COMPLEX_SCF_SOLVER="${COMPLEX_SCF_SOLVER:-DIAGONALIZATION}"
+COMPLEX_MIXING_METHOD="${COMPLEX_MIXING_METHOD:-PULAY_MIXING}"
+OT_LINESEARCH="${OT_LINESEARCH:-3PNT}"
+OT_PRECONDITIONER="${OT_PRECONDITIONER:-FULL_ALL}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/validation/runs/${PROJECTILE,,}_q${CHARGE}_cdft_branch_gate}"
+
+if [[ ! -x "${PYTHON_BIN}" || ! -f "${RUNNER}" || ! -f "${VALIDATOR}" \
+      || ! -x "${CP2K_WRAPPER}" || ! -f "${CP2K_IMAGE}" ]]; then
+    echo "The CDFT branch-gate runtime is incomplete." >&2
+    exit 2
+fi
+
+"${PYTHON_BIN}" "${VALIDATOR}" \
+    --input-directory "${REFERENCE_INPUTS}" \
+    --run-directory "${REFERENCE_RUN}" \
+    --cp2k-image "${CP2K_IMAGE}" \
+    --result-json "${VALIDATION_RECEIPT}"
+
+export CP2K_IMAGE
+export CP2K_MPI_RANKS="${PBS_NCPUS:-16}"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export PYTHONHASHSEED=0
+export PYTHONUNBUFFERED=1
+
+cd "${REPO_ROOT}"
+"${PYTHON_BIN}" -u "${RUNNER}" \
+    --projectile "${PROJECTILE}" \
+    --charge "${CHARGE}" \
+    --orientation "${ORIENTATION}" \
+    --separation-angstrom "${SEPARATION_ANGSTROM}" \
+    --output-root "${OUTPUT_ROOT}" \
+    --cp2k-command "${CP2K_WRAPPER}" \
+    --cp2k-image "${CP2K_IMAGE}" \
+    --complex-mixing-alpha "${COMPLEX_MIXING_ALPHA}" \
+    --complex-scf-solver "${COMPLEX_SCF_SOLVER}" \
+    --complex-mixing-method "${COMPLEX_MIXING_METHOD}" \
+    --ot-linesearch "${OT_LINESEARCH}" \
+    --ot-preconditioner "${OT_PRECONDITIONER}"

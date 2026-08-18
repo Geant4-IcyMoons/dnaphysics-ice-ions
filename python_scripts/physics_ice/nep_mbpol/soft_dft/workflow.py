@@ -11,6 +11,7 @@ import math
 import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -46,7 +47,14 @@ from .geometry import (
 
 
 SCHEMA_VERSION = 3
-IMPLEMENTATION_VERSION = 3
+IMPLEMENTATION_VERSION = 14
+VALIDATED_BRANCH_EXECUTION = "validated_cdft_branch"
+VALIDATED_BRANCH_RUNNER = "soft_dft.branch_execution.CP2KBranchExecutor"
+_VALIDATED_BRANCH_REQUIRED = (
+    "Legacy soft-DFT mesh execution cannot run or accept complex CDFT tasks. "
+    f"Use {VALIDATED_BRANCH_RUNNER} to obtain a reciprocal validated branch "
+    "state; handoff of those states into the full mesh is not yet implemented."
+)
 
 
 def _utc_now() -> str:
@@ -243,10 +251,16 @@ def build_workflow(
                 state.electrons_on_projectile if state is not None else None
             ),
             "multiplicity": state.multiplicity if state is not None else 1,
+            "scf_spin_mode": (
+                state.scf_spin_mode if state is not None else "RESTRICTED"
+            ),
             "configuration": (
                 state.configuration if state is not None else "neutral H2O"
             ),
             "term": state.term if state is not None else "singlet",
+            "cp2k_atomic_guess": (
+                state.atomic_guess_dict() if state is not None else None
+            ),
             "orientation": geometry.orientation,
             "geometry_index": geometry_index,
             "anchor_index": geometry.anchor_index,
@@ -260,7 +274,22 @@ def build_workflow(
             ],
             "task_directory": str(task_directory.relative_to(run_root)),
         }
-        if (
+        if role == COMPLEX_ROLE:
+            # The legacy mesh runner previously rendered STRENGTH 0 and could
+            # restart from an unpaired WFN.  Neither defines a diabatic CDFT
+            # branch.  Keep the task in the manifest, but do not create an
+            # executable input until the validated branch handoff exists.
+            task.update(
+                {
+                    "execution": VALIDATED_BRANCH_EXECUTION,
+                    "validated_branch_runner": VALIDATED_BRANCH_RUNNER,
+                    "integration_status": "mesh_handoff_pending",
+                }
+            )
+            task["result_path"] = str(
+                (task_directory / "task_result.json").relative_to(run_root)
+            )
+        elif (
             role == PROJECTILE_COUNTERPOISE_ROLE
             and state is not None
             and state.charge == projectile.atomic_number
@@ -367,6 +396,9 @@ def build_workflow(
         "point_count": len(points),
         "task_count": len(tasks),
         "cp2k_task_count": sum(task["execution"] == "cp2k" for task in tasks),
+        "validated_branch_task_count": sum(
+            task["execution"] == VALIDATED_BRANCH_EXECUTION for task in tasks
+        ),
         "analytic_task_count": sum(
             task["execution"] == "analytic" for task in tasks
         ),
@@ -424,6 +456,11 @@ def _valid_existing_result(
     task: dict[str, Any],
     configuration_signature: str,
 ) -> bool:
+    # Full-mesh consumption of reciprocal branch records is deliberately not
+    # implemented yet.  In particular, an old generic `valid_completion`
+    # flag must never promote a complex CDFT result.
+    if task.get("role") == COMPLEX_ROLE:
+        return False
     if not result_path.is_file():
         return False
     try:
@@ -455,6 +492,9 @@ def _recover_valid_failed_result(
     configuration_signature: str,
 ) -> bool:
     """Promote a completed CP2K output rejected by an older parser."""
+
+    if task.get("role") == COMPLEX_ROLE:
+        return False
 
     failure_path = task_directory / "failure.json"
     if not failure_path.is_file():
@@ -511,6 +551,85 @@ def _recover_valid_failed_result(
     return True
 
 
+def _restart_execution_input(
+    input_path: Path,
+    task_directory: Path,
+    task: dict[str, Any],
+    configuration_signature: str,
+) -> tuple[Path, dict[str, Any]]:
+    """Reuse a failed task's latest CP2K wavefunction without changing physics.
+
+    The immutable manifest input remains the source of truth.  A derived input
+    changes only CP2K's SCF initial guess and records both its checksum and the
+    checksum of the wavefunction that supplied that guess.
+    """
+
+    if task.get("role") == COMPLEX_ROLE:
+        raise RuntimeError(_VALIDATED_BRANCH_REQUIRED)
+
+    failure_path = task_directory / "failure.json"
+    if not failure_path.is_file():
+        return input_path, {}
+    try:
+        failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return input_path, {}
+    if not (
+        failure.get("schema_version") == SCHEMA_VERSION
+        and failure.get("status") == "failed"
+        and failure.get("task_id") == task["task_id"]
+        and failure.get("configuration_signature") == configuration_signature
+        and failure.get("input_sha256") == task["input_sha256"]
+    ):
+        return input_path, {}
+
+    prior_execution_name = failure.get("execution_input_path")
+    prior_execution_sha256 = failure.get("execution_input_sha256")
+    if (
+        isinstance(prior_execution_name, str)
+        and Path(prior_execution_name).name == prior_execution_name
+        and isinstance(prior_execution_sha256, str)
+    ):
+        prior_execution = task_directory / prior_execution_name
+        if (
+            prior_execution.is_file()
+            and _sha256_file(prior_execution) == prior_execution_sha256
+        ):
+            metadata = {
+                key: value
+                for key, value in failure.items()
+                if key.startswith("wavefunction_restart_")
+                or key.startswith("execution_input_")
+            }
+            return prior_execution, metadata
+
+    wavefunction = task_directory / f"{task['task_id']}-RESTART.wfn"
+    if not wavefunction.is_file() or wavefunction.stat().st_size == 0:
+        return input_path, {}
+
+    input_text = input_path.read_text(encoding="utf-8")
+    atomic_guess = "SCF_GUESS ATOMIC"
+    spin_lines = [line for line in ("UKS TRUE", "UKS FALSE") if line in input_text]
+    if input_text.count(atomic_guess) != 1 or len(spin_lines) != 1:
+        raise RuntimeError(
+            f"Cannot derive an unambiguous restart input for {task['task_id']}."
+        )
+    uks_line = spin_lines[0]
+    restart_text = input_text.replace(
+        uks_line,
+        f"{uks_line}\n    WFN_RESTART_FILE_NAME {wavefunction.name}",
+        1,
+    ).replace(atomic_guess, "SCF_GUESS RESTART", 1)
+    restart_path = task_directory / "input.restart.inp"
+    _atomic_text(restart_path, restart_text)
+    return restart_path, {
+        "restarted_from_wavefunction": wavefunction.name,
+        "wavefunction_restart_sha256": _sha256_file(wavefunction),
+        "execution_input_path": restart_path.name,
+        "execution_input_sha256": _sha256_bytes(restart_text.encode("utf-8")),
+    }
+
+
 def run_workflow_tasks(
     manifest_path: Path,
     *,
@@ -531,6 +650,8 @@ def run_workflow_tasks(
         for task in manifest["tasks"]
         if int(task["task_index"]) % shard_count == shard_index
     ]
+    if any(task.get("role") == COMPLEX_ROLE for task in selected):
+        raise RuntimeError(_VALIDATED_BRANCH_REQUIRED)
     command_text = cp2k_command or os.environ.get("CP2K_COMMAND", "cp2k.psmp")
     command = shlex.split(command_text)
     if not command:
@@ -570,11 +691,16 @@ def run_workflow_tasks(
                 )
 
             input_path = root / task["input_path"]
+            execution_input = input_path
+            restart_metadata: dict[str, Any] = {}
+            execution_input, restart_metadata = _restart_execution_input(
+                input_path, task_directory, task, signature
+            )
             temporary_output = task_directory / f".cp2k.{os.getpid()}.out.tmp"
             started = _utc_now()
             with temporary_output.open("w", encoding="utf-8") as output:
                 active_process = subprocess.Popen(
-                    [*command, "-i", input_path.name],
+                    [*command, "-i", execution_input.name],
                     cwd=task_directory,
                     stdout=output,
                     stderr=subprocess.STDOUT,
@@ -603,6 +729,7 @@ def run_workflow_tasks(
                         "started_utc": started,
                         "failed_utc": _utc_now(),
                         "output_path": failed_output.name,
+                        **restart_metadata,
                     },
                 )
                 raise RuntimeError(
@@ -625,6 +752,7 @@ def run_workflow_tasks(
                 "completed_utc": _utc_now(),
                 "output_path": output_path.name,
                 "output_sha256": _sha256_file(output_path),
+                **restart_metadata,
                 **parsed,
             }
             _atomic_json(result_path, result)
@@ -649,6 +777,232 @@ def pending_workflow_tasks(manifest_path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def audit_workflow_electronic_states(manifest_path: Path) -> dict[str, Any]:
+    """Audit exact alpha/beta populations for every completed CP2K task.
+
+    Population acceptance uses no fitted tolerance: CP2K reports integer
+    orbital occupations, which must equal those implied by the declared total
+    electron count and multiplicity.  ``S**2`` is reported as a diagnostic but
+    is not thresholded here because an acceptable spin-contamination bound is
+    method- and state-dependent.
+    """
+
+    manifest = load_workflow_manifest(manifest_path, verify_inputs=True)
+    root = Path(manifest["_manifest_path"]).parent
+    signature = manifest["configuration_signature"]
+    records: list[dict[str, Any]] = []
+    missing: list[str] = []
+    invalid_outputs: list[str] = []
+    inconsistent: list[str] = []
+    for task in tqdm(
+        manifest["tasks"], desc="Auditing CDFT electronic states", unit="task"
+    ):
+        if task["execution"] == "analytic":
+            continue
+        result_path = root / task["result_path"]
+        if not _valid_existing_result(result_path, task, signature):
+            missing.append(task["task_id"])
+            continue
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        output_name = result.get("output_path")
+        output = (
+            root / task["task_directory"] / output_name
+            if isinstance(output_name, str) and Path(output_name).name == output_name
+            else None
+        )
+        if not (
+            output is not None
+            and output.is_file()
+            and result.get("output_sha256") == _sha256_file(output)
+        ):
+            invalid_outputs.append(task["task_id"])
+            continue
+        parsed = parse_cp2k_output(
+            output.read_text(encoding="utf-8", errors="replace"),
+            require_cdft=task["role"] == COMPLEX_ROLE,
+        )
+        projectile_electrons = task.get("electrons_on_projectile")
+        if task["role"] == WATER_COUNTERPOISE_ROLE:
+            expected_total = 10
+        elif task["role"] == PROJECTILE_COUNTERPOISE_ROLE:
+            expected_total = int(projectile_electrons)
+        else:
+            expected_total = 10 + int(projectile_electrons)
+        expected_spin_difference = int(task["multiplicity"]) - 1
+        expected_alpha_numerator = expected_total + expected_spin_difference
+        expected_beta_numerator = expected_total - expected_spin_difference
+        if expected_alpha_numerator % 2 or expected_beta_numerator % 2:
+            raise RuntimeError(
+                f"Electron count and multiplicity have inconsistent parity: "
+                f"{task['task_id']}"
+            )
+        expected_alpha = expected_alpha_numerator // 2
+        expected_beta = expected_beta_numerator // 2
+        observed_alpha = parsed["electron_count_alpha"]
+        observed_beta = parsed["electron_count_beta"]
+        population_consistent = bool(
+            observed_alpha == expected_alpha and observed_beta == expected_beta
+        )
+        if not population_consistent:
+            inconsistent.append(task["task_id"])
+        ideal_s = 0.5 * expected_spin_difference
+        ideal_s2_from_multiplicity = ideal_s * (ideal_s + 1.0)
+        records.append(
+            {
+                "task_id": task["task_id"],
+                "role": task["role"],
+                "charge": task.get("charge"),
+                "multiplicity": task["multiplicity"],
+                "expected_electron_count_alpha": expected_alpha,
+                "expected_electron_count_beta": expected_beta,
+                "observed_electron_count_alpha": observed_alpha,
+                "observed_electron_count_beta": observed_beta,
+                "population_consistent": population_consistent,
+                "spin_squared_from_multiplicity": ideal_s2_from_multiplicity,
+                "spin_squared_ideal_cp2k": parsed["spin_squared_ideal"],
+                "spin_squared_single_determinant": parsed[
+                    "spin_squared_single_determinant"
+                ],
+            }
+        )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "configuration_signature": signature,
+        "completed_cp2k_task_count": len(records),
+        "missing_task_ids": missing,
+        "invalid_output_task_ids": invalid_outputs,
+        "population_inconsistent_task_ids": inconsistent,
+        "all_completed_populations_consistent": not invalid_outputs
+        and not inconsistent,
+        "complete_workflow_audited": not missing
+        and not invalid_outputs
+        and not inconsistent,
+        "records": records,
+    }
+
+
+def reuse_compatible_workflow_results(
+    source_manifest_path: Path,
+    target_manifest_path: Path,
+) -> tuple[int, int]:
+    """Reuse completed CP2K tasks whose rendered inputs are byte-identical.
+
+    Whole-workflow signatures intentionally change whenever any numerical
+    setting changes.  This helper permits exact task-level reuse without
+    weakening that contract: task ID, input SHA-256, source output SHA-256,
+    and a fresh parse of the copied output must all agree.  Analytic tasks are
+    generated by :func:`build_workflow` and are not imported.
+
+    Returns ``(reused, incompatible_or_incomplete)`` for target CP2K tasks
+    that do not already have a valid result.
+    """
+
+    source = load_workflow_manifest(source_manifest_path, verify_inputs=True)
+    target = load_workflow_manifest(target_manifest_path, verify_inputs=True)
+    source_root = Path(source["_manifest_path"]).parent
+    target_root = Path(target["_manifest_path"]).parent
+    source_signature = source["configuration_signature"]
+    target_signature = target["configuration_signature"]
+    source_tasks = {task["task_id"]: task for task in source["tasks"]}
+
+    reused = 0
+    incompatible = 0
+    for target_task in tqdm(
+        target["tasks"], desc="Checking reusable CDFT tasks", unit="task"
+    ):
+        if target_task.get("role") == COMPLEX_ROLE:
+            # Legacy result JSON cannot establish reciprocal-branch identity.
+            continue
+        if target_task["execution"] != "cp2k":
+            continue
+        target_result_path = target_root / target_task["result_path"]
+        if _valid_existing_result(
+            target_result_path, target_task, target_signature
+        ):
+            continue
+        source_task = source_tasks.get(target_task["task_id"])
+        if not (
+            source_task is not None
+            and source_task.get("execution") == "cp2k"
+            and source_task.get("input_sha256")
+            == target_task.get("input_sha256")
+        ):
+            incompatible += 1
+            continue
+        source_result_path = source_root / source_task["result_path"]
+        if not _valid_existing_result(
+            source_result_path, source_task, source_signature
+        ):
+            incompatible += 1
+            continue
+        source_result = json.loads(source_result_path.read_text(encoding="utf-8"))
+        output_name = source_result.get("output_path")
+        if not isinstance(output_name, str) or Path(output_name).name != output_name:
+            incompatible += 1
+            continue
+        source_output = source_root / source_task["task_directory"] / output_name
+        expected_output_sha256 = source_result.get("output_sha256")
+        if not (
+            source_output.is_file()
+            and isinstance(expected_output_sha256, str)
+            and _sha256_file(source_output) == expected_output_sha256
+        ):
+            incompatible += 1
+            continue
+        output_text = source_output.read_text(encoding="utf-8", errors="replace")
+        parsed = parse_cp2k_output(
+            output_text, require_cdft=target_task["role"] == COMPLEX_ROLE
+        )
+        if not parsed["valid_completion"]:
+            incompatible += 1
+            continue
+
+        target_directory = target_root / target_task["task_directory"]
+        target_output = target_directory / "cp2k.out"
+        if target_output.exists():
+            if _sha256_file(target_output) != expected_output_sha256:
+                raise RuntimeError(
+                    f"Refusing to replace incompatible CDFT output: {target_output}"
+                )
+        else:
+            fd, temporary = tempfile.mkstemp(
+                prefix=".cp2k.reuse.", dir=target_directory
+            )
+            os.close(fd)
+            try:
+                shutil.copyfile(source_output, temporary)
+                if _sha256_file(Path(temporary)) != expected_output_sha256:
+                    raise RuntimeError("Copied CDFT output checksum mismatch.")
+                os.replace(temporary, target_output)
+            except BaseException:
+                Path(temporary).unlink(missing_ok=True)
+                raise
+        _atomic_json(
+            target_result_path,
+            {
+                "schema_version": SCHEMA_VERSION,
+                "status": "complete",
+                "execution": "cp2k",
+                "task_id": target_task["task_id"],
+                "configuration_signature": target_signature,
+                "input_sha256": target_task["input_sha256"],
+                "command": source_result.get("command", []),
+                "cp2k_data_dir": source_result.get("cp2k_data_dir"),
+                "return_code": 0,
+                "started_utc": source_result.get("started_utc"),
+                "completed_utc": source_result.get("completed_utc"),
+                "reused_utc": _utc_now(),
+                "reused_from_configuration_signature": source_signature,
+                "reused_from_task_id": source_task["task_id"],
+                "output_path": target_output.name,
+                "output_sha256": expected_output_sha256,
+                **parsed,
+            },
+        )
+        reused += 1
+    return reused, incompatible
+
+
 def _read_result(
     root: Path,
     task: dict[str, Any],
@@ -667,6 +1021,8 @@ def collect_workflow(
     """Collect raw, counterpoise-corrected fixed-q interaction energies."""
 
     manifest = load_workflow_manifest(manifest_path, verify_inputs=True)
+    if any(task.get("role") == COMPLEX_ROLE for task in manifest["tasks"]):
+        raise RuntimeError(_VALIDATED_BRANCH_REQUIRED)
     root = Path(manifest["_manifest_path"]).parent
     signature = manifest["configuration_signature"]
     projectile = manifest["configuration"]["projectile"]

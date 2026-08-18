@@ -71,6 +71,51 @@ it. HTran remains the complete elastic path for H and He. No backend becomes
 the transport default until the validation gates in `../validation/README.md`
 are satisfied.
 
+For the carbon soft-component study, `SoftZBLKernel` instead retains the
+annulus between the energy-dependent NLH 30 eV hard impact parameter and the
+outer ZBL recoil cutoff. This is exactly non-overlapping in impact area. It is
+still validation-pending because NLH and ZBL are different potentials and
+their force/angle continuity at the handoff is not assumed. Recoil cutoffs of
+`1e-4`, `1e-5`, and `1e-6` eV are required for the annulus to remain represented
+through 100 MeV; the earlier 1, 10, and 30 eV cutoffs become empty at high
+energy and are not soft-boundary candidates.
+
+## Restartable PBS campaign
+
+Submit the carbon campaign from the repository root with:
+
+```bash
+bash pbs/launch_zbl_atomistic_carbon.sh
+```
+
+The launcher prepares 41 logarithmically spaced energies from 10 keV to
+100 MeV for the `1e-4`, `1e-5`, and `1e-6` eV recoil cutoffs using the
+production-matched hexagonal ice Ih structures. Each structure/orientation
+case is a restart-safe PBS array task. Sampling proceeds in batches until both
+the 95% relative confidence half-widths for the scalar cross-section,
+stopping, and transport estimators and the DKW angular-CDF half-width are at
+most 0.005, subject to the recorded trajectory ceiling.
+
+The launcher partitions the cases into array shards of at most 50 elements;
+each element requests 64 CPU cores and owns one case and checkpoint stream.
+
+Outputs are written below the ignored
+`validation/runs/zbl_soft_carbon/` directory. The reducer writes
+`zbl_soft_cross_sections.csv`, `zbl_soft_angular_quantiles.csv`, and a
+checksum-attested result manifest. Restart checkpoints retain the complete
+weighted final-deflection sample for every case, so alternative angular bins
+or quantiles can be reconstructed without rerunning trajectories. A failed or
+walltime-limited case is resumed by running the launcher again. It submits only
+case indices without a completion receipt; each incomplete case continues from
+its last attested batch manifest. PBS output is retained under the campaign's
+`pbs_logs/` directory, and the reducer refuses incomplete or statistically
+unconverged campaigns.
+
+The campaign was moved from the temporary ZBL worktree into this repository
+after a clean PBS cancellation on 2026-08-18. `RELOCATION_PROVENANCE.json`
+records the path rewrite and campaign-signature change. Numerical checkpoint
+payloads and their configuration signatures were not changed.
+
 ## References
 
 - J. F. Ziegler, J. P. Biersack, and U. Littmark, *The Stopping and Range of

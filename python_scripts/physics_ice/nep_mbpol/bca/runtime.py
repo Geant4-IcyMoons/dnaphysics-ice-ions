@@ -293,6 +293,42 @@ class AdaptiveKernelTable:
             1.0 - self.minimum_turning_potential_ev / relative_energy
         )
 
+    def minimum_impact_parameter_angstrom(
+        self, projectile: str, target: str, projectile_energy_ev: float
+    ) -> float:
+        """Lower edge of the retained impact-area domain (a disk for NLH)."""
+
+        self.pair_kinematics(projectile, target, projectile_energy_ev)
+        return 0.0
+
+    def impact_parameter_from_area_quantile(
+        self,
+        projectile: str,
+        target: str,
+        projectile_energy_ev: float,
+        area_quantile: float,
+    ) -> float:
+        if not math.isfinite(area_quantile) or not 0.0 <= area_quantile <= 1.0:
+            raise KernelTableError("area_quantile must lie in [0, 1].")
+        maximum = self.maximum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
+        return maximum * math.sqrt(area_quantile)
+
+    def area_quantile_from_impact_parameter(
+        self,
+        projectile: str,
+        target: str,
+        projectile_energy_ev: float,
+        impact_parameter_angstrom: float,
+    ) -> float:
+        maximum = self.maximum_impact_parameter_angstrom(
+            projectile, target, projectile_energy_ev
+        )
+        if maximum <= 0.0:
+            raise KernelTableError("The retained collision domain is empty.")
+        return (impact_parameter_angstrom / maximum) ** 2
+
     def hard_cross_section_angstrom2(
         self, projectile: str, target: str, projectile_energy_ev: float
     ) -> float:

@@ -35,18 +35,18 @@
       "evidence": "Running jobs 108135-108139 use approximately 57-61 of 64 allocated cores and currently peak at 2.65-2.71 GB RSS. Running-job memory is a lower bound; retain 16 GB until successful final accounting is available."
     },
     "soft_molecular_dft": {
-      "ncpus": 8,
-      "memory_gb": 128,
+      "ncpus": 16,
+      "memory_gb": 160,
       "ngpus": 0,
       "calibration_status": "completed_pbs_accounting",
-      "evidence": "Exact-input CP2K 2025.2 scaling job 108842 completed successfully with eight MPI ranks in 43:04, used 797% average CPU, and peaked at 76050652 kB PBS RSS. Single-rank attempts exceeded 32 GB and approached 60 GB while using only approximately 1.5 cores."
+      "evidence": "The carbon CP2K 2025.2 exact-input comparison reproduced the same 23-iteration STRICT+3PNT convergence path at 8 and 16 MPI ranks. The corrected all-charge standard-diagonalization gate, job 111126, then measured up to 127463144 kB peak PBS memory. A 160-GB request retains approximately 25% headroom over the observed maximum."
     },
     "soft_dft_shard": {
-      "ncpus": 8,
-      "memory_gb": 128,
+      "ncpus": 16,
+      "memory_gb": 160,
       "ngpus": 0,
       "calibration_status": "completed_pbs_accounting",
-      "evidence": "One fixed-batch shard runs one eight-rank CP2K calculation. Exact-input job 108842 completed successfully in 43:04 at 797% average CPU and 76050652 kB peak PBS RSS; 128 GB retains bounded headroom for charge-state variation."
+      "evidence": "One fixed-batch shard runs one 16-rank CP2K calculation. The corrected carbon all-charge standard-diagonalization gate, job 111126, measured up to 127463144 kB peak PBS memory. A 160-GB request retains approximately 25% headroom over the observed maximum."
     }
   }
 }

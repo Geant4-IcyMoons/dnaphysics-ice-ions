@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 PHYSICS_SCRIPT_DIR = (
@@ -19,6 +21,7 @@ sys.path.insert(0, str(BENCHMARK_DIR))
 sys.path.insert(0, str(PHYSICS_SCRIPT_DIR))
 
 import benchmark_carbon_charge_exchange_ctmc as benchmark  # noqa: E402
+import run_ctmc81_c3_reproduction as reproduction  # noqa: E402
 
 
 def _uniform_rate_table(points: int = 41) -> dict[str, np.ndarray]:
@@ -88,6 +91,241 @@ def test_paper_digitization_has_all_three_comparison_figures() -> None:
     assert len(np.unique(paper[paper["figure"] == 12]["q"])) == 6
     assert len(np.unique(paper[paper["figure"] == 13]["q"])) == 6
     assert len(np.unique(paper[paper["figure"] == 14]["q"])) == 7
+
+
+def test_formal_ctmc81_archive_is_exact_and_internally_consistent() -> None:
+    reference = benchmark._read_formal_reference_archive(
+        benchmark.FORMAL_REFERENCE_ARCHIVE
+    )
+    assert reference["sha256"] == benchmark.FORMAL_REFERENCE_SHA256
+    assert set(reference["datasets"]) == {
+        "L1", "L2", "L3", "L4", "L5", "loss"
+    }
+    checks = []
+    benchmark._formal_reference_integrity(reference, checks)
+    assert checks == [
+        next(
+            check
+            for check in checks
+            if check["name"] == "formal_ctmc81_archive_integrity"
+        )
+    ]
+    assert checks[0]["status"] == "pass"
+    assert reference["datasets"]["L1"]["metadata"] == {
+        "projectile_nuclear_charge": 6.0,
+        "projectile_charge_state": 3.0,
+        "projectile_mass_u": 12.0,
+        "energy_keV_u": 100.0,
+        "projectile_velocity_au": 2.00055347542277,
+        "initial_z_au": 1000.0,
+        "maximum_impact_au": 10.0,
+        "impact_point_count": 100,
+        "trajectory_count": 20000,
+        "integration_time_au": 1000.0,
+        "integration_tolerance": 1.0e-6,
+        "limit_distance_au": 1000.0,
+        "orbital_index": 1,
+    }
+    assert reference["datasets"]["loss"]["metadata"]["initial_z_au"] == 10000.0
+    assert reference["datasets"]["loss"]["metadata"]["integration_time_au"] == 6000.0
+
+
+def test_ctmc81_reproduction_matches_every_disclosed_point_parameter() -> None:
+    reference = benchmark._read_formal_reference_archive(
+        benchmark.FORMAL_REFERENCE_ARCHIVE
+    )
+    specs = reproduction._build_specs(reference)
+    assert len(specs) == 410
+    counts = [
+        sum(spec["dataset"] == label for spec in specs)
+        for label in reproduction.REFERENCE_LABELS
+    ]
+    assert counts == [
+        100,
+        100,
+        50,
+        50,
+        10,
+        100,
+    ]
+    target = next(spec for spec in specs if spec["dataset"] == "L5")
+    loss = next(spec for spec in specs if spec["dataset"] == "loss")
+    target_parameters = (
+        target["trajectory_count"],
+        target["start_separation_au"],
+        target["integration_time_au"],
+    )
+    assert target_parameters == (
+        20000,
+        1000.0,
+        1000.0,
+    )
+    assert target["projectile_velocity_au"] == 2.00055347542277
+    loss_parameters = (
+        loss["trajectory_count"],
+        loss["start_separation_au"],
+        loss["integration_time_au"],
+    )
+    assert loss_parameters == (
+        10000,
+        10000.0,
+        6000.0,
+    )
+
+
+def test_ctmc81_reproduction_forces_paper_sampler() -> None:
+    config = reproduction._configuration(
+        trajectory_chunk_size=100,
+        seed=20260816,
+        rtol=1.0e-11,
+        atol=1.0e-13,
+        retry_rtol=1.0e-12,
+        retry_atol=1.0e-14,
+        maximum_relative_energy_drift=1.0e-4,
+        maximum_integration_steps=100_000_000,
+    )
+    assert config.initial_ensemble == (
+        benchmark.ctmc.INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP
+    )
+    assert config.projectile_loss_initialization == (
+        benchmark.ctmc.PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS
+    )
+    assert benchmark.ctmc.random_draws_per_trajectory(
+        config.initial_ensemble
+    ) == 4
+
+
+@pytest.mark.parametrize(
+    ("ensemble_mode", "paper_reproduction", "expected_status"),
+    (
+        (
+            benchmark.ctmc.INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
+            True,
+            "pass",
+        ),
+        (
+            benchmark.ctmc.INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC,
+            False,
+            "fail",
+        ),
+    ),
+)
+def test_release_gate_accepts_only_paper_sampler(
+    tmp_path: Path,
+    ensemble_mode: str,
+    paper_reproduction: bool,
+    expected_status: str,
+) -> None:
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "doi": benchmark.PAPER_DOI,
+                "projectile": {"nuclear_charge": 6},
+                "density_applied": False,
+                "cross_section_unit": "cm2 per H2O molecule",
+                "initial_ensemble": {
+                    "mode": ensemble_mode,
+                    "paper_reproduction": paper_reproduction,
+                },
+                "trajectory_statistics": {
+                    "failed": 0,
+                    "maximum_relative_total_energy_drift": 0.0,
+                },
+                "ctmc_config": {"maximum_relative_energy_drift": 1.0e-4},
+            }
+        ),
+        encoding="utf-8",
+    )
+    checks: list[dict[str, object]] = []
+    benchmark._metadata_checks(
+        metadata_path,
+        tmp_path / "missing_probabilities.npz",
+        checks,
+        require_adaptive=False,
+    )
+    ensemble_check = next(
+        check for check in checks if check["name"] == "paper_initial_ensemble"
+    )
+    assert ensemble_check["status"] == expected_status
+
+
+def test_ctmc81_event_columns_preserve_null_and_scheme_identity() -> None:
+    assert reproduction._event_index("L1", "ionized") == 0
+    assert reproduction._event_index("L1", "captured_projectile") == 1
+    assert reproduction._event_index("L1", "retained_target") == 2
+    assert reproduction._event_index("loss", "ionized") == 0
+    assert reproduction._event_index("loss", "retained_target") == 1
+    assert reproduction._event_index("loss", "captured_projectile") == 2
+    assert reproduction._event_index("loss", "ambiguous_bound") == 3
+
+
+def test_ctmc81_derived_cross_sections_use_converged_common_quadrature() -> None:
+    reference = benchmark._read_formal_reference_archive(
+        benchmark.FORMAL_REFERENCE_ARCHIVE
+    )
+    specs = reproduction._build_specs(reference)
+    events = np.zeros((1, len(specs), 4), dtype=np.int64)
+    completed = np.zeros((1, len(specs)), dtype=np.int64)
+    for spec in specs:
+        dataset = reference["datasets"][spec["dataset"]]
+        count = int(spec["trajectory_count"])
+        events[0, spec["point_index"]] = np.rint(
+            dataset["probabilities"][spec["impact_index"]] * count
+        ).astype(np.int64)
+        completed[0, spec["point_index"]] = count
+    result = reproduction._cross_section_summary(
+        reference, specs, events, completed
+    )
+    channels = {row["channel"]: row for row in result["rows"]}
+    assert channels["SC"]["reference_cm2_per_h2o"] == pytest.approx(
+        1.2399290372164355e-16,
+        rel=1.0e-12,
+    )
+    assert result["maximum_relative_quadrature_change"] < 1.0e-6
+    assert result["quadrature_0p5pct_gate_passed"]
+
+
+def test_formal_probability_comparison_covers_all_eleven_curves(
+    tmp_path: Path,
+) -> None:
+    reference = benchmark._read_formal_reference_archive(
+        benchmark.FORMAL_REFERENCE_ARCHIVE
+    )
+    impact = np.linspace(0.0, 1.0, 5)
+    pi = np.empty((len(impact), 5))
+    pc = np.empty_like(pi)
+    for orbital in range(5):
+        dataset = reference["datasets"][f"L{orbital + 1}"]
+        pi[:, orbital] = np.interp(
+            impact, dataset["impact_au"], dataset["probabilities"][:, 0]
+        )
+        pc[:, orbital] = np.interp(
+            impact, dataset["impact_au"], dataset["probabilities"][:, 1]
+        )
+    loss = reference["datasets"]["loss"]
+    pl = np.interp(
+        impact, loss["impact_au"], loss["probabilities"][:, 0]
+    )
+    archive = tmp_path / "carbon_charge_exchange_probabilities.npz"
+    np.savez(
+        archive,
+        adaptive_format=np.asarray(True),
+        curve_energy_keV_u=np.asarray([100.0]),
+        curve_charge=np.asarray([3]),
+        curve_offsets=np.asarray([0, len(impact)]),
+        impact_au=impact,
+        pi=pi,
+        pc=pc,
+        pl=pl,
+        channel_successes=np.full((len(impact), 6), 10000),
+    )
+    comparison = benchmark._formal_probability_comparison(reference, archive)
+    assert len(comparison["comparisons"]) == 11
+    assert all(
+        row["maximum_absolute_probability_difference"] == 0.0
+        for row in comparison["comparisons"]
+    )
 
 
 def test_paper_curve_comparison_never_extrapolates_sparse_run() -> None:

@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+#PBS -N cdft_stage
+#PBS -q idle
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+# Advance one immutable adaptive CDFT batch, submit its deterministic PBS
+# shards, and chain this supervisor after successful completion.  At most one
+# batch owns a workflow directory at a time.
+
+set -euo pipefail
+umask 002
+
+if [[ -z "${PROJECTILE:-}" ]]; then
+    echo "PROJECTILE is required." >&2
+    exit 2
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${PBS_O_WORKDIR:-}" ]]; then
+    REPO_ROOT="$(cd "${PBS_O_WORKDIR}" && pwd)"
+else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+cd "${REPO_ROOT}"
+
+PBS_DIR="${REPO_ROOT}/pbs"
+NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
+CONTROLLER="${NEP_DIR}/adaptive_charge_resolved_dft.py"
+COLLECTOR="${NEP_DIR}/collect_charge_resolved_dft.py"
+CP2K_EXE="${CP2K_EXE:-${PBS_DIR}/cp2k_container_wrapper.sh}"
+SHARD_COUNT="${SHARD_COUNT:-64}"
+MAX_ARRAY_SIZE="${MAX_ARRAY_SIZE:-50}"
+
+if [[ ! -x "${PYTHON_BIN}" || ! -f "${CONTROLLER}" \
+      || ! -x "${CP2K_EXE}" || ! "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ \
+      || ! "${MAX_ARRAY_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Invalid Python, controller, CP2K wrapper, or shard count." >&2
+    exit 2
+fi
+
+# A sharded smoke workflow uses this optional gate because it does not run the
+# collector internally.  A failed numerical/CDFT check stops the dependency
+# chain before production is prepared.
+if [[ -n "${GATE_MANIFEST:-}" ]]; then
+    "${PYTHON_BIN}" -u "${COLLECTOR}" "${GATE_MANIFEST}" --require-complete
+fi
+
+prepare=(
+    "${PYTHON_BIN}" -u "${CONTROLLER}"
+    --projectile "${PROJECTILE}"
+    --relative-tolerance "${RELATIVE_TOLERANCE:-0.005}"
+    --maximum-refinement-depth "${MAXIMUM_REFINEMENT_DEPTH:-8}"
+    --maximum-mesh-points-per-orientation "${MAXIMUM_MESH_POINTS:-257}"
+    --prepare-only
+)
+if [[ -n "${OUTPUT_ROOT:-}" ]]; then
+    prepare+=(--output-root "${OUTPUT_ROOT}")
+fi
+if [[ -n "${CHARGES:-}" ]]; then
+    IFS=',' read -r -a charge_values <<< "${CHARGES}"
+    prepare+=(--charges "${charge_values[@]}")
+fi
+
+PREPARE_OUTPUT="$("${prepare[@]}")"
+printf '%s\n' "${PREPARE_OUTPUT}"
+if grep -q '^Adaptive DFT workflow already complete:' <<< "${PREPARE_OUTPUT}"; then
+    echo "Shard campaign complete for ${PROJECTILE}."
+    exit 0
+fi
+
+mapfile -t MANIFESTS < <(
+    sed -n 's/^Prepared batch manifest: //p' <<< "${PREPARE_OUTPUT}"
+)
+if (( ${#MANIFESTS[@]} != 1 )) || [[ ! -f "${MANIFESTS[0]}" ]]; then
+    echo "Expected exactly one incomplete adaptive batch manifest." >&2
+    exit 1
+fi
+MANIFEST="${MANIFESTS[0]}"
+BATCH_NAME="$(basename "$(dirname "$(dirname "${MANIFEST}")")")"
+PENDING_COUNT="$("${PYTHON_BIN}" - "${MANIFEST}" <<'PY'
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path.cwd() / "python_scripts/physics_ice/nep_mbpol"))
+from soft_dft import pending_workflow_tasks
+
+print(len(pending_workflow_tasks(Path(sys.argv[1]))))
+PY
+)"
+if [[ ! "${PENDING_COUNT}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Prepared CDFT batch has no pending calculations." >&2
+    exit 1
+fi
+GLOBAL_SHARD_COUNT="${SHARD_COUNT}"
+if (( GLOBAL_SHARD_COUNT > PENDING_COUNT )); then
+    GLOBAL_SHARD_COUNT="${PENDING_COUNT}"
+fi
+
+SUBMISSION_LOCK="${MANIFEST}.submission"
+if ! mkdir "${SUBMISSION_LOCK}" 2>/dev/null; then
+    echo "CDFT batch already has a submission owner: ${SUBMISSION_LOCK}"
+    exit 0
+fi
+array_jobs=()
+submission_complete=0
+cleanup_incomplete_submission() {
+    if (( submission_complete == 0 )); then
+        for job in "${array_jobs[@]}"; do
+            qdel "${job}" 2>/dev/null || true
+        done
+        rmdir "${SUBMISSION_LOCK}" 2>/dev/null || true
+    fi
+}
+trap cleanup_incomplete_submission EXIT
+offset=0
+while (( offset < GLOBAL_SHARD_COUNT )); do
+    remaining=$((GLOBAL_SHARD_COUNT - offset))
+    local_count="${MAX_ARRAY_SIZE}"
+    if (( remaining < local_count )); then
+        local_count="${remaining}"
+    fi
+    last_index=$((local_count - 1))
+    array_job="$(qsub \
+        -N "cdft_${PROJECTILE}_${BATCH_NAME}_${offset}" \
+        -J "0-${last_index}" \
+        -v "MANIFEST=${MANIFEST},SHARD_COUNT=${GLOBAL_SHARD_COUNT},SHARD_OFFSET=${offset},CP2K_EXE=${CP2K_EXE},REPO_ROOT=${REPO_ROOT}" \
+        "${PBS_DIR}/run_charge_resolved_dft.pbs")"
+    array_jobs+=("${array_job}")
+    echo "Submitted ${PROJECTILE} ${BATCH_NAME}: ${array_job}, global shards ${offset}-$((offset + local_count - 1))/${GLOBAL_SHARD_COUNT}"
+    offset=$((offset + local_count))
+done
+
+next_variables="PROJECTILE=${PROJECTILE},SHARD_COUNT=${SHARD_COUNT},CP2K_EXE=${CP2K_EXE},REPO_ROOT=${REPO_ROOT},RELATIVE_TOLERANCE=${RELATIVE_TOLERANCE:-0.005},MAXIMUM_REFINEMENT_DEPTH=${MAXIMUM_REFINEMENT_DEPTH:-8},MAXIMUM_MESH_POINTS=${MAXIMUM_MESH_POINTS:-257}"
+if [[ -n "${OUTPUT_ROOT:-}" ]]; then
+    next_variables+=",OUTPUT_ROOT=${OUTPUT_ROOT}"
+fi
+if [[ -n "${CHARGES:-}" ]]; then
+    next_variables+=",CHARGES=${CHARGES}"
+fi
+dependency="$(IFS=:; echo "${array_jobs[*]}")"
+next_job="$(qsub \
+    -N "cdft_${PROJECTILE}_next" \
+    -W "depend=afterok:${dependency}" \
+    -v "${next_variables}" \
+    "${PBS_DIR}/supervise_adaptive_charge_resolved_dft_shards.pbs")"
+echo "Continuation: ${next_job} after ${#array_jobs[@]} array group(s)"
+submission_complete=1

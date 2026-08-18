@@ -10,7 +10,12 @@ from pathlib import Path
 import tempfile
 from typing import Sequence
 
-from .backend import DEFAULT_ENERGY_BOUNDS_EV, DEFAULT_PROJECTILES, FullZBLKernel
+from .backend import (
+    DEFAULT_ENERGY_BOUNDS_EV,
+    DEFAULT_PROJECTILES,
+    FullZBLKernel,
+    SoftZBLKernel,
+)
 from .kernel import PROJECTILES
 
 from bca.structure import file_sha256, load_ice_structure  # noqa: E402
@@ -66,6 +71,8 @@ def build_manifest(
     projectiles: Sequence[str] = DEFAULT_PROJECTILES,
     energy_bounds_ev: tuple[float, float] = DEFAULT_ENERGY_BOUNDS_EV,
     minimum_transfer_cutoffs_ev: Sequence[float] = DEFAULT_CUTOFFS_EV,
+    interaction_model: str = "zbl_full",
+    nlh_boundary_ev: float = 30.0,
 ) -> dict[str, object]:
     """Return a validated phase/backend manifest without running trajectories."""
     cutoffs = tuple(float(value) for value in minimum_transfer_cutoffs_ev)
@@ -74,11 +81,19 @@ def build_manifest(
     if len(set(cutoffs)) != len(cutoffs):
         raise ValueError("Minimum-transfer cutoffs must be unique.")
     # Construction validates projectile names, energy bounds, and each cutoff.
+    if interaction_model not in {"zbl_full", "zbl_soft"}:
+        raise ValueError("interaction_model must be zbl_full or zbl_soft.")
+    kernel_type = SoftZBLKernel if interaction_model == "zbl_soft" else FullZBLKernel
     kernels = [
-        FullZBLKernel(
+        kernel_type(
             minimum_transfer_ev=cutoff,
             projectiles=projectiles,
             energy_bounds_ev=energy_bounds_ev,
+            **(
+                {"nlh_boundary_ev": nlh_boundary_ev}
+                if interaction_model == "zbl_soft"
+                else {}
+            ),
         )
         for cutoff in cutoffs
     ]
@@ -98,7 +113,11 @@ def build_manifest(
         )
     manifest: dict[str, object] = {
         "schema_version": 1,
-        "backend": "atomistic_periodic_full_zbl",
+        "backend": (
+            "atomistic_periodic_zbl_soft"
+            if interaction_model == "zbl_soft"
+            else "atomistic_periodic_full_zbl"
+        ),
         "validation_state": "validation_pending",
         "production_enabled": False,
         "phase_id": phase_id,
@@ -113,11 +132,18 @@ def build_manifest(
         },
         "total_kinetic_energy_bounds_ev": list(energy_bounds_ev),
         "minimum_recoil_transfer_cutoffs_ev": sorted(cutoffs),
+        "nlh_turning_potential_boundary_ev": (
+            nlh_boundary_ev if interaction_model == "zbl_soft" else None
+        ),
         "interaction_domain": (
-            "full retained ZBL disk from b=0 to the selected recoil cutoff"
+            "ZBL annulus outside the NLH hard impact disk to the selected recoil cutoff"
+            if interaction_model == "zbl_soft"
+            else "full retained ZBL disk from b=0 to the selected recoil cutoff"
         ),
         "runtime_exclusivity": (
-            "zbl_full replaces nlh_hard and HTran in a trajectory run"
+            "zbl_soft is impact-area complementary to nlh_hard"
+            if interaction_model == "zbl_soft"
+            else "zbl_full replaces nlh_hard and HTran in a trajectory run"
         ),
         "excluded_physics": [
             "electronic_stopping",
@@ -140,6 +166,8 @@ def write_manifests(
     projectiles: Sequence[str] = DEFAULT_PROJECTILES,
     energy_bounds_ev: tuple[float, float] = DEFAULT_ENERGY_BOUNDS_EV,
     minimum_transfer_cutoffs_ev: Sequence[float] = DEFAULT_CUTOFFS_EV,
+    interaction_model: str = "zbl_full",
+    nlh_boundary_ev: float = 30.0,
 ) -> tuple[Path, ...]:
     output_directory = output_directory.resolve()
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -150,8 +178,10 @@ def write_manifests(
             projectiles=projectiles,
             energy_bounds_ev=energy_bounds_ev,
             minimum_transfer_cutoffs_ev=minimum_transfer_cutoffs_ev,
+            interaction_model=interaction_model,
+            nlh_boundary_ev=nlh_boundary_ev,
         )
-        path = output_directory / f"zbl_full_{phase_id}.manifest.json"
+        path = output_directory / f"{interaction_model}_{phase_id}.manifest.json"
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
@@ -174,10 +204,14 @@ def load_transport(
     structure_index: int,
     minimum_transfer_ev: float,
 ) -> PeriodicHardCollisionTransport:
-    """Instantiate the existing atomistic trajectory engine with full ZBL."""
+    """Instantiate the atomistic trajectory engine with the declared ZBL mode."""
     manifest = json.loads(manifest_path.resolve().read_text(encoding="utf-8"))
-    if manifest.get("backend") != "atomistic_periodic_full_zbl":
-        raise ValueError("Manifest does not describe the atomistic full-ZBL backend.")
+    backend = manifest.get("backend")
+    if backend not in {
+        "atomistic_periodic_full_zbl",
+        "atomistic_periodic_zbl_soft",
+    }:
+        raise ValueError("Manifest does not describe an atomistic ZBL backend.")
     cutoff = float(minimum_transfer_ev)
     if cutoff not in manifest["minimum_recoil_transfer_cutoffs_ev"]:
         raise ValueError("Requested cutoff is absent from the backend manifest.")
@@ -194,10 +228,16 @@ def load_transport(
         frame_index=int(record["frame_index"]),
         metadata_path=REPOSITORY_ROOT / record["metadata"],
     )
-    kernel = FullZBLKernel(
+    kernel_type = SoftZBLKernel if backend.endswith("zbl_soft") else FullZBLKernel
+    kernel = kernel_type(
         minimum_transfer_ev=cutoff,
         projectiles=tuple(manifest["projectiles"]),
         energy_bounds_ev=tuple(manifest["total_kinetic_energy_bounds_ev"]),
+        **(
+            {"nlh_boundary_ev": manifest["nlh_turning_potential_boundary_ev"]}
+            if backend.endswith("zbl_soft")
+            else {}
+        ),
     )
     return PeriodicHardCollisionTransport(structure, kernel)
 

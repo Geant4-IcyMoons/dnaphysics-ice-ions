@@ -1,0 +1,20 @@
+HeH force prerequisite: passed; CP2K version 2025.2, revision c3a8adfec5, image 06cda9afc9d0f8a6ab30318352804276adfde467f385a54e15fc0141a921a59c
+Repository: /gpfs01/work/yoffegid/dnaphysics-ice-ions
+Commit: e8b12f50baad2c6d62b6459becaf58b87157237f
+Host: cfi026
+State: C q=2
+Geometry: oxygen_back, R=12.0 A
+Fresh anchor: 1
+Complex Pulay ALPHA: 0.2
+Complex SCF solver: DIAGONALIZATION
+Complex mixing method: DIRECT_P_MIXING
+OT line search: 3PNT
+OT preconditioner: FULL_ALL
+OT energy gap (Ha): 0.001
+Fixed-lambda diagnostic strength: disabled
+Unconstrained SCF diagnostic: 1
+Output root: /work/yoffegid/dnaphysics-ice-ions/python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/validation/runs/c_q2_unconstrained_direct_p_alpha0p2_atomic_12A
+CP2K image: /gpfs01/work/yoffegid/dnaphysics-ice-ions/software/cp2k/cp2k-2025.2-mpich-x86_64-psmp.sif
+MPI ranks: 16
+Started UTC: 2026-08-09T17:09:51Z
+Command: /gpfs01/work/yoffegid/dnaphysics-ice-ions/python_scripts/physics_ice/nep_mbpol/.venv/bin/python -u /gpfs01/work/yoffegid/dnaphysics-ice-ions/python_scripts/physics_ice/nep_mbpol/run_cdft_branch_gate.py --projectile C --charge 2 --orientation oxygen_back --separation-angstrom 12.0 --complex-mixing-alpha 0.2 --complex-scf-solver DIAGONALIZATION --complex-mixing-method DIRECT_P_MIXING --ot-linesearch 3PNT --ot-preconditioner FULL_ALL --ot-energy-gap-hartree 0.001 --output-root /work/yoffegid/dnaphysics-ice-ions/python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/validation/runs/c_q2_unconstrained_direct_p_alpha0p2_atomic_12A --cp2k-command /gpfs01/work/yoffegid/dnaphysics-ice-ions/pbs/cp2k_container_wrapper.sh --cp2k-image /gpfs01/work/yoffegid/dnaphysics-ice-ions/software/cp2k/cp2k-2025.2-mpich-x86_64-psmp.sif --unconstrained-scf-diagnostic

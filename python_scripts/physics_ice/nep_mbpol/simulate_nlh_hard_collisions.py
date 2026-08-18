@@ -22,6 +22,7 @@ from tqdm.auto import tqdm
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parents[2]))
 
 from bca.config import DEFAULT_PROJECTILES, DEFAULT_WORKERS  # noqa: E402
 from bca.convergence import (  # noqa: E402
@@ -44,11 +45,15 @@ from bca.trajectory import (  # noqa: E402
     PeriodicHardCollisionTransport,
 )
 from ion_ice import PROCESS_EVIDENCE_ROOT  # noqa: E402
+from python_scripts.physics_ice.process_evidence.soft_nuclear_collisions.zbl.backend import (  # noqa: E402
+    FullZBLKernel,
+    SoftZBLKernel,
+)
 
 
 _WORKER_TRANSPORT: PeriodicHardCollisionTransport | None = None
 _WORKER_STRUCTURE: IceStructure | None = None
-TRAJECTORY_IMPLEMENTATION_VERSION = 3
+TRAJECTORY_IMPLEMENTATION_VERSION = 4
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +65,26 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=HERE / "collision_kernels",
         help="Kernel directory or nlh_collision_kernels.manifest.json.",
+    )
+    parser.add_argument(
+        "--interaction-model",
+        choices=("nlh_hard", "zbl_full", "zbl_soft"),
+        default="nlh_hard",
+        help=(
+            "Binary-collision kernel; zbl_full replaces NLH, while zbl_soft "
+            "retains only the impact-area annulus outside the NLH hard disk."
+        ),
+    )
+    parser.add_argument(
+        "--minimum-transfer-ev",
+        type=float,
+        help="Required positive recoil cutoff for either ZBL interaction model.",
+    )
+    parser.add_argument(
+        "--nlh-boundary-ev",
+        type=float,
+        default=30.0,
+        help="NLH turning-potential boundary used by zbl_soft (default: 30 eV).",
     )
     parser.add_argument(
         "--projectile", choices=DEFAULT_PROJECTILES, required=True
@@ -226,6 +251,24 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--workers must be positive.")
     if args.max_collisions < 1:
         raise ValueError("--max-collisions must be positive.")
+    interaction_model = getattr(args, "interaction_model", "nlh_hard")
+    minimum_transfer_ev = getattr(args, "minimum_transfer_ev", None)
+    if interaction_model in {"zbl_full", "zbl_soft"}:
+        if (
+            minimum_transfer_ev is None
+            or not math.isfinite(minimum_transfer_ev)
+            or minimum_transfer_ev <= 0.0
+        ):
+            raise ValueError(
+                f"{interaction_model} requires a finite positive "
+                "--minimum-transfer-ev."
+            )
+    elif minimum_transfer_ev is not None:
+        raise ValueError("--minimum-transfer-ev applies only to ZBL models.")
+    if interaction_model == "zbl_soft" and (
+        not math.isfinite(args.nlh_boundary_ev) or args.nlh_boundary_ev < 30.0
+    ):
+        raise ValueError("zbl_soft requires --nlh-boundary-ev >= 30 eV.")
     if args.sampling_mode == "collision_tube_mixture" and not (
         math.isfinite(args.tube_mixture_fraction)
         and 0.0 < args.tube_mixture_fraction < 1.0
@@ -241,6 +284,9 @@ def _initialize_worker(
     kernel_path: str,
     allow_unvalidated: bool,
     search_window_angstrom: float,
+    interaction_model: str = "nlh_hard",
+    minimum_transfer_ev: float | None = None,
+    nlh_boundary_ev: float = 30.0,
 ) -> None:
     global _WORKER_STRUCTURE, _WORKER_TRANSPORT
     _WORKER_STRUCTURE = load_ice_structure(
@@ -248,7 +294,15 @@ def _initialize_worker(
         metadata_path=metadata_path,
         allow_unvalidated=allow_unvalidated,
     )
-    kernels = AdaptiveKernelTable(kernel_path)
+    if interaction_model == "zbl_full":
+        kernels = FullZBLKernel(minimum_transfer_ev=float(minimum_transfer_ev))
+    elif interaction_model == "zbl_soft":
+        kernels = SoftZBLKernel(
+            minimum_transfer_ev=float(minimum_transfer_ev),
+            nlh_boundary_ev=nlh_boundary_ev,
+        )
+    else:
+        kernels = AdaptiveKernelTable(kernel_path)
     _WORKER_TRANSPORT = PeriodicHardCollisionTransport(
         _WORKER_STRUCTURE,
         kernels,
@@ -653,6 +707,9 @@ def _run_signature(
         "structure_sha256": structure.source_sha256,
         "structure_frame_index": structure.frame_index,
         "kernel_csv_sha256": kernels.csv_sha256,
+        "interaction_model": getattr(args, "interaction_model", "nlh_hard"),
+        "minimum_transfer_ev": getattr(args, "minimum_transfer_ev", None),
+        "nlh_boundary_ev": getattr(args, "nlh_boundary_ev", None),
         "projectile": args.projectile,
         "projectile_energy_ev": args.energy_ev,
         "path_length_angstrom": args.path_length_angstrom,
@@ -1140,7 +1197,14 @@ def _write_manifest(
         "structure": structure.manifest_record(),
         "kernel_manifest": str(kernels.manifest_path),
         "kernel_csv_sha256": kernels.csv_sha256,
-        "minimum_turning_potential_ev": kernels.minimum_turning_potential_ev,
+        "interaction_model": args.interaction_model,
+        "minimum_turning_potential_ev": getattr(
+            kernels, "minimum_turning_potential_ev", None
+        ),
+        "minimum_recoil_transfer_ev": args.minimum_transfer_ev,
+        "nlh_turning_potential_boundary_ev": (
+            args.nlh_boundary_ev if args.interaction_model == "zbl_soft" else None
+        ),
         "configuration": {
             "projectile": args.projectile,
             "projectile_energy_ev": args.energy_ev,
@@ -1166,6 +1230,12 @@ def _write_manifest(
             "initial_condition_sampling": args.sampling_mode,
             "tube_mixture_fraction": args.tube_mixture_fraction,
             "output_detail": args.output_detail,
+            "interaction_model": args.interaction_model,
+            "nlh_boundary_ev": (
+                args.nlh_boundary_ev
+                if args.interaction_model == "zbl_soft"
+                else None
+            ),
         },
         "summary": {
             "total_traveled_path_angstrom": total_path,
@@ -1176,6 +1246,11 @@ def _write_manifest(
             "raw_total_recoil_energy_ev": raw_total_recoil,
             "estimated_total_recoil_energy_ev": estimated_total_recoil,
             "sampled_hard_collision_rate_per_angstrom": sampled_rate,
+            "sampled_collision_rate_per_angstrom": sampled_rate,
+            "microscopic_cross_section_per_h2o_angstrom2": (
+                sampled_rate
+                / (structure.water_molecule_count / structure.volume_angstrom3)
+            ),
             "raw_sampled_hard_collision_rate_per_angstrom": raw_sampled_rate,
             "independent_atom_hard_rate_per_angstrom_at_initial_energy": (
                 independent_atom_rate
@@ -1313,7 +1388,7 @@ def _write_manifest(
             ),
             "purpose": (
                 "unbiased rare-event variance reduction; it changes neither "
-                "the NLH interaction nor the hard-collision definition"
+                "the selected interaction nor its retained collision definition"
             ),
         },
         "outputs": {
@@ -1326,11 +1401,22 @@ def _write_manifest(
             ),
             "checkpoint_directory": str(checkpoint_directory),
         },
-        "physics_scope": (
-            "primary-projectile, static-lattice, retained-domain NLH hard collisions"
-        ),
+        "physics_scope": {
+            "zbl_full": "primary-projectile, static-lattice, full retained ZBL collisions",
+            "zbl_soft": (
+                "primary-projectile, static-lattice, ZBL annulus complementary "
+                "in impact area to the 30 eV NLH hard disk"
+            ),
+            "nlh_hard": (
+                "primary-projectile, static-lattice, retained-domain NLH hard collisions"
+            ),
+        }[args.interaction_model],
         "not_included": [
-            "soft distant scattering below the turning-potential boundary",
+            (
+                "recoil transfers below the configured numerical cutoff"
+                if args.interaction_model in {"zbl_full", "zbl_soft"}
+                else "soft distant scattering below the turning-potential boundary"
+            ),
             "simultaneous many-atom forces; overlaps are reported as ambiguous",
             "reinsertion and transport of emitted target recoils",
             "lattice relaxation, chemistry, and damage evolution",
@@ -1350,7 +1436,15 @@ def main() -> int:
         metadata_path=args.metadata,
         allow_unvalidated=args.allow_unvalidated,
     )
-    kernels = AdaptiveKernelTable(args.kernels)
+    if args.interaction_model == "zbl_full":
+        kernels = FullZBLKernel(minimum_transfer_ev=args.minimum_transfer_ev)
+    elif args.interaction_model == "zbl_soft":
+        kernels = SoftZBLKernel(
+            minimum_transfer_ev=args.minimum_transfer_ev,
+            nlh_boundary_ev=args.nlh_boundary_ev,
+        )
+    else:
+        kernels = AdaptiveKernelTable(args.kernels)
     if args.projectile not in kernels.projectiles:
         raise ValueError(
             f"Kernel product contains {kernels.projectiles}, not {args.projectile}."
@@ -1415,6 +1509,9 @@ def main() -> int:
         str(args.kernels.expanduser().resolve()),
         args.allow_unvalidated,
         args.search_window_angstrom,
+        args.interaction_model,
+        args.minimum_transfer_ev,
+        args.nlh_boundary_ev,
     )
     executor: ProcessPoolExecutor | None = None
     if args.workers == 1:
@@ -1546,9 +1643,14 @@ def main() -> int:
     if last_report is None:
         raise RuntimeError("No statistical assessment was produced.")
     statistics = _statistics_from_records(records)
-    trajectory_csv = output / "hard_collision_trajectories.csv"
-    event_csv = output / "hard_collision_events.csv"
-    manifest_path = output / "hard_collision_run.manifest.json"
+    output_stem = {
+        "zbl_full": "zbl_full_collision",
+        "zbl_soft": "zbl_soft_collision",
+        "nlh_hard": "hard_collision",
+    }[args.interaction_model]
+    trajectory_csv = output / f"{output_stem}_trajectories.csv"
+    event_csv = output / f"{output_stem}_events.csv"
+    manifest_path = output / f"{output_stem}_run.manifest.json"
     if args.output_detail == "full":
         _combine_csv_fragments(
             trajectory_csv,

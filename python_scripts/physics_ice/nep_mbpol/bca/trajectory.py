@@ -428,11 +428,12 @@ class PeriodicHardCollisionTransport:
                 projectile,
                 candidate.target,
                 projectile_energy_ev,
-                (
-                    candidate.impact_parameter_angstrom
-                    / candidate.maximum_impact_parameter_angstrom
-                )
-                ** 2,
+                self.kernels.area_quantile_from_impact_parameter(
+                    projectile,
+                    candidate.target,
+                    projectile_energy_ev,
+                    candidate.impact_parameter_angstrom,
+                ),
             )
             for candidate in candidates
         )
@@ -521,7 +522,9 @@ class PeriodicHardCollisionTransport:
             maximum_impact = self.kernels.maximum_impact_parameter_angstrom(
                 projectile, target, projectile_energy_ev
             )
-            impact = maximum_impact * math.sqrt(quantile)
+            impact = self.kernels.impact_parameter_from_area_quantile(
+                projectile, target, projectile_energy_ev, quantile
+            )
             phi = 2.0 * math.pi * float(rng.random())
             first, second = _transverse_basis(direction)
             transverse = impact * (math.cos(phi) * first + math.sin(phi) * second)
@@ -595,6 +598,12 @@ class PeriodicHardCollisionTransport:
         excluded_image: ImageKey | None,
     ) -> list[_Candidate]:
         maximum_impacts = self._maximum_impacts(projectile, energy_ev)
+        minimum_impacts = {
+            target: self.kernels.minimum_impact_parameter_angstrom(
+                projectile, target, energy_ev
+            )
+            for target in ("H", "O")
+        }
         threshold_radii = {
             target: self.kernels.turning_threshold_radius_angstrom(
                 projectile, target
@@ -618,6 +627,7 @@ class PeriodicHardCollisionTransport:
         for atom_index in atom_indices:
             target = str(self.structure.species[atom_index])
             maximum_impact = maximum_impacts[target]
+            minimum_impact = minimum_impacts[target]
             if maximum_impact <= 0.0:
                 continue
             base_fractional = self._fractional_positions[atom_index]
@@ -637,7 +647,11 @@ class PeriodicHardCollisionTransport:
                 closest = position + projection * direction
                 impact_to_target = atom_position - closest
                 impact = float(np.linalg.norm(impact_to_target))
-                if impact > maximum_impact * (1.0 + 1.0e-12):
+                impact_tolerance = 1.0e-12 * max(1.0, maximum_impact)
+                if (
+                    impact < minimum_impact - impact_tolerance
+                    or impact > maximum_impact + impact_tolerance
+                ):
                     continue
                 candidates.append(
                     _Candidate(

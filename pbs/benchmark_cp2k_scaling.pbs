@@ -37,7 +37,7 @@ if [[ ! "${MPI_RANKS}" =~ ^[1-9][0-9]*$ \
 fi
 
 JOB_LABEL="${PBS_JOBID:-local}"
-OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol/soft_collision_dft_runs/cp2k_scaling/${JOB_LABEL}}"
+OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY:-${REPO_ROOT}/python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/benchmarking/runs/cp2k_scaling/${JOB_LABEL}}"
 mkdir -p "${OUTPUT_DIRECTORY}"
 cp "${INPUT_FILE}" "${OUTPUT_DIRECTORY}/input.inp"
 cd "${OUTPUT_DIRECTORY}"

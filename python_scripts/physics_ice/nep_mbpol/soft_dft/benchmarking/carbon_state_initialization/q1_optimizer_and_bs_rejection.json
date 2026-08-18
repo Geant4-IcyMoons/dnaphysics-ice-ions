@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "status": "rejected_no_scientific_result",
+  "date_utc": "2026-08-09",
+  "job_id": "112837.pbs02",
+  "cp2k_version": "2025.2",
+  "cp2k_source_revision": "c3a8adfec5",
+  "input_sha256": "d20d86435fea3f2f97bac36c08fad03db28ff4e369aaba2b18bc2ae598393aa5",
+  "failed_output_sha256": "fd02a1886178a6b317dabeef0825ae7cc66880c1c159692199ab398a22ccd811",
+  "pbs_log_sha256": "02eb5de602569a41e00a054c15068c1e26a52f8bb7492248020b2e2c33a67943",
+  "pbs_accounting": {
+    "exit_status": 1,
+    "walltime": "00:00:32",
+    "cput": "00:05:13",
+    "memory_kb": 35368828
+  },
+  "fatal_error": {
+    "source": "src/qs_scf_output.F",
+    "line": 1062,
+    "cause": "The fixed-multiplier CDFT OUTER_SCF omitted OPTIMIZER. CP2K used NONE, which the CDFT initial-information output routine does not handle.",
+    "correction": "Name OPTIMIZER BISECT explicitly while retaining MAX_SCF 0; CP2K then exits after the first fixed-multiplier evaluation and before an optimizer update.",
+    "source_url": "https://github.com/cp2k/cp2k/blob/v2025.2/src/qs_scf_output.F"
+  },
+  "atomic_guess_defect": {
+    "declared_state": "C+ 1s2 2s2 2p1 doublet",
+    "printed_carbon_electrons": 5.5,
+    "cause": "CP2K applies one half of each KIND/BS NEL value to a spin occupation; the rejected registry treated NEL as a literal electron count.",
+    "correction": "For q=1 use ALPHA 2p NEL 0 and BETA 2p NEL -2, giving integer alpha/beta carbon populations 3/2 and five electrons.",
+    "source_url": "https://github.com/cp2k/cp2k/blob/v2025.2/src/qs_kind_types.F"
+  },
+  "scientific_scope": "CP2K aborted before the molecular inner SCF. No CDFT population, energy, force, trace, wavefunction, or branch checkpoint from this probe is accepted."
+}

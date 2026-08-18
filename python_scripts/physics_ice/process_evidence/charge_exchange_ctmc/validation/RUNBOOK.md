@@ -176,6 +176,7 @@ This writes only PNG and tabular/report products under
 `python_scripts/physics_ice/process_evidence/charge_exchange_ctmc/benchmarking/runs/carbon_charge_exchange/`:
 
 - `carbon_ctmc_paper_benchmark.png`;
+- `carbon_ctmc_formal_100keV_u_benchmark.png`;
 - `carbon_equilibrium_charge_fractions.csv`; and
 - `carbon_ctmc_validation.json`.
 
@@ -186,6 +187,14 @@ limit, energy conservation, primitive-probability bounds, exact reintegration
 of the probability archive, and equilibrium balance. The 0.5% values are
 numerical tolerances; they are not statements of physical accuracy or
 agreement with experiment.
+
+For carbon, `launch_charge_exchange_ctmc_example.sh merge-refined` submits
+this benchmark automatically with an `afterok` dependency on the final
+adaptive merge. Set `BENCHMARK_INPUT_DIR` when the CTMC output was directed
+away from `cross_sections/carbon_charge_exchange`. The benchmark requires
+`C3_100keVpu.zip` (or `FORMAL_REFERENCE_ARCHIVE`) and evaluates its eleven
+C3+ 100-keV/u primitive probability curves in addition to the independently
+digitized Figures 12--14 data.
 
 To benchmark the completed fixed base grid while refinement is still running,
 materialize it in a separate directory with `--no-adaptive-refinement`, then
@@ -351,11 +360,12 @@ cannot leave the other workers' completed chunks only in memory.
 Each ordinary DOP853 attempt has a 100,000,000-step numerical work budget.
 Exhaustion does not classify or count the incomplete endpoint. The identical
 sampled phase proceeds through the already-declared tighter-tolerance and
-Sundman-regularized retries. If all bounded attempts return no finite endpoint,
-the identical Sundman problem continues without a step ceiling; PBS walltime
-and atomic checkpoints provide the operational boundary. A trajectory still
-fails explicitly if the uncapped solver becomes non-finite or every finite
-endpoint violates the energy-conservation gate. This budget is a liveness
+Sundman-regularized retries. If the bounded ladder returns no endpoint that
+satisfies the unchanged energy-conservation gate, the identical Sundman
+problem continues without a step ceiling; PBS walltime and atomic checkpoints
+provide the operational boundary. A trajectory still fails explicitly if the
+uncapped solver becomes non-finite or its endpoint violates the
+energy-conservation gate. This budget is a liveness
 trigger, not a physical CTMC parameter. The value is based on an exact
 adaptive-grid regression at 1 keV/u that required 53,384,632 attempts to reach
 the unchanged 20,000-a.u. exit boundary with relative energy drift `2.65e-6`.

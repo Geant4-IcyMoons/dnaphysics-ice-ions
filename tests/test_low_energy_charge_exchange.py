@@ -4,7 +4,6 @@ import json
 import math
 from pathlib import Path
 import sys
-from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +19,7 @@ if str(NEP_DIR) not in sys.path:
 
 from ion_ice import get_projectile, projectile_registry  # noqa: E402
 from low_energy_charge_exchange import (  # noqa: E402
+    BRANCH_HANDOFF_PENDING,
     build_single_capture_channels,
     build_workflow,
     collect_workflow,
@@ -34,6 +34,10 @@ from low_energy_charge_exchange.cp2k import (  # noqa: E402
     render_mixed_cdft_input,
 )
 from soft_dft import DEFAULT_CP2K_SETTINGS, build_scan_geometries  # noqa: E402
+from soft_dft.workflow import (  # noqa: E402
+    VALIDATED_BRANCH_EXECUTION,
+    VALIDATED_BRANCH_RUNNER,
+)
 
 
 def test_carbon_has_every_positive_charge_capture_step_to_neutral():
@@ -77,7 +81,7 @@ def test_spin_coupling_uses_exact_fragment_multiplicity_triangle():
     assert coupled_multiplicities(3, 2) == (2, 4)
 
 
-def test_carbon_smoke_workflow_keeps_total_charge_fixed_between_diabats(tmp_path):
+def test_carbon_smoke_manifest_defers_exact_diabatic_branches(tmp_path):
     projectile = get_projectile("C")
     geometry = next(
         geometry
@@ -92,7 +96,8 @@ def test_carbon_smoke_workflow_keeps_total_charge_fixed_between_diabats(tmp_path
     assert manifest["channel_count"] == 6
     assert manifest["geometry_count"] == 1
     assert manifest["work_unit_count"] == 6
-    assert manifest["prepared_cdft_state_count"] == 12
+    assert manifest["required_validated_branch_state_count"] == 12
+    assert manifest["integration_status"] == BRANCH_HANDOFF_PENDING
     assert manifest["configuration"]["represented_projectile_charge_ladder"] == list(
         range(7)
     )
@@ -103,15 +108,25 @@ def test_carbon_smoke_workflow_keeps_total_charge_fixed_between_diabats(tmp_path
     for unit in manifest["work_units"]:
         entrance_task = unit["state_tasks"]["entrance"]
         product_task = unit["state_tasks"]["capture_product"]
-        entrance = (manifest_path.parent / entrance_task["input_path"]).read_text()
-        product = (manifest_path.parent / product_task["input_path"]).read_text()
-        charge_line = f"CHARGE {unit['incident_charge']}"
-        assert charge_line in entrance
-        assert charge_line in product
+        for task in (entrance_task, product_task):
+            assert task["execution"] == VALIDATED_BRANCH_EXECUTION
+            assert task["validated_branch_runner"] == VALIDATED_BRANCH_RUNNER
+            assert task["integration_status"] == BRANCH_HANDOFF_PENDING
+            assert task["total_charge"] == unit["total_charge"]
+            assert task["total_multiplicity"] == unit["total_multiplicity"]
+            assert task["coordinates_angstrom"] == unit["coordinates_angstrom"]
+            assert "input_path" not in task
+            assert "input_sha256" not in task
+            assert "expected_wavefunction" not in task
+            assert not (manifest_path.parent / task["task_directory"]).exists()
         assert (
-            f"TARGET {unit['entrance_electrons_on_projectile']}" in entrance
+            entrance_task["electrons_on_projectile"]
+            == unit["entrance_electrons_on_projectile"]
         )
-        assert f"TARGET {unit['product_electrons_on_projectile']}" in product
+        assert (
+            product_task["electrons_on_projectile"]
+            == unit["product_electrons_on_projectile"]
+        )
         assert not (manifest_path.parent / unit["mixed_task"]["input_path"]).exists()
 
 
@@ -144,6 +159,8 @@ def test_mixed_input_restarts_both_states_at_common_charge_and_spin(tmp_path):
     assert "TARGET 5" in text
     assert "STRENGTH 0.25" in text
     assert "STRENGTH -0.3" in text
+    assert text.count("MAX_SCF 0") == 2
+    assert "STEP_SIZE" not in text
     assert "WFN_RESTART_FILE_NAME ../entrance/entrance.wfn" in text
     assert "WFN_RESTART_FILE_NAME ../capture_product/product.wfn" in text
 
@@ -172,9 +189,7 @@ def test_mixed_output_parser_requires_two_states_and_reports_ev():
     )["valid_completion"]
 
 
-def test_runner_resumes_states_then_mixed_and_verifies_wavefunctions(
-    tmp_path, monkeypatch
-):
+def test_runner_and_collector_fail_before_using_wfn_only_states(tmp_path):
     projectile = get_projectile("C")
     geometry = build_scan_geometries(projectile)[0]
     manifest_path = build_workflow(
@@ -184,82 +199,34 @@ def test_runner_resumes_states_then_mixed_and_verifies_wavefunctions(
         geometries=(geometry,),
     )
 
-    def fake_cp2k(args, *, cwd, stdout, **_kwargs):
-        input_text = (Path(cwd) / args[-1]).read_text(encoding="utf-8")
-        if "METHOD MIXED" in input_text:
-            stdout.write(
-                """
-                CDFT SCF loop converged in 1 iterations or 1 steps
-                CDFT SCF loop converged in 1 iterations or 1 steps
-                MIXED_CDFT| Activating mixed CDFT calculation
-                Overlap between states I and J: 0.03
-                Charge transfer energy (J-I) (Hartree): 0.001
-                Diabatic electronic coupling (rotation, mHartree): 2.1
-                Diabatic electronic coupling (Lowdin, mHartree): 2.0
-                PROGRAM ENDED AT 2026-08-06 12:00:00
-                """
-            )
-        else:
-            project = next(
-                line.split(maxsplit=1)[1]
-                for line in input_text.splitlines()
-                if line.strip().startswith("PROJECT ")
-            )
-            target = next(
-                line.split()[1]
-                for line in input_text.splitlines()
-                if line.strip().startswith("TARGET ")
-            )
-            (Path(cwd) / f"{project}-RESTART.wfn").write_bytes(
-                f"wavefunction target={target}".encode()
-            )
-            stdout.write(
-                f"""
-                *** SCF run converged in 1 steps ***
-                ENERGY| Total FORCE_EVAL ( QS ) energy (a.u.): -75.0
-                CDFT SCF loop converged in 1 iterations or 1 steps
-                Target value of constraint  : {target}
-                Current value of constraint : {target}
-                Deviation from target       : 0.0
-                Strength of constraint      : 0.25
-                PROGRAM ENDED AT 2026-08-06 12:00:00
-                """
-            )
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr(
-        "low_energy_charge_exchange.workflow.subprocess.run", fake_cp2k
-    )
-    assert run_workflow_tasks(
-        manifest_path, cp2k_command="fake-cp2k", progress=False
-    ) == (3, 0)
-    assert run_workflow_tasks(
-        manifest_path, cp2k_command="fake-cp2k", progress=False
-    ) == (0, 3)
     manifest = load_workflow_manifest(manifest_path)
     unit = manifest["work_units"][0]
-    mixed_result = json.loads(
-        (manifest_path.parent / unit["mixed_task"]["result_path"]).read_text()
-    )
-    assert mixed_result["valid_completion"]
-    table_path, collection_path = collect_workflow(
-        manifest_path, tmp_path / "collected"
-    )
-    assert table_path.read_text().count("\n") == 2
-    collection = json.loads(collection_path.read_text())
-    assert collection["numerical_status"] == "complete"
-    assert collection["cross_section_status"] == "not_computed"
     entrance = unit["state_tasks"]["entrance"]
-    entrance_result = json.loads(
-        (manifest_path.parent / entrance["result_path"]).read_text()
+    legacy_directory = manifest_path.parent / entrance["task_directory"]
+    legacy_directory.mkdir(parents=True)
+    (legacy_directory / "legacy-RESTART.wfn").write_bytes(b"wfn only")
+    (legacy_directory / "task_result.json").write_text(
+        json.dumps({"status": "complete", "cdft_strength": 0.25}),
+        encoding="utf-8",
     )
-    assert entrance_result["wavefunction_sha256"]
-    wavefunction = manifest_path.parent / entrance_result["wavefunction_path"]
-    wavefunction.write_bytes(b"changed after convergence")
-    with pytest.raises(RuntimeError, match="wavefunction changed"):
+    marker = tmp_path / "cp2k_was_started"
+    fake_cp2k = tmp_path / "fake_cp2k.py"
+    fake_cp2k.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('started', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="Accepted-state handoff"):
         run_workflow_tasks(
-            manifest_path, cp2k_command="fake-cp2k", progress=False
+            manifest_path,
+            cp2k_command=f"{sys.executable} {fake_cp2k}",
+            progress=False,
         )
+    assert not marker.exists()
+    collection_directory = tmp_path / "collected"
+    with pytest.raises(RuntimeError, match="Accepted-state handoff"):
+        collect_workflow(manifest_path, collection_directory)
+    assert not collection_directory.exists()
 
 
 def test_landau_zener_primitives_are_bounded_and_unit_explicit():

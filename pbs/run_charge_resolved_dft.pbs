@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 #PBS -N ion_cdft
 #PBS -q idle
-#PBS -l select=1:ncpus=8:mem=128gb
+#PBS -l select=1:ncpus=16:mem=160gb
 #PBS -l walltime=500:00:00
 #PBS -j oe
 
 # Run one restart-safe shard of a fixed-charge ion--H2O CP2K workflow.
-# One shard runs one eight-rank CP2K calculation. The 128-GB envelope follows
-# the exact-input scaling gate; reduce it only from successful PBS accounting
-# for the relevant projectile and charge-state workload.
+# One shard runs one 16-rank CP2K calculation. The carbon exact-input gate
+# converged reproducibly in 23 iterations and ran 1.45--1.48 times faster than
+# eight ranks. The corrected all-charge diagonalization gate then measured a
+# 127.46-GB peak for isolated carbon ions. The 160-GB envelope retains 25%
+# headroom over that observed peak; revise it only from successful accounting.
 
 set -euo pipefail
 umask 002
@@ -31,11 +33,19 @@ cd "${REPO_ROOT}"
 NEP_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
 PYTHON_BIN="${PYTHON_BIN:-${NEP_DIR}/.venv/bin/python}"
 RUNNER="${NEP_DIR}/run_charge_resolved_dft.py"
-ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-0}}"
+LOCAL_ARRAY_INDEX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-0}}"
+SHARD_OFFSET="${SHARD_OFFSET:-0}"
 SHARD_COUNT="${SHARD_COUNT:-1}"
 
-if [[ ! "${ARRAY_INDEX}" =~ ^[0-9]+$ || ! "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ || "${ARRAY_INDEX}" -ge "${SHARD_COUNT}" ]]; then
-    echo "Require integer 0 <= PBS_ARRAY_INDEX < SHARD_COUNT." >&2
+if [[ ! "${LOCAL_ARRAY_INDEX}" =~ ^[0-9]+$ \
+      || ! "${SHARD_OFFSET}" =~ ^[0-9]+$ \
+      || ! "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Array index, shard offset, and shard count must be integers." >&2
+    exit 2
+fi
+ARRAY_INDEX=$((LOCAL_ARRAY_INDEX + SHARD_OFFSET))
+if (( ARRAY_INDEX >= SHARD_COUNT )); then
+    echo "Require local array index + shard offset < shard count." >&2
     exit 2
 fi
 if [[ ! -x "${PYTHON_BIN}" || ! -f "${RUNNER}" || ! -f "${MANIFEST}" ]]; then
@@ -84,7 +94,7 @@ echo "Repository: ${REPO_ROOT}"
 echo "Commit: $(git rev-parse HEAD)"
 echo "Host: $(hostname)"
 echo "Manifest: ${MANIFEST}"
-echo "Shard: ${ARRAY_INDEX}/${SHARD_COUNT}"
+echo "Shard: ${ARRAY_INDEX}/${SHARD_COUNT} (local ${LOCAL_ARRAY_INDEX}, offset ${SHARD_OFFSET})"
 echo "CP2K: ${CP2K_COMMAND}"
 echo "MPI ranks: ${CP2K_MPI_RANKS}"
 echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

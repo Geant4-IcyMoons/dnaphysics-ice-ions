@@ -149,10 +149,12 @@ def build_scan_geometry(
     projectile_position = anchor + separation * direction
     distances = np.linalg.norm(_WATER - projectile_position, axis=1)
     elements = ("O", "H", "H")
+    if len(elements) != len(_WATER):
+        raise RuntimeError("Water element and coordinate counts differ.")
     coordinates = [(projectile_symbol, *projectile_position)]
     coordinates.extend(
         (element, *position)
-        for element, position in zip(elements, _WATER, strict=True)
+        for element, position in zip(elements, _WATER)
     )
     return ScanGeometry(
         orientation=orientation.name,

@@ -22,7 +22,9 @@ energy, outside the paper's 70 MeV total-energy range.
 The code implements:
 
 * the Garvey screened-core potential (paper equations 6-9);
-* microcanonical initial electron sampling (equations 3-5);
+* the Olson--Salop initial-electron prescription cited by the paper
+  (equations 3-5), with a separately labelled independent-isotropic
+  equation-(4) sensitivity mode;
 * the paper's 12 relative-coordinate equations with a Numba-compiled
   adaptive DOP853 integrator (SciPy DOP853 remains as a reference backend);
 * the modified IEVM and IPM channel construction (equations 13-19);
@@ -117,6 +119,8 @@ from constants import (
     CARBON_CTMC_ENERGY_SPACING,
     CARBON_CTMC_IMPACT_POINTS,
     CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS,
+    CARBON_CTMC_LEGACY_MAXIMUM_INTEGRATION_STEPS,
+    CTMC_INTEGRATOR_POLICY_VERSION,
     CARBON_CTMC_RADIAL_GRID_POINTS,
     CARBON_CTMC_SEED,
     CARBON_CTMC_TRAJECTORIES,
@@ -142,6 +146,17 @@ from constants import (
     SULFUR_CHARGE_EXCHANGE_DIR,
     a0,
 )
+
+TrajectoryChunkKey = tuple[int, int, int, int]
+TrajectoryChunkResult = tuple[
+    int, int, int, int, int, int, int, int, int, int, float
+]
+TrajectoryTask = tuple[
+    int, int, float, int, int, float, int, int, int, float, float
+]
+BufferedChunkResults = dict[
+    TrajectoryChunkKey, dict[int, TrajectoryChunkResult]
+]
 
 try:
     from ctmc_numba_backend import (
@@ -519,14 +534,28 @@ class CorePotential:
     zeta: float
 
     @classmethod
-    def from_zn(cls, nuclear_charge: int, spectators: int) -> "CorePotential":
+    def from_zn(
+        cls,
+        nuclear_charge: int,
+        spectators: int,
+        *,
+        garvey_a: int = 0,
+    ) -> "CorePotential":
+        """Construct one Garvey core with an explicit optional role term.
+
+        ``garvey_a=0`` preserves the Liamsuwan-thesis convention used by the
+        production model.  ``garvey_a=1`` is exposed only for the separately
+        labelled role-dependent sensitivity test.
+        """
+        if int(garvey_a) not in (0, 1):
+            raise ValueError("garvey_a must be zero or one")
         try:
             p = SCREENING_BY_SPECTATORS[int(spectators)]
         except KeyError as exc:
             raise ValueError(
                 f"No Garvey screening parameters for N={spectators}"
             ) from exc
-        charge_offset = nuclear_charge - spectators - 1
+        charge_offset = nuclear_charge - spectators - 1 - int(garvey_a)
         eta = p.eta0 + p.eta1 * charge_offset
         zeta = p.zeta0 + p.zeta1 * charge_offset
         if spectators == 0:
@@ -568,6 +597,8 @@ class CTMCConfig:
     maximum_integration_steps: int
     seed: int
     projectile: str = "carbon"
+    initial_ensemble: str = "liamsuwan_olson_salop_tangent"
+    projectile_loss_initialization: str = "projectile_ion_com_balanced"
 
 
 def select_projectile(projectile_key: str) -> ProjectileSpec:
@@ -605,11 +636,82 @@ _WORKER_CONFIG: CTMCConfig | None = None
 LOSS_CHANNEL_INDEX = len(WATER_ORBITALS)
 CHANNEL_COUNT = LOSS_CHANNEL_INDEX + 1
 
-# Equation (5) consumes one radial variate. The published initial-direction
-# prescription consumes two position-angle variates and one momentum phase
-# eta. Advancing PCG64 by this fixed amount gives every trajectory a
-# scheduling- and chunk-size-independent random stream.
+INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP = (
+    "liamsuwan_olson_salop_tangent"
+)
+INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC = "independent_isotropic_sensitivity"
+INITIAL_ENSEMBLE_CHOICES = (
+    INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
+    INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC,
+)
+
+PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED = "projectile_ion_com_balanced"
+PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS = "ctmc81_screened_nucleus"
+PROJECTILE_LOSS_INITIALIZATION_CHOICES = (
+    PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED,
+    PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS,
+)
+
+# Equation (5) consumes one radial variate and the position consumes two
+# angular variates.  The Olson--Salop prescription cited by Liamsuwan and
+# Nikjoo uses one additional azimuth in the plane tangent to r.  The separate
+# equation-(4) sensitivity ensemble uses two independent momentum angles.
+# Keep the historical name as the paper-reproduction default for consumers
+# that only need the default stream stride.
 RANDOM_DRAWS_PER_TRAJECTORY = 4
+
+
+def random_draws_per_trajectory(initial_ensemble: str) -> int:
+    """Return the exact PCG64 stride for one declared initial ensemble."""
+    if initial_ensemble == INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP:
+        return 4
+    if initial_ensemble == INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC:
+        return 5
+    raise ValueError(f"Unknown CTMC initial ensemble {initial_ensemble!r}")
+
+
+def initial_ensemble_metadata(initial_ensemble: str) -> dict[str, object]:
+    """Describe one signed sampler without conflating its scientific role."""
+    draws = random_draws_per_trajectory(initial_ensemble)
+    paper_reproduction = (
+        initial_ensemble == INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP
+    )
+    return {
+        "mode": initial_ensemble,
+        "role": (
+            "historical_paper_reproduction"
+            if paper_reproduction
+            else "unvalidated_equation4_sensitivity"
+        ),
+        "paper_equations": [4, 5],
+        "position_direction": "isotropic",
+        "momentum_direction": (
+            "uniform in tangent plane (Olson--Salop equation 7)"
+            if paper_reproduction
+            else "independent isotropic sensitivity"
+        ),
+        "paper_reproduction": paper_reproduction,
+        "random_draws_per_trajectory": draws,
+    }
+
+
+def projectile_loss_initialization_metadata(mode: str) -> dict[str, object]:
+    """Describe which projectile quantity follows the prescribed beam path."""
+    if mode == PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED:
+        return {
+            "mode": mode,
+            "role": "stationary_microcanonical_production_candidate",
+            "prescribed_beam_path": "projectile_ion_center_of_mass",
+            "ctmc81_reproduction": False,
+        }
+    if mode == PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS:
+        return {
+            "mode": mode,
+            "role": "historical_ctmc81_reproduction",
+            "prescribed_beam_path": "screened_projectile_nucleus",
+            "ctmc81_reproduction": True,
+        }
+    raise ValueError(f"Unknown projectile-loss initialization {mode!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -961,6 +1063,7 @@ def sample_bound_electron(
     core_velocity: np.ndarray,
     radial_grid_points: int,
     rng: np.random.Generator,
+    initial_ensemble: str = INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
 ) -> tuple[np.ndarray, np.ndarray]:
     radii, cumulative = _microcanonical_radius_cdf(
         core.nuclear_charge,
@@ -992,20 +1095,38 @@ def sample_bound_electron(
     binding_ha = binding_eV / EV_PER_HARTREE
     kinetic_ha = potential_magnitude(core, radius) - binding_ha
     momentum = math.sqrt(max(2.0 * reduced_mass * kinetic_ha, 0.0))
-    eta = rng.uniform(0.0, 2.0 * math.pi)
-    cos_eta = math.cos(eta)
-    sin_eta = math.sin(eta)
-    # Olson--Salop direction used by Liamsuwan and Nikjoo (the author's
-    # detailed equation 44). It is identically perpendicular to the sampled
-    # radius. Independently randomizing momentum was not the published model.
-    momentum_direction = np.array(
-        [
-            -sin_phi * cos_eta - cos_phi * cos_theta * sin_eta,
-            cos_phi * cos_eta - sin_phi * cos_theta * sin_eta,
-            sin_theta * sin_eta,
-        ],
-        dtype=float,
-    )
+    if initial_ensemble == INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP:
+        eta = rng.uniform(0.0, 2.0 * math.pi)
+        cos_eta = math.cos(eta)
+        sin_eta = math.sin(eta)
+        # Olson and Salop (1977), equation (7): the momentum direction is
+        # uniform in the plane perpendicular to the sampled radius.  This is
+        # the explicit initialization algorithm cited by Liamsuwan and
+        # Nikjoo (2013), despite the broader equation-(4) phase-space form.
+        momentum_direction = np.array(
+            [
+                -sin_phi * cos_eta - cos_phi * cos_theta * sin_eta,
+                cos_phi * cos_eta - sin_phi * cos_theta * sin_eta,
+                sin_theta * sin_eta,
+            ],
+            dtype=float,
+        )
+    elif initial_ensemble == INITIAL_ENSEMBLE_INDEPENDENT_ISOTROPIC:
+        momentum_cos_theta = rng.uniform(-1.0, 1.0)
+        momentum_sin_theta = math.sqrt(
+            max(1.0 - momentum_cos_theta * momentum_cos_theta, 0.0)
+        )
+        momentum_phi = rng.uniform(0.0, 2.0 * math.pi)
+        momentum_direction = np.array(
+            [
+                momentum_sin_theta * math.cos(momentum_phi),
+                momentum_sin_theta * math.sin(momentum_phi),
+                momentum_cos_theta,
+            ],
+            dtype=float,
+        )
+    else:
+        raise ValueError(f"Unknown CTMC initial ensemble {initial_ensemble!r}")
     relative_velocity = (momentum / reduced_mass) * momentum_direction
 
     return (
@@ -1037,15 +1158,20 @@ def paper_minimum_integration_time_au(energy_keV_u: float) -> float:
 
 @lru_cache(maxsize=16)
 def _trajectory_cores(
-    charge_state: int, bound_to: str
+    charge_state: int,
+    bound_to: str,
+    garvey_role_term: bool = False,
 ) -> tuple[CorePotential, CorePotential]:
-    """Build the two invariant screened cores once per worker and channel."""
+    """Build invariant cores, optionally shifting only the perturbing core."""
     q = int(charge_state)
+    perturbing_a = int(bool(garvey_role_term))
     if bound_to == "target":
         return (
             CorePotential.from_zn(WATER_PSEUDO_NUCLEAR_CHARGE, 9),
             CorePotential.from_zn(
-                PROJECTILE_NUCLEAR_CHARGE, PROJECTILE_NUCLEAR_CHARGE - q
+                PROJECTILE_NUCLEAR_CHARGE,
+                PROJECTILE_NUCLEAR_CHARGE - q,
+                garvey_a=perturbing_a,
             ),
         )
     if bound_to == "projectile":
@@ -1054,7 +1180,11 @@ def _trajectory_cores(
                 f"{PROJECTILE.symbol}{q}+ has no projectile electron to lose"
             )
         return (
-            CorePotential.from_zn(WATER_PSEUDO_NUCLEAR_CHARGE, 10),
+            CorePotential.from_zn(
+                WATER_PSEUDO_NUCLEAR_CHARGE,
+                10,
+                garvey_a=perturbing_a,
+            ),
             CorePotential.from_zn(
                 PROJECTILE_NUCLEAR_CHARGE,
                 PROJECTILE_NUCLEAR_CHARGE - q - 1,
@@ -1102,9 +1232,25 @@ def _build_initial_relative_state(
     projectile_core: CorePotential,
     radial_grid_points: int,
     rng: np.random.Generator,
+    projectile_velocity_override_au: float | None = None,
+    initial_ensemble: str = INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
+    projectile_loss_initialization: str = (
+        PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED
+    ),
 ) -> np.ndarray:
     """Build the paper's 12 scheme-specific relative variables."""
-    velocity = projectile_velocity_au(energy_keV_u)
+    if projectile_loss_initialization not in (
+        PROJECTILE_LOSS_INITIALIZATION_CHOICES
+    ):
+        raise ValueError(
+            "Unknown projectile-loss initialization "
+            f"{projectile_loss_initialization!r}"
+        )
+    velocity = (
+        projectile_velocity_au(energy_keV_u)
+        if projectile_velocity_override_au is None
+        else float(projectile_velocity_override_au)
+    )
     target_position = np.zeros(3, dtype=float)
     target_velocity = np.zeros(3, dtype=float)
     projectile_center_position = np.array(
@@ -1126,6 +1272,7 @@ def _build_initial_relative_state(
             origin,
             radial_grid_points,
             rng,
+            initial_ensemble,
         )
         target_fraction = ELECTRON_MASS_AU / (
             WATER_MASS_AU + ELECTRON_MASS_AU
@@ -1145,18 +1292,32 @@ def _build_initial_relative_state(
             origin,
             radial_grid_points,
             rng,
+            initial_ensemble,
         )
-        projectile_fraction = ELECTRON_MASS_AU / (
-            PROJECTILE_MASS_AU + ELECTRON_MASS_AU
-        )
-        projectile_position = (
-            projectile_center_position
-            - projectile_fraction * electron_offset
-        )
-        projectile_velocity = (
-            projectile_center_velocity
-            - projectile_fraction * electron_relative_velocity
-        )
+        if (
+            projectile_loss_initialization
+            == PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED
+        ):
+            projectile_fraction = ELECTRON_MASS_AU / (
+                PROJECTILE_MASS_AU + ELECTRON_MASS_AU
+            )
+            projectile_position = (
+                projectile_center_position
+                - projectile_fraction * electron_offset
+            )
+            projectile_velocity = (
+                projectile_center_velocity
+                - projectile_fraction * electron_relative_velocity
+            )
+        elif (
+            projectile_loss_initialization
+            == PROJECTILE_LOSS_INITIALIZATION_CTMC81_NUCLEUS
+        ):
+            # Liamsuwan prescribes r_p and v_p for the screened projectile
+            # nucleus. Appendix B switches projectile and target indices for
+            # projectile loss without recoil-balancing this nucleus.
+            projectile_position = projectile_center_position
+            projectile_velocity = projectile_center_velocity
         electron_position = projectile_position + electron_offset
         electron_velocity = (
             projectile_velocity + electron_relative_velocity
@@ -1206,12 +1367,19 @@ def _integrate_scipy_until_separated(
     rtol: float,
     atol: float,
     max_step: float,
+    stop_at_minimum_time: bool = False,
+    terminal_core_distance_au: float | None = None,
 ) -> np.ndarray | None:
-    """SciPy reference integration with the paper's exit condition."""
+    """SciPy integration with either a fixed-time or separation exit."""
     positions = initial_state[:9].reshape(3, 3)
     velocities = initial_state[9:].reshape(3, 3)
     initial_displacement = positions[1] - positions[0]
     initial_core_distance = float(np.linalg.norm(initial_displacement))
+    terminal_core_distance = (
+        initial_core_distance
+        if terminal_core_distance_au is None
+        else float(terminal_core_distance_au)
+    )
     initial_relative_speed = float(
         np.linalg.norm(velocities[1] - velocities[0])
     )
@@ -1236,7 +1404,10 @@ def _integrate_scipy_until_separated(
         state = solution.y[:, -1]
         elapsed = minimum_integration_time_au
 
-    if _cores_are_separated_and_receding(state, initial_core_distance):
+    if stop_at_minimum_time:
+        return state
+
+    if _cores_are_separated_and_receding(state, terminal_core_distance):
         return state
 
     # This is only a solver restart interval; it is not a physical boundary.
@@ -1254,7 +1425,7 @@ def _integrate_scipy_until_separated(
     ) -> float:
         candidate_positions = candidate[:9].reshape(3, 3)
         displacement = candidate_positions[1] - candidate_positions[0]
-        return float(np.linalg.norm(displacement) - initial_core_distance)
+        return float(np.linalg.norm(displacement) - terminal_core_distance)
 
     outward_initial_boundary.terminal = True
     outward_initial_boundary.direction = 1.0
@@ -1291,12 +1462,19 @@ def simulate_one_trajectory(
     minimum_integration_time_au: float,
     config: CTMCConfig,
     rng: np.random.Generator,
+    fixed_time_endpoint: bool = False,
+    retain_ambiguous_endpoint: bool = False,
+    projectile_velocity_override_au: float | None = None,
+    minimum_terminal_core_separation_au: float | None = None,
+    garvey_role_term: bool = False,
 ) -> tuple[str, bool, float]:
     """
     Return (outcome, success, relative total-energy drift).
 
     Outcomes are "ionized", "captured_projectile", "retained_target", and
-    "ambiguous_bound". In the target-electron scheme, capture means the
+    "ambiguous_bound". ``fixed_time_endpoint`` reproduces a disclosed CTMC
+    reference interval exactly; the default retains the production
+    separation-convergence endpoint. In the target-electron scheme, capture means the
     physically required E_ep <= 0 and E_et > 0. The inequality printed for
     capture in the paper's prose is reversed relative to the definitions of
     E_et and E_ep and would classify an electron retained by H2O as captured.
@@ -1304,7 +1482,11 @@ def simulate_one_trajectory(
     q = int(charge_state)
     if bound_to == "projectile" and q not in PROJECTILE_OUTER_ORBITAL:
         return "retained_target", True, 0.0
-    target_core, projectile_core = _trajectory_cores(q, bound_to)
+    target_core, projectile_core = _trajectory_cores(
+        q,
+        bound_to,
+        garvey_role_term,
+    )
     if bound_to == "target":
         reference_core = target_core
         other_core = projectile_core
@@ -1317,9 +1499,9 @@ def simulate_one_trajectory(
         reference_mass = PROJECTILE_MASS_AU
         other_mass = WATER_MASS_AU
 
-    # A boundary-convergence retry must preserve the sampled microcanonical
-    # phase and consume exactly four random draws, just like every other
-    # trajectory. Rewinding before each larger-boundary attempt achieves both.
+    # A boundary-convergence retry must preserve the sampled phase and exact
+    # ensemble-specific random-stream stride. Rewinding before each
+    # larger-boundary attempt achieves both.
     initial_rng_state = rng.bit_generator.state
     separation = float(start_separation_au)
     while True:
@@ -1333,6 +1515,11 @@ def simulate_one_trajectory(
             projectile_core=projectile_core,
             radial_grid_points=config.radial_grid_points,
             rng=rng,
+            projectile_velocity_override_au=projectile_velocity_override_au,
+            initial_ensemble=config.initial_ensemble,
+            projectile_loss_initialization=(
+                config.projectile_loss_initialization
+            ),
         )
         initial_energy = relative_three_body_energy(
             initial_relative,
@@ -1370,6 +1557,12 @@ def simulate_one_trajectory(
                     reference_mass,
                     other_mass,
                     config.maximum_integration_steps,
+                    fixed_time_endpoint,
+                    (
+                        -1.0
+                        if minimum_terminal_core_separation_au is None
+                        else minimum_terminal_core_separation_au
+                    ),
                 )
                 if not success:
                     candidate = None
@@ -1392,6 +1585,10 @@ def simulate_one_trajectory(
                     rtol=integration_rtol,
                     atol=integration_atol,
                     max_step=max_step,
+                    stop_at_minimum_time=fixed_time_endpoint,
+                    terminal_core_distance_au=(
+                        minimum_terminal_core_separation_au
+                    ),
                 )
                 if final_state is not None and np.all(
                     np.isfinite(final_state)
@@ -1441,43 +1638,122 @@ def simulate_one_trajectory(
             # positive Sundman time parameter. This changes only numerical
             # parameterization, not the paper's Newtonian equations,
             # potentials, initial state, acceptance limit, or endpoint.
-            for integration_rtol, integration_atol in tolerance_pairs:
-                success, candidate, _, _ = (
-                    integrate_relative_dop853_regularized(
-                        initial_relative,
-                        minimum_integration_time_au,
-                        _cached_core_parameters(reference_core),
-                        _cached_core_parameters(other_core),
-                        integration_rtol,
-                        integration_atol,
-                        config.max_step_au,
-                        config.minimum_radius_au,
-                        reference_mass,
-                        other_mass,
-                        config.maximum_relative_energy_drift,
-                        config.maximum_integration_steps,
+            for sundman_power in (1, 2):
+                for integration_rtol, integration_atol in tolerance_pairs:
+                    success, candidate, _, _ = (
+                        integrate_relative_dop853_regularized(
+                            initial_relative,
+                            minimum_integration_time_au,
+                            _cached_core_parameters(reference_core),
+                            _cached_core_parameters(other_core),
+                            integration_rtol,
+                            integration_atol,
+                            config.max_step_au,
+                            config.minimum_radius_au,
+                            reference_mass,
+                            other_mass,
+                            sundman_power,
+                            config.maximum_relative_energy_drift,
+                            config.maximum_integration_steps,
+                            fixed_time_endpoint,
+                            (
+                                -1.0
+                                if minimum_terminal_core_separation_au is None
+                                else minimum_terminal_core_separation_au
+                            ),
+                        )
                     )
-                )
-                if not success or not np.all(np.isfinite(candidate)):
-                    continue
-                candidate_energy = relative_three_body_energy(
-                    candidate,
-                    target_core,
-                    projectile_core,
-                    config.minimum_radius_au,
-                    bound_to,
-                )
-                candidate_drift = abs(
-                    candidate_energy - initial_energy
-                ) / max(abs(initial_energy), 1.0)
-                had_finite_endpoint = True
-                if candidate_drift <= final_energy_drift:
-                    final_relative = candidate
-                    final_energy_drift = float(candidate_drift)
-                if (
-                    candidate_drift
-                    <= config.maximum_relative_energy_drift
-                ):
+                    if not success or not np.all(np.isfinite(candidate)):
+                        continue
+                    candidate_energy = relative_three_body_energy(
+                        candidate,
+                        target_core,
+                        projectile_core,
+                        config.minimum_radius_au,
+                        bound_to,
+                    )
+                    candidate_drift = abs(
+                        candidate_energy - initial_energy
+                    ) / max(abs(initial_energy), 1.0)
+                    had_finite_endpoint = True
+                    if candidate_drift <= final_energy_drift:
+                        final_relative = candidate
+                        final_energy_drift = float(candidate_drift)
+                    if (
+                        candidate_drift
+                        <= config.maximum_relative_energy_drift
+                    ):
+                        break
+                if final_energy_drift <= config.maximum_relative_energy_drift:
+                    break
+
+        # The finite work budget is a liveness trigger, not a physical
+        # trajectory boundary. A full microcanonical ensemble contains rare
+        # highly eccentric bound phases that can require more than the
+        # audited finite budget even after Sundman reparameterization. Repeat
+        # the same regularized initial-value problem without a step ceiling
+        # whenever the bounded ladder has produced no *acceptable* endpoint.
+        # A finite endpoint outside the unchanged energy-conservation gate is
+        # not a physical result and must not suppress this continuation.
+        # Existing trajectories accepted under the bounded retry sequence are
+        # unchanged.
+        if (
+            (
+                final_relative is None
+                or final_energy_drift
+                > config.maximum_relative_energy_drift
+            )
+            and config.backend == "numba"
+            and config.maximum_integration_steps > 0
+            and integrate_relative_dop853_regularized is not None
+        ):
+            for sundman_power in (1, 2):
+                for integration_rtol, integration_atol in tolerance_pairs:
+                    success, candidate, _, _ = (
+                        integrate_relative_dop853_regularized(
+                            initial_relative,
+                            minimum_integration_time_au,
+                            _cached_core_parameters(reference_core),
+                            _cached_core_parameters(other_core),
+                            integration_rtol,
+                            integration_atol,
+                            config.max_step_au,
+                            config.minimum_radius_au,
+                            reference_mass,
+                            other_mass,
+                            sundman_power,
+                            config.maximum_relative_energy_drift,
+                            0,
+                            fixed_time_endpoint,
+                            (
+                                -1.0
+                                if minimum_terminal_core_separation_au is None
+                                else minimum_terminal_core_separation_au
+                            ),
+                        )
+                    )
+                    if not success or not np.all(np.isfinite(candidate)):
+                        continue
+                    candidate_energy = relative_three_body_energy(
+                        candidate,
+                        target_core,
+                        projectile_core,
+                        config.minimum_radius_au,
+                        bound_to,
+                    )
+                    candidate_drift = abs(
+                        candidate_energy - initial_energy
+                    ) / max(abs(initial_energy), 1.0)
+                    had_finite_endpoint = True
+                    if candidate_drift <= final_energy_drift:
+                        final_relative = candidate
+                        final_energy_drift = float(candidate_drift)
+                    if (
+                        candidate_drift
+                        <= config.maximum_relative_energy_drift
+                    ):
+                        break
+                if final_energy_drift <= config.maximum_relative_energy_drift:
                     break
 
         if not had_finite_endpoint:
@@ -1488,7 +1764,6 @@ def simulate_one_trajectory(
         ):
             return "energy_conservation_failure", False, final_energy_drift
         energy_drift = final_energy_drift
-
         if bound_to == "target":
             energy_target = _electron_core_energy_relative(
                 final_relative,
@@ -1526,6 +1801,11 @@ def simulate_one_trajectory(
             return "captured_projectile", True, float(energy_drift)
         if energy_target <= 0.0 and energy_projectile > 0.0:
             return "retained_target", True, float(energy_drift)
+
+        # CTMC81 retains this finite-time category explicitly as ``null``.
+        # Production instead applies the paper's boundary-convergence remedy.
+        if retain_ambiguous_endpoint:
+            return "ambiguous_bound", True, float(energy_drift)
 
         # E_et <= 0 and E_ep <= 0 is the paper's non-physical final state.
         # Apply its prescribed remedy by increasing z0 and integrating the
@@ -1565,6 +1845,7 @@ def _channel_rng(
     impact_index: int,
     channel_index: int,
     trajectory_start: int,
+    initial_ensemble: str = INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
 ) -> np.random.Generator:
     """Return the deterministic stream at one channel trajectory offset."""
     seed = np.random.SeedSequence(
@@ -1578,7 +1859,8 @@ def _channel_rng(
     )
     bit_generator = np.random.PCG64(seed)
     bit_generator.advance(
-        int(trajectory_start) * RANDOM_DRAWS_PER_TRAJECTORY
+        int(trajectory_start)
+        * random_draws_per_trajectory(initial_ensemble)
     )
     return np.random.Generator(bit_generator)
 
@@ -1628,6 +1910,7 @@ def _compute_trajectory_chunk(
         impact_index,
         channel_index,
         trajectory_start,
+        config.initial_ensemble,
     )
 
     primary_events = 0
@@ -2089,9 +2372,31 @@ def configuration_signature(
 ) -> str:
     config_payload = asdict(config)
     projectile_key = str(config_payload.pop("projectile", "carbon"))
+    loss_initialization = str(
+        config_payload.pop(
+            "projectile_loss_initialization",
+            PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED,
+        )
+    )
+    # The existing production trajectories already use the COM-balanced
+    # algorithm, so preserve their audited checkpoint signature. Only an
+    # explicitly different initialization changes the production signature.
+    if loss_initialization != PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED:
+        config_payload["projectile_loss_initialization"] = loss_initialization
     # Scheduling granularity does not alter trajectory streams or physics and
     # may be tuned safely when resuming.
     config_payload.pop("trajectory_chunk_size", None)
+    # The finite defaults replaced the legacy unbounded value after completed
+    # production and adaptive-grid trajectories were audited. Preserve
+    # compatibility only for those audited transitions. An arbitrary lower
+    # ceiling can select a tighter retry and therefore remains part of the
+    # numerical configuration signature.
+    if config_payload["maximum_integration_steps"] in (
+        0,
+        CARBON_CTMC_LEGACY_MAXIMUM_INTEGRATION_STEPS,
+        CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS,
+    ):
+        config_payload["maximum_integration_steps"] = 0
     if not np.isfinite(config_payload["max_step_au"]):
         config_payload["max_step_au"] = None
     payload = {
@@ -2099,10 +2404,11 @@ def configuration_signature(
         "charges": charges.tolist(),
         "impact_au": impact_au.tolist(),
         "config": config_payload,
-        "model_version": 9,
+        "model_version": 11,
     }
-    # Preserve the exact legacy carbon signature so all live carbon shards can
-    # continue from checkpoints created before the shared-engine refactor.
+    # Model version 11 rejects older sampler conventions. The separately
+    # signed CTMC81 nucleus mode changes this payload and cannot reuse a
+    # COM-balanced checkpoint.
     if projectile_key != "carbon":
         projectile = PROJECTILES[projectile_key]
         payload["projectile"] = {
@@ -2141,7 +2447,24 @@ def save_checkpoint(
     accumulators: TrajectoryAccumulators,
     execution_workers: int,
     ownership_generation: str | None = None,
+    buffered_results: BufferedChunkResults | None = None,
 ) -> None:
+    ordered_buffered_results = sorted(
+        (
+            result
+            for channel_buffer in (buffered_results or {}).values()
+            for result in channel_buffer.values()
+        ),
+        key=lambda result: result[:5],
+    )
+    buffered_integer_fields = np.asarray(
+        [result[:10] for result in ordered_buffered_results],
+        dtype=np.int64,
+    ).reshape((-1, 10))
+    buffered_maximum_drift = np.asarray(
+        [result[10] for result in ordered_buffered_results],
+        dtype=float,
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp.npz")
     np.savez_compressed(
@@ -2163,10 +2486,50 @@ def save_checkpoint(
         channel_successes=accumulators.successes,
         channel_maximum_energy_drift=accumulators.maximum_energy_drift,
         channel_completed=accumulators.completed,
+        buffered_chunk_integer_fields=buffered_integer_fields,
+        buffered_chunk_maximum_energy_drift=buffered_maximum_drift,
         execution_workers=np.asarray(int(execution_workers)),
         ownership_generation=np.asarray(ownership_generation or ""),
     )
     os.replace(temporary, path)
+
+
+def checkpoint_buffered_chunk_results(
+    checkpoint: dict[str, np.ndarray],
+) -> BufferedChunkResults:
+    """Restore sparse completed chunks that follow an unfinished prefix."""
+    if "buffered_chunk_integer_fields" not in checkpoint:
+        return {}
+    integer_fields = np.asarray(
+        checkpoint["buffered_chunk_integer_fields"], dtype=np.int64
+    )
+    maximum_drift = np.asarray(
+        checkpoint.get(
+            "buffered_chunk_maximum_energy_drift",
+            np.empty(0, dtype=float),
+        ),
+        dtype=float,
+    )
+    if integer_fields.ndim != 2 or integer_fields.shape[1] != 10:
+        raise RuntimeError("Checkpoint has malformed buffered chunk fields")
+    if maximum_drift.shape != (integer_fields.shape[0],):
+        raise RuntimeError("Checkpoint has malformed buffered chunk drifts")
+
+    buffered_results: BufferedChunkResults = {}
+    for integer_row, drift in zip(integer_fields, maximum_drift, strict=True):
+        result: TrajectoryChunkResult = (
+            *(int(value) for value in integer_row),
+            float(drift),
+        )
+        key = result[:4]
+        start = result[4]
+        channel_buffer = buffered_results.setdefault(key, {})
+        if start in channel_buffer:
+            raise RuntimeError(
+                f"Checkpoint contains duplicate buffered chunk {key}@{start}"
+            )
+        channel_buffer[start] = result
+    return buffered_results
 
 
 def save_failure_diagnostic(
@@ -2181,6 +2544,7 @@ def save_failure_diagnostic(
     payload = {
         "status": "trajectory_integration_failure",
         "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "integrator_policy_version": CTMC_INTEGRATOR_POLICY_VERSION,
         "configuration_signature": signature,
         "checkpoint": str(checkpoint_path),
         "detail": detail,
@@ -2316,6 +2680,14 @@ def write_outputs(
         "phase_density_scaling": phase_density_scaling_metadata(),
         "cross_section_unit": "cm2 per H2O molecule",
         "energy_unit": "keV/u",
+        "initial_ensemble": initial_ensemble_metadata(
+            config.initial_ensemble
+        ),
+        "projectile_loss_initialization": (
+            projectile_loss_initialization_metadata(
+                config.projectile_loss_initialization
+            )
+        ),
         "charge_states": charges.tolist(),
         "configuration_signature": signature,
         "workers": int(workers),
@@ -2495,6 +2867,55 @@ def iter_pending_trajectory_tasks(
                             config.minimum_integration_time_au[energy_index],
                         )
                         start += count
+
+
+def iter_tasks_excluding_buffered_chunks(
+    tasks: Iterable[TrajectoryTask],
+    buffered_results: BufferedChunkResults,
+) -> Iterable[TrajectoryTask]:
+    """Yield only trajectory subranges not already stored in a checkpoint."""
+    buffered_ranges = {
+        key: sorted(
+            (start, start + result[5])
+            for start, result in channel_buffer.items()
+        )
+        for key, channel_buffer in buffered_results.items()
+    }
+    for task in tasks:
+        key = (task[0], task[1], task[4], task[6])
+        segments = [(task[7], task[7] + task[8])]
+        for buffered_start, buffered_end in buffered_ranges.get(key, ()):
+            remaining_segments: list[tuple[int, int]] = []
+            for segment_start, segment_end in segments:
+                if (
+                    buffered_end <= segment_start
+                    or buffered_start >= segment_end
+                ):
+                    remaining_segments.append((segment_start, segment_end))
+                    continue
+                if segment_start < buffered_start:
+                    remaining_segments.append(
+                        (segment_start, buffered_start)
+                    )
+                if buffered_end < segment_end:
+                    remaining_segments.append((buffered_end, segment_end))
+            segments = remaining_segments
+            if not segments:
+                break
+        for segment_start, segment_end in segments:
+            yield (
+                task[0],
+                task[1],
+                task[2],
+                task[3],
+                task[4],
+                task[5],
+                task[6],
+                segment_start,
+                segment_end - segment_start,
+                task[9],
+                task[10],
+            )
 
 
 def estimate_remaining_trajectory_count(
@@ -2871,10 +3292,9 @@ def bounded_chunk_results(
         ]
     ],
     maximum_pending: int,
-) -> Iterable[
-    tuple[int, int, int, int, int, int, int, int, int, int, float]
-]:
-    """Keep a bounded worker queue and return chunks as soon as they finish."""
+    heartbeat_seconds: float = 1.0,
+) -> Iterable[TrajectoryChunkResult | None]:
+    """Return completed chunks and periodic checkpoint heartbeats."""
     task_iterator = iter(tasks)
     pending = set()
     for _ in range(maximum_pending):
@@ -2885,7 +3305,14 @@ def bounded_chunk_results(
         pending.add(executor.submit(_compute_trajectory_chunk, task))
 
     while pending:
-        completed, pending = wait(pending, return_when=FIRST_COMPLETED)
+        completed, pending = wait(
+            pending,
+            timeout=heartbeat_seconds,
+            return_when=FIRST_COMPLETED,
+        )
+        if not completed:
+            yield None
+            continue
         for future in completed:
             yield future.result()
             try:
@@ -3127,6 +3554,28 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--initial-ensemble",
+        choices=INITIAL_ENSEMBLE_CHOICES,
+        default=INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP,
+        help=(
+            "Initial angular prescription. The default reproduces the "
+            "Olson--Salop algorithm explicitly cited by Liamsuwan and "
+            "Nikjoo; independent_isotropic_sensitivity is retained only "
+            "as a separately signed equation-(4) sensitivity calculation."
+        ),
+    )
+    parser.add_argument(
+        "--projectile-loss-initialization",
+        choices=PROJECTILE_LOSS_INITIALIZATION_CHOICES,
+        default=PROJECTILE_LOSS_INITIALIZATION_COM_BALANCED,
+        help=(
+            "Projectile quantity assigned the nominal impact parameter and "
+            "beam velocity. The default keeps the projectile-ion center of "
+            "mass stationary; ctmc81_screened_nucleus is the separately "
+            "signed historical reproduction convention."
+        ),
+    )
+    parser.add_argument(
         "--radial-grid-points",
         type=int,
         default=CARBON_CTMC_RADIAL_GRID_POINTS,
@@ -3213,9 +3662,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=CARBON_CTMC_MAXIMUM_INTEGRATION_STEPS,
         help=(
-            "Implementation safety limit on accepted plus rejected DOP853 "
-            "steps; 0 disables it (default, because the paper defines no "
-            "step-count ceiling)."
+            "Numerical work limit for one DOP853 attempt. An exhausted "
+            "attempt cannot contribute an endpoint and advances the identical "
+            "initial condition to the next declared retry; 0 disables the "
+            "safety limit."
         ),
     )
     parser.add_argument(
@@ -3316,6 +3766,16 @@ def build_parser() -> argparse.ArgumentParser:
             "base-grid execution or --merge-shards."
         ),
     )
+    parser.add_argument(
+        "--source-ownership-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "When preparing a new rebalance generation, read the frozen source "
+            "checkpoints using this existing ownership manifest instead of the "
+            "ordinary modulo shard partition."
+        ),
+    )
     adaptive_group = parser.add_mutually_exclusive_group()
     adaptive_group.add_argument(
         "--adaptive-refinement",
@@ -3399,11 +3859,20 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--adaptive-only",
+        "--adaptive-base-curves-only",
         action="store_true",
         help=(
-            "Refine the completed canonical base checkpoint. With multiple "
-            "shards, each process owns disjoint charge/energy families."
+            "First adaptive stage: refine each unique base-energy/charge "
+            "impact curve once. Multi-node interval jobs must depend on all "
+            "jobs in this stage."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-intervals-only",
+        action="store_true",
+        help=(
+            "Second adaptive stage: reuse completed shared base curves and "
+            "calculate only new logarithmic energy midpoints."
         ),
     )
     parser.add_argument(
@@ -3508,33 +3977,43 @@ def validate_args(args: argparse.Namespace) -> None:
         bool(value)
         for value in (
             args.merge_shards,
-            args.adaptive_only,
+            args.adaptive_base_curves_only,
+            args.adaptive_intervals_only,
             args.merge_adaptive_shards,
             args.prepare_rebalance_from_shards is not None,
         )
     )
     if selected_modes > 1:
         raise ValueError(
-            "--merge-shards, --adaptive-only, --merge-adaptive-shards, and "
-            "--prepare-rebalance-from-shards are mutually exclusive"
+            "Base merge, adaptive execution/merge modes, and checkpoint "
+            "rebalancing are mutually exclusive"
         )
     if args.prepare_rebalance_from_shards is not None and args.ownership_manifest:
         raise ValueError(
             "--ownership-manifest names an existing generation and cannot be "
             "combined with --prepare-rebalance-from-shards"
         )
-    if args.ownership_manifest and (
-        args.adaptive_only or args.merge_adaptive_shards
+    if (
+        args.source_ownership_manifest is not None
+        and args.prepare_rebalance_from_shards is None
     ):
+        raise ValueError(
+            "--source-ownership-manifest is only valid with "
+            "--prepare-rebalance-from-shards"
+        )
+    adaptive_execution_mode = (
+        args.adaptive_base_curves_only
+        or args.adaptive_intervals_only
+        or args.merge_adaptive_shards
+    )
+    if args.ownership_manifest and adaptive_execution_mode:
         raise ValueError(
             "Adaptive shards use their own family ownership and do not accept "
             "--ownership-manifest"
         )
     if args.prepare_rebalance_from_shards is not None and args.dry_run:
         raise ValueError("Checkpoint rebalancing cannot be combined with --dry-run")
-    if (args.adaptive_only or args.merge_adaptive_shards) and not (
-        args.adaptive_refinement
-    ):
+    if adaptive_execution_mode and not args.adaptive_refinement:
         raise ValueError(
             "Adaptive execution modes cannot be combined with "
             "--no-adaptive-refinement"
@@ -3778,6 +4257,10 @@ def main(
         maximum_integration_steps=int(args.maximum_integration_steps),
         seed=int(args.seed),
         projectile=PROJECTILE.key,
+        initial_ensemble=str(args.initial_ensemble),
+        projectile_loss_initialization=str(
+            args.projectile_loss_initialization
+        ),
     )
 
     shape = (energies.size, charges.size, impact_au.size)
@@ -3829,6 +4312,7 @@ def main(
         f"{PROJECTILE.key}_charge_exchange_ctmc_failure"
         f"{failure_suffix}.json"
     )
+    buffered_results: BufferedChunkResults = {}
 
     def restore_checkpoint(
         checkpoint: dict[str, np.ndarray],
@@ -3867,6 +4351,55 @@ def main(
             )
         for name, destination in point_fields + accumulator_fields:
             destination[target] = checkpoint[name][target]
+        restored_buffer = checkpoint_buffered_chunk_results(checkpoint)
+        for key, channel_buffer in restored_buffer.items():
+            point = key[:3]
+            if any(
+                index < 0 or index >= extent
+                for index, extent in zip(point, shape, strict=True)
+            ):
+                raise RuntimeError(
+                    f"Checkpoint contains out-of-range buffered key {key}"
+                )
+            if not target[point]:
+                continue
+            if done[point]:
+                raise RuntimeError(
+                    f"Completed point {point} contains buffered chunks"
+                )
+            active_channels = _active_channels(
+                int(charges[point[1]]), float(impact_au[point[2]]), config
+            )
+            if key[3] not in active_channels:
+                raise RuntimeError(
+                    f"Checkpoint contains inactive buffered channel {key}"
+                )
+            expected = int(accumulators.completed[key])
+            destination_buffer = buffered_results.setdefault(key, {})
+            for start, result in channel_buffer.items():
+                count = result[5]
+                if (
+                    start < expected
+                    or count <= 0
+                    or start + count > config.trajectories
+                    or count != result[8] + result[9]
+                ):
+                    raise RuntimeError(
+                        f"Checkpoint contains invalid buffered chunk {key}@{start}"
+                    )
+                if start in destination_buffer:
+                    raise RuntimeError(
+                        f"Duplicate restored buffered chunk {key}@{start}"
+                    )
+                destination_buffer[start] = result
+            previous_end = expected
+            for start, result in sorted(destination_buffer.items()):
+                if start < previous_end:
+                    raise RuntimeError(
+                        f"Checkpoint contains overlapping buffered chunk "
+                        f"{key}@{start}"
+                    )
+                previous_end = start + result[5]
 
     def save_current_checkpoint(path: Path, *, announce: bool = False) -> None:
         save_checkpoint(
@@ -3885,6 +4418,7 @@ def main(
             accumulators=accumulators,
             execution_workers=workers,
             ownership_generation=ownership_generation,
+            buffered_results=buffered_results,
         )
         if announce:
             completed_points = int(np.count_nonzero(done & owner_mask))
@@ -3895,7 +4429,9 @@ def main(
             tqdm.write(
                 f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
                 f"Checkpoint saved: {completed_points:,}/{owned_points:,} "
-                f"points, {completed_trajectories:,} trajectories -> {path}"
+                f"points, {completed_trajectories:,} committed trajectories, "
+                f"{sum(len(chunks) for chunks in buffered_results.values()):,} "
+                f"buffered chunks -> {path}"
             )
 
     def load_complete_canonical_checkpoint() -> dict[str, np.ndarray]:
@@ -3927,9 +4463,22 @@ def main(
             warm_up_numba_backend()
 
     def prepare_rebalanced_generation(source_shard_count: int) -> Path:
+        source_manifest: dict[str, np.ndarray] | None = None
+        source_generation: str | None = None
+        if args.source_ownership_manifest is not None:
+            source_manifest = load_rebalance_manifest(
+                args.source_ownership_manifest,
+                expected_signature=signature,
+                expected_shape=shape,
+                expected_shard_count=source_shard_count,
+            )
+            source_generation = str(source_manifest["generation"].item())
         source_paths = [
             checkpoint_path_for_shard(
-                args.output_dir, source_shard_count, source_index
+                args.output_dir,
+                source_shard_count,
+                source_index,
+                source_generation,
             )
             for source_index in range(source_shard_count)
         ]
@@ -3959,8 +4508,10 @@ def main(
                         f"Source checkpoint {source_path} has an incompatible "
                         f"{field} array"
                     )
-            source_mask = owned_point_mask(
-                shape, source_shard_count, source_index
+            source_mask = (
+                owned_point_mask(shape, source_shard_count, source_index)
+                if source_manifest is None
+                else source_manifest["owners"] == source_index
             )
             outside = ~source_mask
             if np.any(checkpoint["done"][outside]) or np.any(
@@ -4064,6 +4615,11 @@ def main(
                 accumulators=target_accumulators,
                 execution_workers=workers,
                 ownership_generation=generation,
+                buffered_results={
+                    key: dict(channel_buffer)
+                    for key, channel_buffer in buffered_results.items()
+                    if target_mask[key[:3]]
+                },
             )
 
         changed_sources = [
@@ -4118,7 +4674,7 @@ def main(
         )
         print(f"Adaptive refinement manifest: {manifest}")
         warm_adaptive_workers()
-        run_adaptive_shard(
+        run_options = dict(
             output_dir=args.output_dir,
             base_signature=signature,
             base_checkpoint=canonical,
@@ -4132,6 +4688,8 @@ def main(
             shard_index=0,
             adaptive=adaptive,
         )
+        run_adaptive_shard(**run_options, phase="base_curves")
+        run_adaptive_shard(**run_options, phase="intervals")
         return merge_adaptive_families(
             output_dir=args.output_dir,
             base_signature=signature,
@@ -4144,7 +4702,11 @@ def main(
         prepare_rebalanced_generation(args.prepare_rebalance_from_shards)
         return 0
 
-    if args.adaptive_only or args.merge_adaptive_shards:
+    if (
+        args.adaptive_base_curves_only
+        or args.adaptive_intervals_only
+        or args.merge_adaptive_shards
+    ):
         from ctmc_adaptive_refinement import (
             merge_adaptive_families,
             run_adaptive_shard,
@@ -4175,21 +4737,32 @@ def main(
         print(f"Adaptive refinement manifest: {manifest}")
         if not args.dry_run:
             warm_adaptive_workers()
-        return run_adaptive_shard(
-            output_dir=args.output_dir,
-            base_signature=signature,
-            base_checkpoint=canonical,
-            base_config=config,
-            workers=workers,
-            start_method=start_method,
-            pending_factor=args.pending_factor,
-            checkpoint_every=args.checkpoint_every,
-            checkpoint_seconds=args.checkpoint_seconds,
-            shard_count=args.shard_count,
-            shard_index=args.shard_index,
-            adaptive=adaptive,
-            dry_run=args.dry_run,
-        )
+        common_adaptive_options = {
+            "output_dir": args.output_dir,
+            "base_signature": signature,
+            "base_checkpoint": canonical,
+            "base_config": config,
+            "workers": workers,
+            "start_method": start_method,
+            "pending_factor": args.pending_factor,
+            "checkpoint_every": args.checkpoint_every,
+            "checkpoint_seconds": args.checkpoint_seconds,
+            "shard_count": args.shard_count,
+            "shard_index": args.shard_index,
+            "adaptive": adaptive,
+            "dry_run": args.dry_run,
+        }
+        if args.adaptive_base_curves_only:
+            return run_adaptive_shard(
+                **common_adaptive_options,
+                phase="base_curves",
+            )
+        if args.adaptive_intervals_only:
+            return run_adaptive_shard(
+                **common_adaptive_options,
+                phase="intervals",
+            )
+        raise RuntimeError("Unreachable adaptive execution mode")
 
     if args.merge_shards:
         workers_per_shard: list[int] = []
@@ -4250,8 +4823,9 @@ def main(
                 "Merged the fixed base grid. Final tables are withheld until "
                 "the default adaptive refinement reaches the requested "
                 f"0.5% tolerance. Manifest: {manifest}\n"
-                "Run the same shard array with --adaptive-only, then run one "
-                "--merge-adaptive-shards command."
+                "Run the shard array with --adaptive-base-curves-only, then "
+                "with --adaptive-intervals-only after every base curve "
+                "completes, and finally run --merge-adaptive-shards."
             )
             return 0
         paths = write_outputs(
@@ -4301,6 +4875,30 @@ def main(
         config,
         owner_mask,
     )
+    buffered_trajectories = sum(
+        result[5]
+        for channel_buffer in buffered_results.values()
+        for result in channel_buffer.values()
+    )
+    estimated -= buffered_trajectories
+    if estimated < 0:
+        raise RuntimeError("Buffered checkpoint work exceeds remaining work")
+    if buffered_results:
+        estimated_chunks = sum(
+            1
+            for _ in iter_tasks_excluding_buffered_chunks(
+                iter_pending_trajectory_tasks(
+                    energies,
+                    charges,
+                    impact_au,
+                    done,
+                    accumulators,
+                    config,
+                    owner_mask,
+                ),
+                buffered_results,
+            )
+        )
     print(
         f"Grid: {energies.size} energies x {charges.size} charge states x "
         f"{impact_au.size} impact parameters"
@@ -4313,7 +4911,8 @@ def main(
     print(
         f"Pending probability points: {pending_points:,}; "
         f"remaining trajectories: {estimated:,}; "
-        f"work chunks: {estimated_chunks:,}"
+        f"work chunks: {estimated_chunks:,}; restored buffered chunks: "
+        f"{sum(len(chunks) for chunks in buffered_results.values()):,}"
     )
     print(
         f"Backend: {config.backend}; local workers: {workers}; "
@@ -4405,14 +5004,17 @@ def main(
             )
             signal.signal(termination_signal, handle_scheduler_termination)
 
-    task_iterator = iter_pending_trajectory_tasks(
-        energies,
-        charges,
-        impact_au,
-        done,
-        accumulators,
-        config,
-        owner_mask,
+    task_iterator = iter_tasks_excluding_buffered_chunks(
+        iter_pending_trajectory_tasks(
+            energies,
+            charges,
+            impact_au,
+            done,
+            accumulators,
+            config,
+            owner_mask,
+        ),
+        buffered_results,
     )
     trajectory_progress = tqdm(
         total=estimated,
@@ -4432,20 +5034,8 @@ def main(
 
     completed_since_checkpoint = 0
     last_checkpoint_time = time.monotonic()
-    buffered_results: dict[
-        tuple[int, int, int, int],
-        dict[
-            int,
-            tuple[
-                int, int, int, int, int, int, int, int, int, int, float
-            ],
-        ],
-    ] = {}
-
     def accept_result(
-        result: tuple[
-            int, int, int, int, int, int, int, int, int, int, float
-        ],
+        result: TrajectoryChunkResult,
     ) -> int:
         """Buffer out-of-order chunks and commit only contiguous prefixes."""
         trajectory_progress.update(result[5])
@@ -4489,19 +5079,7 @@ def main(
             if workers == 1:
                 _init_worker(config)
                 results: Iterable[
-                    tuple[
-                        int,
-                        int,
-                        int,
-                        int,
-                        int,
-                        int,
-                        int,
-                        int,
-                        int,
-                        int,
-                        float,
-                    ]
+                    TrajectoryChunkResult
                 ] = map(_compute_trajectory_chunk, task_iterator)
                 for result in results:
                     completed_points = accept_result(result)
@@ -4534,10 +5112,22 @@ def main(
                         maximum_pending=max(args.pending_factor * workers, 1),
                     )
                     for result in parallel_results:
+                        now = time.monotonic()
+                        if result is None:
+                            if (
+                                args.checkpoint_seconds > 0.0
+                                and now - last_checkpoint_time
+                                >= args.checkpoint_seconds
+                            ):
+                                save_current_checkpoint(
+                                    checkpoint_path, announce=True
+                                )
+                                completed_since_checkpoint = 0
+                                last_checkpoint_time = now
+                            continue
                         completed_points = accept_result(result)
                         point_progress.update(completed_points)
                         completed_since_checkpoint += completed_points
-                        now = time.monotonic()
                         if (
                             completed_since_checkpoint
                             >= args.checkpoint_every

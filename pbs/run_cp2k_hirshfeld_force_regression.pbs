@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#PBS -N soft_cdft_force_ref
+#PBS -q idle
+#PBS -l select=1:ncpus=8:mem=16gb
+#PBS -l walltime=48:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+REPO_ROOT="${REPO_ROOT:-/gpfs01/work/yoffegid/dnaphysics-ice-ions}"
+SOURCE_DIR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol/soft_dft/benchmarking/cp2k_2025_2_hirshfeld_force"
+RUN_DIR="${RUN_DIR:-${REPO_ROOT}/python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/validation/benchmarks/cp2k_2025_2_hirshfeld_force}"
+WRAPPER="${REPO_ROOT}/pbs/cp2k_container_wrapper.sh"
+VALIDATOR="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol/validate_cp2k_hirshfeld_force_regression.py"
+export CP2K_IMAGE="${CP2K_IMAGE:-${REPO_ROOT}/software/cp2k/cp2k-2025.2-mpich-x86_64-psmp.sif}"
+
+if [[ ! -d "${SOURCE_DIR}" || ! -x "${WRAPPER}" || ! -f "${VALIDATOR}" ]]; then
+  echo "The CP2K force-regression infrastructure is incomplete." >&2
+  exit 2
+fi
+
+mkdir -p "${RUN_DIR}"
+for name in HeH-noconstraint.inp HeH-cdft-1.inp HeH.xyz \
+  dft-common-params.inc hirshfeld_qs.inc subsys.inc; do
+  if [[ ! -e "${RUN_DIR}/${name}" ]]; then
+    cp "${SOURCE_DIR}/${name}" "${RUN_DIR}/${name}"
+  elif ! cmp -s "${SOURCE_DIR}/${name}" "${RUN_DIR}/${name}"; then
+    echo "Refusing incompatible staged input: ${RUN_DIR}/${name}" >&2
+    exit 2
+  fi
+done
+
+export CP2K_MPI_RANKS="${NCPUS:-8}"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+cd "${RUN_DIR}"
+
+run_cp2k_stage() {
+  local input="$1"
+  local output="$2"
+  local required_wfn="${3:-}"
+  if [[ -s "${output}" ]] && grep -q "PROGRAM ENDED AT" "${output}" \
+    && { [[ -z "${required_wfn}" ]] || [[ -s "${required_wfn}" ]]; }; then
+    return
+  fi
+  local temporary=".${output}.${PBS_JOBID}.tmp"
+  "${WRAPPER}" -i "${input}" > "${temporary}"
+  if ! grep -q "PROGRAM ENDED AT" "${temporary}"; then
+    echo "CP2K stage did not terminate normally: ${input}" >&2
+    exit 1
+  fi
+  mv "${temporary}" "${output}"
+}
+
+run_cp2k_stage \
+  HeH-noconstraint.inp \
+  HeH-noconstraint.out \
+  HeH-noconstraint-1_0.wfn
+run_cp2k_stage HeH-cdft-1.inp HeH-cdft-1.out
+
+python3 "${VALIDATOR}" \
+  --input-directory "${SOURCE_DIR}" \
+  --run-directory "${RUN_DIR}" \
+  --cp2k-image "${CP2K_IMAGE}" \
+  --result-json "${RUN_DIR}/validation.json"

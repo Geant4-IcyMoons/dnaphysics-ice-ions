@@ -21,15 +21,18 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from typing import Any
+import zipfile
 
 import matplotlib
 
@@ -60,6 +63,17 @@ from constants import (  # noqa: E402
 PAPER_DOI = "10.1088/0031-9155/58/3/641"
 PAPER_DATA_PATH = HERE / "paper_data" / "liamsuwan_2013_figures_12_14_digitized.csv"
 PAPER_PDF_NAME = "Liamsuwan_2013_Phys._Med._Biol._58_641.pdf"
+FORMAL_REFERENCE_ARCHIVE = PHYSICS_ICE_ROOT.parents[1] / "C3_100keVpu.zip"
+FORMAL_REFERENCE_SHA256 = (
+    "d6f40fd2da4b0acbda6626b1d08b9271a92d356c46aab28d4346e27eca3a80dd"
+)
+FORMAL_REFERENCE_MEMBERS = {
+    "loss": "C3_100keVpu/eloss/ProbImpact_CTMC81_eloss.dat",
+    **{
+        f"L{orbital}": f"C3_100keVpu/L{orbital}/ProbImpact_CTMC81.dat"
+        for orbital in range(1, 6)
+    },
+}
 EXPECTED_COLUMNS = (
     "E_keV_u",
     "q",
@@ -428,6 +442,34 @@ def _metadata_checks(
             "projectile": metadata.get("projectile"),
             "density_applied": metadata.get("density_applied"),
             "cross_section_unit": metadata.get("cross_section_unit"),
+        },
+    )
+    ensemble = metadata.get("initial_ensemble", {})
+    ensemble_mode = (
+        ensemble.get("mode")
+        if isinstance(ensemble, dict)
+        else None
+    )
+    paper_ensemble_ok = (
+        ensemble_mode == ctmc.INITIAL_ENSEMBLE_LIAMSUWAN_OLSON_SALOP
+        and ensemble.get("paper_reproduction") is True
+    )
+    _append_check(
+        checks,
+        name="paper_initial_ensemble",
+        status="pass" if paper_ensemble_ok else "fail",
+        required_for_release=True,
+        criterion=(
+            "Production carbon tables use the Olson--Salop tangent-plane "
+            "initialization explicitly cited by Liamsuwan and Nikjoo."
+        ),
+        observed={
+            "mode": ensemble_mode,
+            "paper_reproduction": (
+                ensemble.get("paper_reproduction")
+                if isinstance(ensemble, dict)
+                else None
+            ),
         },
     )
     if not probabilities_path.is_file():
@@ -809,6 +851,334 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _formal_header_value(text: str, label: str) -> float:
+    match = re.search(
+        rf"^\s*{re.escape(label)}\s*:?\s*([-+0-9.Ee]+)\s*$",
+        text,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise ValueError(f"Formal CTMC member lacks header field {label!r}")
+    return float(match.group(1))
+
+
+def _read_formal_reference_archive(path: Path) -> dict[str, Any]:
+    """Read the supplied CTMC81 C3+ 100-keV/u impact-probability archive."""
+    path = path.expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    archive_sha256 = _sha256(path)
+    datasets: dict[str, dict[str, Any]] = {}
+    member_hashes: dict[str, str] = {}
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        missing = sorted(set(FORMAL_REFERENCE_MEMBERS.values()) - names)
+        if missing:
+            raise ValueError(f"Formal CTMC archive lacks members: {missing}")
+        for label, member in FORMAL_REFERENCE_MEMBERS.items():
+            raw = archive.read(member)
+            member_hashes[member] = _sha256_bytes(raw)
+            text = raw.decode("ascii")
+            lines = text.splitlines()
+            header_index = next(
+                (
+                    index
+                    for index, line in enumerate(lines)
+                    if "b(a.u.)" in line
+                ),
+                None,
+            )
+            if header_index is None:
+                raise ValueError(f"Formal CTMC member lacks data header: {member}")
+            values = np.loadtxt(
+                io.StringIO("\n".join(lines[header_index + 1 :])),
+                ndmin=2,
+            )
+            if values.shape[1] != 5 or len(values) < 2:
+                raise ValueError(
+                    f"Malformed formal CTMC probability table {member}: "
+                    f"shape={values.shape}"
+                )
+            metadata = {
+                "projectile_nuclear_charge": _formal_header_value(
+                    text, "Proj nuclear charge"
+                ),
+                "projectile_charge_state": _formal_header_value(
+                    text, "Proj charge state"
+                ),
+                "projectile_mass_u": _formal_header_value(text, "Proj mass"),
+                "energy_keV_u": _formal_header_value(
+                    text, "Proj energy (keV/u)"
+                ),
+                "projectile_velocity_au": _formal_header_value(
+                    text, "Proj velocity (a.u.)"
+                ),
+                "initial_z_au": _formal_header_value(
+                    text, "Initial z-distance projectile-target (a.u.)"
+                ),
+                "maximum_impact_au": _formal_header_value(
+                    text, "max. impact parameter (a.u.)"
+                ),
+                "impact_point_count": int(
+                    _formal_header_value(text, "Number of impact parameter")
+                ),
+                "trajectory_count": int(
+                    _formal_header_value(text, "Number of simulation")
+                ),
+                "integration_time_au": _formal_header_value(text, "tEND(a.u.)"),
+                "integration_tolerance": _formal_header_value(text, "TOL"),
+                "limit_distance_au": _formal_header_value(
+                    text, "Limit distance t-p"
+                ),
+            }
+            if label != "loss":
+                metadata["orbital_index"] = int(
+                    _formal_header_value(
+                        text, "Orbital of bound electron (1-5)"
+                    )
+                )
+            datasets[label] = {
+                "member": member,
+                "metadata": metadata,
+                "impact_au": values[:, 0],
+                "probabilities": values[:, 1:],
+                "column_names": (
+                    ("loss", "capture", "excitation", "null")
+                    if label == "loss"
+                    else ("ionization", "capture", "excitation", "null")
+                ),
+            }
+    return {
+        "path": str(path),
+        "sha256": archive_sha256,
+        "expected_sha256": FORMAL_REFERENCE_SHA256,
+        "member_sha256": member_hashes,
+        "datasets": datasets,
+    }
+
+
+def _formal_reference_integrity(
+    reference: dict[str, Any], checks: list[dict[str, Any]]
+) -> None:
+    metadata_ok = True
+    probability_error = 0.0
+    observed: dict[str, Any] = {}
+    for label, dataset in reference["datasets"].items():
+        metadata = dataset["metadata"]
+        values = np.asarray(dataset["probabilities"], dtype=float)
+        impact = np.asarray(dataset["impact_au"], dtype=float)
+        metadata_ok &= (
+            metadata["projectile_nuclear_charge"] == 6.0
+            and metadata["projectile_charge_state"] == 3.0
+            and metadata["projectile_mass_u"] == 12.0
+            and metadata["energy_keV_u"] == 100.0
+            and math.isclose(
+                metadata["projectile_velocity_au"],
+                2.00055347542277,
+                rel_tol=0.0,
+                abs_tol=5.0e-14,
+            )
+            and metadata["integration_tolerance"] == 1.0e-6
+            and metadata["limit_distance_au"] == 1000.0
+            and metadata["integration_time_au"]
+            == (6000.0 if label == "loss" else 1000.0)
+            and metadata["initial_z_au"]
+            == (10000.0 if label == "loss" else 1000.0)
+            and metadata["impact_point_count"] == len(impact)
+            and np.all(np.diff(impact) > 0.0)
+            and math.isclose(
+                float(impact[-1]),
+                metadata["maximum_impact_au"],
+                rel_tol=0.0,
+                abs_tol=5.0e-5,
+            )
+        )
+        probability_error = max(
+            probability_error,
+            float(np.max(np.abs(np.sum(values, axis=1) - 1.0))),
+            float(np.max(np.maximum(-values, 0.0))),
+            float(np.max(np.maximum(values - 1.0, 0.0))),
+        )
+        observed[label] = {
+            "member": dataset["member"],
+            "rows": int(len(impact)),
+            **metadata,
+        }
+    # Four probabilities are printed to four decimal places; their rounded
+    # sum can differ from unity by at most 4 * 0.5e-4.
+    integrity_ok = (
+        reference["sha256"] == FORMAL_REFERENCE_SHA256
+        and metadata_ok
+        and probability_error <= 2.0e-4 + 1.0e-12
+    )
+    _append_check(
+        checks,
+        name="formal_ctmc81_archive_integrity",
+        status="pass" if integrity_ok else "fail",
+        required_for_release=True,
+        criterion=(
+            "The exact supplied archive hash is retained; all six C3+ at "
+            "100-keV/u tables have consistent metadata, increasing impact "
+            "grids, and probabilities normalized to their printed precision."
+        ),
+        observed={
+            "archive": reference["path"],
+            "sha256": reference["sha256"],
+            "expected_sha256": FORMAL_REFERENCE_SHA256,
+            "maximum_probability_or_normalization_violation": probability_error,
+            "datasets": observed,
+            "member_sha256": reference["member_sha256"],
+        },
+    )
+
+
+def _primitive_curve_at(
+    probabilities_path: Path, *, energy_keV_u: float, charge: int
+) -> dict[str, np.ndarray]:
+    with np.load(probabilities_path, allow_pickle=False) as archive:
+        if not bool(np.asarray(archive.get("adaptive_format", False)).item()):
+            energies = np.asarray(archive["energies_keV_u"], dtype=float)
+            charges = np.asarray(archive["charges"], dtype=int)
+            energy_index = int(np.argmin(np.abs(energies - energy_keV_u)))
+            charge_index = int(np.flatnonzero(charges == charge)[0])
+            if not math.isclose(
+                float(energies[energy_index]), energy_keV_u, rel_tol=5e-9
+            ):
+                raise ValueError(f"No CTMC curve at {energy_keV_u} keV/u")
+            impact = np.asarray(archive["impact_au"], dtype=float)
+            return {
+                "impact_au": impact,
+                "pi": np.asarray(archive["pi"][energy_index, charge_index]),
+                "pc": np.asarray(archive["pc"][energy_index, charge_index]),
+                "pl": np.asarray(archive["pl"][energy_index, charge_index]),
+                "channel_successes": np.full((len(impact), 6), np.nan),
+            }
+        curve_energy = np.asarray(archive["curve_energy_keV_u"], dtype=float)
+        curve_charge = np.asarray(archive["curve_charge"], dtype=int)
+        matches = np.flatnonzero(
+            np.isclose(curve_energy, energy_keV_u, rtol=5e-9, atol=0.0)
+            & (curve_charge == charge)
+        )
+        if len(matches) != 1:
+            raise ValueError(
+                f"Expected one adaptive CTMC curve at E={energy_keV_u}, "
+                f"q={charge}; found {len(matches)}"
+            )
+        index = int(matches[0])
+        offsets = np.asarray(archive["curve_offsets"], dtype=np.int64)
+        start, stop = int(offsets[index]), int(offsets[index + 1])
+        return {
+            "impact_au": np.asarray(archive["impact_au"][start:stop]),
+            "pi": np.asarray(archive["pi"][start:stop]),
+            "pc": np.asarray(archive["pc"][start:stop]),
+            "pl": np.asarray(archive["pl"][start:stop]),
+            "channel_successes": np.asarray(
+                archive["channel_successes"][start:stop]
+            ),
+        }
+
+
+def _formal_probability_comparison(
+    reference: dict[str, Any], probabilities_path: Path
+) -> dict[str, Any]:
+    calculated = _primitive_curve_at(
+        probabilities_path, energy_keV_u=100.0, charge=3
+    )
+    impact = calculated["impact_au"]
+    comparisons: list[dict[str, Any]] = []
+    for label, dataset in reference["datasets"].items():
+        formal_impact = np.asarray(dataset["impact_au"], dtype=float)
+        formal_values = np.asarray(dataset["probabilities"], dtype=float)
+        if label == "loss":
+            channels = (("loss", calculated["pl"], 5, 0),)
+        else:
+            orbital = int(dataset["metadata"]["orbital_index"]) - 1
+            channels = (
+                ("ionization", calculated["pi"][:, orbital], orbital, 0),
+                ("capture", calculated["pc"][:, orbital], orbital, 1),
+            )
+        inside = (impact >= formal_impact[0]) & (impact <= formal_impact[-1])
+        sample_impact = impact[inside]
+        if len(sample_impact) < 2:
+            raise ValueError(f"No overlapping impact domain for {label}")
+        for channel, predicted_all, count_column, formal_column in channels:
+            predicted = np.asarray(predicted_all, dtype=float)[inside]
+            formal = np.interp(
+                sample_impact, formal_impact, formal_values[:, formal_column]
+            )
+            difference = predicted - formal
+            current_count = np.asarray(
+                calculated["channel_successes"][:, count_column], dtype=float
+            )[inside]
+            formal_count = float(dataset["metadata"]["trajectory_count"])
+            current_variance = np.divide(
+                predicted * (1.0 - predicted),
+                current_count,
+                out=np.zeros_like(predicted),
+                where=current_count > 0.0,
+            )
+            variance = (
+                current_variance
+                + formal * (1.0 - formal) / formal_count
+                + (0.5e-4) ** 2 / 3.0
+            )
+            standardized = np.divide(
+                difference,
+                np.sqrt(variance),
+                out=np.full_like(difference, np.nan),
+                where=variance > 0.0,
+            )
+            finite = np.isfinite(standardized)
+            comparisons.append(
+                {
+                    "dataset": label,
+                    "channel": channel,
+                    "orbital_index": None if label == "loss" else count_column + 1,
+                    "impact_minimum_au": float(sample_impact[0]),
+                    "impact_maximum_au": float(sample_impact[-1]),
+                    "comparison_point_count": int(len(sample_impact)),
+                    "mean_absolute_probability_difference": float(
+                        np.mean(np.abs(difference))
+                    ),
+                    "maximum_absolute_probability_difference": float(
+                        np.max(np.abs(difference))
+                    ),
+                    "root_mean_square_standardized_residual": (
+                        float(np.sqrt(np.mean(standardized[finite] ** 2)))
+                        if np.any(finite)
+                        else None
+                    ),
+                    "fraction_exceeding_three_combined_standard_errors": (
+                        float(np.mean(np.abs(standardized[finite]) > 3.0))
+                        if np.any(finite)
+                        else None
+                    ),
+                }
+            )
+    return {
+        "status": "informational",
+        "reference_scope": "C3+ + H2O at 100 keV/u, primitive probabilities versus impact parameter",
+        "comparison_method": (
+            "The four-decimal formal tables are linearly interpolated onto "
+            "calculated impact points within their stated domains. Standardized "
+            "residuals include independent binomial sampling variance and "
+            "four-decimal rounding variance. Agreement is reported, not fitted."
+        ),
+        "qualification": (
+            "The supplied archive contains no citation or license metadata and "
+            "uses finite-distance/tolerance settings that differ between its "
+            "target and loss tables. Its exact provenance should be confirmed "
+            "before defining a physical acceptance threshold."
+        ),
+        "comparisons": comparisons,
+        "calculated_impact_point_count": int(len(impact)),
+    }
+
+
 def _paper_subset(data: np.ndarray, figure: int, charge: int) -> np.ndarray:
     subset = data[(data["figure"] == figure) & (data["q"] == charge)]
     return np.sort(subset, order="E_keV_u")
@@ -1167,6 +1537,99 @@ def plot_benchmark(
     plt.close(fig)
 
 
+def plot_formal_probability_benchmark(
+    reference: dict[str, Any],
+    probabilities_path: Path,
+    output_path: Path,
+) -> None:
+    """Plot the direct CTMC81 impact-probability comparison at 100 keV/u."""
+    _configure_plot_style()
+    calculated = _primitive_curve_at(
+        probabilities_path, energy_keV_u=100.0, charge=3
+    )
+    impact = calculated["impact_au"]
+    colors = plt.get_cmap("plasma")(np.linspace(0.08, 0.92, 5))
+    figure, axes = plt.subplots(
+        1,
+        3,
+        figsize=(AASTEX_FULL_WIDTH_IN, THREE_PANEL_ROW_HEIGHT_IN),
+    )
+    for orbital in range(5):
+        dataset = reference["datasets"][f"L{orbital + 1}"]
+        formal_impact = dataset["impact_au"]
+        formal = dataset["probabilities"]
+        domain = impact <= float(formal_impact[-1])
+        axes[0].plot(
+            impact[domain], calculated["pi"][domain, orbital],
+            color=colors[orbital], label=f"L{orbital + 1}",
+        )
+        axes[0].plot(
+            formal_impact, formal[:, 0], color=colors[orbital],
+            linestyle="none", marker="o", markersize=2.2,
+            markerfacecolor="white", markeredgewidth=0.5,
+        )
+        axes[1].plot(
+            impact[domain], calculated["pc"][domain, orbital],
+            color=colors[orbital],
+        )
+        axes[1].plot(
+            formal_impact, formal[:, 1], color=colors[orbital],
+            linestyle="none", marker="o", markersize=2.2,
+            markerfacecolor="white", markeredgewidth=0.5,
+        )
+    loss = reference["datasets"]["loss"]
+    loss_domain = impact <= float(loss["impact_au"][-1])
+    axes[2].plot(
+        impact[loss_domain], calculated["pl"][loss_domain], color=colors[2]
+    )
+    axes[2].plot(
+        loss["impact_au"], loss["probabilities"][:, 0], color=colors[2],
+        linestyle="none", marker="o", markersize=2.2,
+        markerfacecolor="white", markeredgewidth=0.5,
+    )
+    titles = ("Target ionization", "Target capture", "Projectile loss")
+    for axis, title, label in zip(axes, titles, ("(a)", "(b)", "(c)"), strict=True):
+        axis.set_title(title, pad=4)
+        axis.set_xlabel(r"Impact parameter ($b$; a.u.)")
+        axis.set_ylabel("Probability")
+        axis.set_ylim(0.0, 1.0)
+        axis.set_xlim(left=0.0)
+        axis.minorticks_on()
+        axis.tick_params(
+            axis="both", which="both", direction="in",
+            bottom=True, left=True, top=False, right=False,
+            labelsize=PAPER_FONTSIZE,
+        )
+        for tick_label in (*axis.get_xticklabels(), *axis.get_yticklabels()):
+            tick_label.set_fontfamily(PLOT_FONT)
+            tick_label.set_fontsize(PAPER_FONTSIZE)
+        axis.xaxis.label.set_fontfamily(PLOT_FONT)
+        axis.yaxis.label.set_fontfamily(PLOT_FONT)
+        _panel_label(axis, label)
+        axis.grid(False)
+    orbital_handles, orbital_labels = axes[0].get_legend_handles_labels()
+    style_handles = [
+        Line2D([], [], color="black", linewidth=1.0),
+        Line2D(
+            [], [], color="black", linestyle="none", marker="o",
+            markerfacecolor="white", markersize=3.0,
+        ),
+    ]
+    figure.legend(
+        orbital_handles + style_handles,
+        orbital_labels + ["This calculation", "CTMC81 archive"],
+        loc="lower center", ncol=7, frameon=False,
+        bbox_to_anchor=(0.5, 0.04),
+        prop={"family": PLOT_FONT, "size": PAPER_FONTSIZE},
+        handlelength=1.3, columnspacing=0.8, handletextpad=0.3,
+    )
+    figure.subplots_adjust(
+        left=0.078, right=0.992, bottom=0.25, top=0.91, wspace=0.42
+    )
+    _save_courier_png(figure, output_path)
+    plt.close(figure)
+
+
 def benchmark(
     *,
     table_path: Path,
@@ -1177,6 +1640,7 @@ def benchmark(
     boundary_relative_tolerance: float = NUMERICAL_RELATIVE_TOLERANCE,
     require_adaptive: bool = True,
     paper_pdf: Path | None = None,
+    formal_reference_archive: Path | None = FORMAL_REFERENCE_ARCHIVE,
 ) -> dict[str, Any]:
     ctmc.select_projectile("carbon")
     table = _read_table(table_path)
@@ -1245,6 +1709,63 @@ def benchmark(
             raise FileNotFoundError(f"Paper PDF does not exist: {paper_pdf}")
         curve_comparison["source_pdf"] = str(paper_pdf)
         curve_comparison["source_pdf_sha256"] = _sha256(paper_pdf)
+    formal_reference: dict[str, Any] | None = None
+    formal_comparison: dict[str, Any] | None = None
+    formal_plot_path = output_dir / "carbon_ctmc_formal_100keV_u_benchmark.png"
+    if formal_reference_archive is None or not formal_reference_archive.is_file():
+        _append_check(
+            checks,
+            name="formal_ctmc81_probability_benchmark",
+            status="not_evaluated",
+            required_for_release=True,
+            criterion=(
+                "The supplied C3+ 100-keV/u CTMC81 impact-probability archive "
+                "must be parsed and compared with the final primitive archive."
+            ),
+            observed={
+                "missing": (
+                    None
+                    if formal_reference_archive is None
+                    else str(formal_reference_archive)
+                )
+            },
+        )
+    else:
+        formal_reference = _read_formal_reference_archive(
+            formal_reference_archive
+        )
+        _formal_reference_integrity(formal_reference, checks)
+        if probabilities_path.is_file():
+            formal_comparison = _formal_probability_comparison(
+                formal_reference, probabilities_path
+            )
+            plot_formal_probability_benchmark(
+                formal_reference, probabilities_path, formal_plot_path
+            )
+            comparison_count = len(formal_comparison["comparisons"])
+            _append_check(
+                checks,
+                name="formal_ctmc81_probability_benchmark",
+                status="pass" if comparison_count == 11 else "fail",
+                required_for_release=True,
+                criterion=(
+                    "All five target-orbital ionization/capture curves and "
+                    "the projectile-loss curve are compared at C3+, 100 keV/u. "
+                    "This gate requires evaluation; agreement metrics remain "
+                    "informational until the archive provenance and a physical "
+                    "acceptance threshold are established."
+                ),
+                observed={"comparison_curve_count": comparison_count},
+            )
+        else:
+            _append_check(
+                checks,
+                name="formal_ctmc81_probability_benchmark",
+                status="not_evaluated",
+                required_for_release=True,
+                criterion="A final primitive probability archive is required.",
+                observed={"missing": str(probabilities_path)},
+            )
     plot_path = output_dir / "carbon_ctmc_paper_benchmark.png"
     equilibrium_path = output_dir / "carbon_equilibrium_charge_fractions.csv"
     report_path = output_dir / "carbon_ctmc_validation.json"
@@ -1253,7 +1774,7 @@ def benchmark(
 
     required = [check for check in checks if check["required_for_release"]]
     report: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "paper": {
             "citation": (
                 "T. Liamsuwan and H. Nikjoo, Physics in Medicine and "
@@ -1276,18 +1797,29 @@ def benchmark(
             "table": str(table_path.resolve()),
             "probabilities": str(probabilities_path.resolve()),
             "metadata": str(metadata_path.resolve()),
+            "formal_probability_archive": (
+                str(formal_reference_archive.expanduser().resolve())
+                if formal_reference_archive is not None
+                else None
+            ),
             "expanded_boundary_reference": (
                 str(boundary_reference.resolve()) if boundary_reference else None
             ),
         },
         "outputs": {
             "plot": str(plot_path.resolve()),
+            "formal_probability_plot": (
+                str(formal_plot_path.resolve())
+                if formal_comparison is not None
+                else None
+            ),
             "equilibrium_table": str(equilibrium_path.resolve()),
             "validation_report": str(report_path.resolve()),
         },
         "checks": checks,
         "paper_landmarks": _paper_landmarks(equilibrium, table),
         "paper_curve_comparison": curve_comparison,
+        "formal_probability_comparison": formal_comparison,
         "overall": {
             "required_checks_passed": sum(check["status"] == "pass" for check in required),
             "required_checks_total": len(required),
@@ -1335,6 +1867,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--formal-reference-archive",
+        type=Path,
+        default=FORMAL_REFERENCE_ARCHIVE,
+        help=(
+            "Supplied C3+ 100-keV/u CTMC81 impact-probability ZIP "
+            f"(default: {FORMAL_REFERENCE_ARCHIVE})."
+        ),
+    )
+    parser.add_argument(
         "--boundary-reference",
         type=Path,
         help="Independently calculated expanded-bmax carbon CSV or DAT table.",
@@ -1377,6 +1918,7 @@ def main() -> int:
         boundary_relative_tolerance=args.boundary_relative_tolerance,
         require_adaptive=not args.allow_unrefined_reference,
         paper_pdf=args.paper_pdf,
+        formal_reference_archive=args.formal_reference_archive,
     )
     for check in report["checks"]:
         print(f"{check['status'].upper():>13}  {check['name']}")

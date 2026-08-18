@@ -22,9 +22,12 @@ from typing import Any
 
 from tqdm import tqdm
 
+from ion_ice import PROCESS_EVIDENCE_ROOT
 from soft_dft import (
     DEFAULT_ADAPTIVE_SETTINGS,
     DEFAULT_CP2K_SETTINGS,
+    OT_LINESEARCHES,
+    OT_MINIMIZERS,
     AdaptiveSettings,
     CP2KSettings,
     ProjectileDefinition,
@@ -111,7 +114,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        help="Output parent; defaults to soft_collision_dft_runs/ELEMENT_adaptive_pilot.",
+        help="Output parent; defaults to process_evidence/soft_nuclear_collisions/validation/runs/ELEMENT_adaptive_pilot.",
     )
     parser.add_argument(
         "--projectile",
@@ -165,6 +168,25 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CP2K_SETTINGS.mgrid_rel_cutoff_ry,
     )
     parser.add_argument("--scf-eps", type=float, default=DEFAULT_CP2K_SETTINGS.scf_eps)
+    parser.add_argument(
+        "--complex-ot-inner-scf-max",
+        type=int,
+        default=DEFAULT_CP2K_SETTINGS.complex_ot_inner_scf_max,
+        help=(
+            "Inner OT steps between constrained-complex preconditioner "
+            "refreshes; recorded in the immutable workflow signature."
+        ),
+    )
+    parser.add_argument(
+        "--ot-minimizer",
+        choices=OT_MINIMIZERS,
+        default=DEFAULT_CP2K_SETTINGS.ot_minimizer,
+    )
+    parser.add_argument(
+        "--ot-linesearch",
+        choices=OT_LINESEARCHES,
+        default=DEFAULT_CP2K_SETTINGS.ot_linesearch,
+    )
     parser.add_argument(
         "--cdft-eps", type=float, default=DEFAULT_CP2K_SETTINGS.cdft_eps
     )
@@ -230,6 +252,9 @@ def _settings(
         mgrid_cutoff_ry=args.mgrid_cutoff_ry,
         mgrid_rel_cutoff_ry=args.mgrid_rel_cutoff_ry,
         scf_eps=args.scf_eps,
+        complex_ot_inner_scf_max=args.complex_ot_inner_scf_max,
+        ot_minimizer=args.ot_minimizer,
+        ot_linesearch=args.ot_linesearch,
         cdft_eps=args.cdft_eps,
     )
     adaptive = AdaptiveSettings(
@@ -667,8 +692,10 @@ def main() -> int:
     configuration = _configuration(projectile, charges, cp2k, adaptive)
     signature = _sha256_bytes(_canonical_json(configuration))
     output_root = args.output_root or (
-        HERE
-        / "soft_collision_dft_runs"
+        PROCESS_EVIDENCE_ROOT
+        / "soft_nuclear_collisions"
+        / "validation"
+        / "runs"
         / f"{projectile.symbol.lower()}_adaptive_pilot"
     )
     run_root = output_root.expanduser().resolve() / signature

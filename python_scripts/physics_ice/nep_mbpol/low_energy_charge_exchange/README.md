@@ -1,7 +1,7 @@
 # Low-energy single-electron capture framework
 
-This package prepares the smallest new low-energy ion process: single-electron
-capture from H2O,
+This package defines the channel bookkeeping and numerical primitives for a
+future low-energy single-electron-capture calculation from H2O,
 
 ```text
 X(q+) + H2O -> X((q-1)+) + H2O+.
@@ -18,21 +18,28 @@ charge ladder.
 - `channels.py` enumerates every selected q->q-1 transition, conserves charge,
   and verifies that the ground projectile product plus ground H2O+ has a
   spin-coupled component with the conserved entrance multiplicity.
-- `workflow.py` prepares two all-electron CP2K CDFT states at each molecular
-  geometry. Both states have identical nuclei, total charge, and total
-  multiplicity. Their constrained projectile populations differ by exactly
-  one electron.
-- The runner converges the states independently, then follows the CP2K
-  recommendation to restart them in `MIXED_CDFT`. The collector records the
-  diabatic energy gap, state overlap, and Lowdin electronic coupling.
+- `workflow.py` writes an immutable planning manifest for the two required
+  all-electron CDFT branches at each molecular geometry. Both state identities
+  have identical nuclei, total charge, and total multiplicity; their required
+  projectile populations differ by exactly one electron. It deliberately
+  writes no state input or wavefunction-only restart.
+- `cp2k.py` contains a lower-level `MIXED_CDFT` renderer that requires explicit
+  converged multipliers and two preconverged same-geometry wavefunctions. It
+  keeps both CDFT Hamiltonians active at fixed multiplier (`MAX_SCF 0`) and
+  emits no optimizer step. This renderer and its parser are unit tested, but
+  accepted branch-state handoff is not implemented, so they are not connected
+  to an executable workflow.
 - `landau_zener.py` provides the unit-explicit one-crossing probability and
   impact-parameter integral. It requires the radial speed from an independently
   selected nuclear trajectory and does not silently assume a straight path.
+- The workflow runner and collector fail before starting CP2K or writing a
+  coupling table. This prevents a finite strength plus an unpaired WFN from
+  being promoted as a diabatic state.
 
 CP2K documents CDFT charge-localized states and mixed-CDFT couplings at
 <https://manual.cp2k.org/cp2k-2025_2-branch/methods/dft/constrained.html>.
 
-## Prepare carbon
+## Prepare a carbon planning manifest
 
 From `python_scripts/physics_ice/nep_mbpol`:
 
@@ -40,9 +47,10 @@ From `python_scripts/physics_ice/nep_mbpol`:
 python prepare_low_energy_charge_exchange.py --projectile C --runtime-smoke
 ```
 
-The smoke workflow contains one 6-A geometry for each of the six carbon
-capture transitions. Remove `--runtime-smoke` to prepare the registered radial
-grid and five orientations. Select a subset only for diagnostics:
+The smoke plan contains one 6-A geometry for each of the six carbon capture
+transitions. It produces no CDFT input and runs no electronic calculation.
+Remove `--runtime-smoke` to record the registered radial grid and five
+orientations. Select a subset only for planning diagnostics:
 
 ```bash
 python prepare_low_energy_charge_exchange.py \
@@ -50,34 +58,35 @@ python prepare_low_energy_charge_exchange.py \
 ```
 
 The same command accepts H, He, O, or S, or a complete external species JSON.
-No code changes are needed when its validated q=0..Z ladder is present.
+No species-specific code changes are needed when its complete q=0..Z ladder
+is present. Registry completeness does not validate either diabatic branch.
 
-## Run and collect
+## Execution is deliberately blocked
 
-```bash
-python run_low_energy_charge_exchange.py WORKFLOW_MANIFEST \
-  --cp2k-command "mpiexec -n 8 cp2k.psmp"
+The obsolete execution and collection PBS launchers have been removed. The
+Python runner and collector reject the planning manifest with
+`branch_handoff_pending` before a subprocess or output table is created. An
+executable path requires two
+immutable, reciprocal validated branch records whose geometry, total charge,
+multiplicity and spin mode, projectile population, CP2K settings and image,
+multiplier, WFN checksum, density, and ordered trace all match the planned
+state identity. That loader and its `MIXED_CDFT` handoff remain to be written.
 
-python collect_low_energy_charge_exchange.py WORKFLOW_MANIFEST \
-  --require-complete
-```
-
-Work is sharded by complete channel/geometry units, so both CDFT states and the
-dependent mixed calculation remain together:
-
-```bash
-python run_low_energy_charge_exchange.py WORKFLOW_MANIFEST \
-  --shard-count 10 --shard-index 0
-```
-
-Every input and completed result is checksum-linked. Existing compatible
-states are skipped on restart. Mixed inputs are generated only after both
-state wavefunctions and their converged constraint strengths exist.
+The separate carbon q=1, 12-A soft-CDFT pilot supplies at most evidence for the
+entrance population at one geometry. It does not validate the capture-product
+diabat: for `C+ + H2O -> C + H2O+`, both diabats have total charge +1, whereas
+their projectile populations are five and six electrons. The existing branch
+runner's `--charge` option sets both total charge and the asymptotic projectile
+target, so invoking it with q=0 would describe neutral C plus neutral H2O, not
+the required product state. The future handoff must represent these quantities
+independently and must not infer the second state from the q=1 pilot.
 
 ## Scientific status and next gate
 
-The output is a **validation-pending molecular coupling dataset**, not a cross
-section. Production use still requires:
+The current output is a **validation-pending planning manifest**, not a
+molecular coupling dataset or cross section. Execution first requires the
+accepted-state loader described above. Production use would then still
+require:
 
 1. basis, grid, cell, functional, charge-localization, spin-state and
    long-range convergence for representative channels;

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#PBS -N zbl_atom_reduce
+#PBS -q idle
+#PBS -l select=1:ncpus=1:mem=16gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+
+set -euo pipefail
+umask 002
+
+if [[ -z "${CAMPAIGN_MANIFEST:-}" || ! -f "${CAMPAIGN_MANIFEST}" ]]; then
+    echo "CAMPAIGN_MANIFEST must name a prepared ZBL campaign." >&2
+    exit 2
+fi
+REPO_ROOT="${REPO_ROOT:-${PBS_O_WORKDIR:-}}"
+cd "${REPO_ROOT}"
+PYTHON_BIN="${PYTHON_BIN:-${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol/.venv/bin/python}"
+
+"${PYTHON_BIN}" -u -m \
+  python_scripts.physics_ice.process_evidence.soft_nuclear_collisions.zbl.run_campaign \
+  reduce "${CAMPAIGN_MANIFEST}"
