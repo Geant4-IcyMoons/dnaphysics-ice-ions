@@ -199,15 +199,27 @@ while (( offset < shard_count )); do
     fi
 
     if [[ "${action}" == "plan" ]]; then
-        printf 'Would submit shard indices %d--%d as array 0-%d\n' \
-            "${offset}" "$((offset + batch_size - 1))" "${array_last}"
+        if (( batch_size == 1 )); then
+            printf 'Would submit shard index %d as a standalone job\n' \
+                "${offset}"
+        else
+            printf 'Would submit shard indices %d--%d as array 0-%d\n' \
+                "${offset}" "$((offset + batch_size - 1))" "${array_last}"
+        fi
     else
-        printf 'Submitting shard indices %d--%d as array 0-%d: ' \
-            "${offset}" "$((offset + batch_size - 1))" "${array_last}"
-        qsub \
-            -J "0-${array_last}" \
-            -v "${export_spec}" \
-            "${pbs_script}"
+        if (( batch_size == 1 )); then
+            printf 'Submitting shard index %d as a standalone job: ' "${offset}"
+            qsub \
+                -v "${export_spec}" \
+                "${pbs_script}"
+        else
+            printf 'Submitting shard indices %d--%d as array 0-%d: ' \
+                "${offset}" "$((offset + batch_size - 1))" "${array_last}"
+            qsub \
+                -J "0-${array_last}" \
+                -v "${export_spec}" \
+                "${pbs_script}"
+        fi
     fi
     offset=$((offset + batch_size))
 done
