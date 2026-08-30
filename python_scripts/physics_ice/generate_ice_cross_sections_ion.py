@@ -58,6 +58,8 @@ INCLUDE_BLOCH_DCS = False
 ENERGY_UNIT = "total"
 BORN_REFERENCE_CHARGE = "bare_Z"
 BORN_REFERENCE_EXPLICIT_CHARGE = None
+PROJECTILE_RELATIVISTIC_DCS = False
+INCLUDE_TRANSVERSE_DCS = False
 DEFAULT_ENERGY_MIN_EV = 1.0e6
 DEFAULT_ENERGY_MAX_EV = 1.0e8
 DEFAULT_ENERGY_POINTS = 1000
@@ -242,6 +244,35 @@ def _include_bloch_dcs_from_argv(default=False):
         raise ValueError("Bloch corrections are not implemented or allowed in the DCS generator.")
     return False
 
+def _projectile_relativistic_dcs_from_argv(default=False):
+    enabled = _bool_from_text(os.environ.get("ICE_PROJECTILE_RELATIVISTIC_DCS"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--relativistic-projectile-dcs":
+            enabled = True
+        elif arg == "--no-relativistic-projectile-dcs":
+            enabled = False
+        elif arg.startswith("--relativistic-projectile-dcs="):
+            enabled = _bool_from_text(arg.split("=", 1)[1], enabled)
+    return bool(enabled)
+
+def _include_transverse_dcs_from_argv(default=False):
+    enabled = _bool_from_text(os.environ.get("ICE_INCLUDE_TRANSVERSE_DCS"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--include-transverse-dcs":
+            enabled = True
+        elif arg == "--no-include-transverse-dcs":
+            enabled = False
+        elif arg.startswith("--include-transverse-dcs="):
+            enabled = _bool_from_text(arg.split("=", 1)[1], enabled)
+    return bool(enabled)
+
+def _set_projectile_relativistic_dcs(enabled=False, include_transverse=False):
+    global PROJECTILE_RELATIVISTIC_DCS, INCLUDE_TRANSVERSE_DCS
+    PROJECTILE_RELATIVISTIC_DCS = bool(enabled)
+    INCLUDE_TRANSVERSE_DCS = bool(include_transverse)
+    if INCLUDE_TRANSVERSE_DCS and not PROJECTILE_RELATIVISTIC_DCS:
+        raise ValueError("--include-transverse-dcs requires --relativistic-projectile-dcs.")
+
 def _born_reference_charge_from_argv(default="bare_Z"):
     ref = str(
         _argv_value(
@@ -358,6 +389,11 @@ def _charge_mode_tag(
         tag += "_barkas_dcs"
     return tag
 
+def _projectile_kernel_tag():
+    if not PROJECTILE_RELATIVISTIC_DCS:
+        return ""
+    return "_relproj_transverse" if INCLUDE_TRANSVERSE_DCS else "_relproj"
+
 def _print_cli_help_and_exit():
     supported = ", ".join(PROJECTILE_LIBRARY)
     print(
@@ -387,6 +423,10 @@ def _print_cli_help_and_exit():
         "  --include-barkas-dcs[=true|false]\n"
         "                                 add the OOS Barkas Z^3 DCS kernel (default: false)\n"
         "  --include-bloch-dcs=false      Bloch DCS is intentionally unsupported\n"
+        "  --relativistic-projectile-dcs[=true|false]\n"
+        "                                 use exact ion q bounds and the beta^-2 longitudinal kernel\n"
+        "  --include-transverse-dcs[=true|false]\n"
+        "                                 add the optical Fano transverse term; requires relativistic mode\n"
         "  --merge-energy-patches         merge this energy patch into existing DAT tables (default)\n"
         "  --no-merge-energy-patches      write only this energy patch to DAT tables\n"
     )
@@ -604,9 +644,10 @@ def _energy_grid(Emin, Emax, N, use_log=True):
     return np.exp(np.linspace(log_min, log_max, N))
 
 def _regime_flags(Tj):
-    # Heavy projectiles use the Born dielectric projectile kernel below. Electron
-    # exchange/Mott and electron-rest-mass relativistic q-bound corrections are
-    # intentionally not part of the proton/projectile generator path.
+    # Electron exchange/Mott corrections remain excluded. This optional path is
+    # the relativistic heavy-ion dielectric kernel, not the electron correction.
+    if PROJECTILE_RELATIVISTIC_DCS:
+        return False, True, bool(INCLUDE_TRANSVERSE_DCS), False
     return False, False, False, False
 
 def _elf_rolloff_factor(Ei):
@@ -702,7 +743,49 @@ def _q_bounds_scalar(Ei, Tj, projectile_mass_au=None):
     return float(qlo), float(qhi)
 
 def _q_bounds_scalar_rel(Ei, Tj):
-    raise RuntimeError("Relativistic electron q-bounds are disabled for heavy projectiles.")
+    """Return exact relativistic ion momentum-transfer bounds in a0^-1.
+
+    For ion rest energy M c^2 and energy loss W,
+        q_- = [p(T) - p(T-W)] / (hbar/a0),
+        q_+ = [p(T) + p(T-W)] / (hbar/a0),
+    where p c = sqrt[T(T + 2 M c^2)]. The selected projectile supplies M.
+    """
+    Ei = float(Ei)
+    Tj = float(Tj)
+    if Ei <= 0.0 or Ei >= Tj:
+        return 0.0, 0.0
+    rest_H = projectile_rest_energy_eV() * EV_TO_HA
+    T_H = Tj * EV_TO_HA
+    final_H = (Tj - Ei) * EV_TO_HA
+    p_initial = np.sqrt(T_H * (T_H + 2.0 * rest_H)) / C_AU
+    p_final = np.sqrt(final_H * (final_H + 2.0 * rest_H)) / C_AU
+    qhi = p_initial + p_final
+    loss_H = Ei * EV_TO_HA
+    # Rationalized p(T)-p(T-W), avoiding cancellation for W << T.
+    qlo = (
+        loss_H * (2.0 * (T_H + rest_H) - loss_H)
+        / (C_AU**2 * qhi)
+    )
+    if (not np.isfinite(qlo)) or (not np.isfinite(qhi)) or qlo <= 0.0 or qhi <= qlo:
+        return 0.0, 0.0
+    return float(qlo), float(qhi)
+
+def _projectile_relativistic_longitudinal_prefactor(Tj):
+    """Microscopic relativistic longitudinal DIMFP prefactor.
+
+    dLambda_L/dW = 2 z^2 / (pi a0 N m_e c^2 beta^2)
+                   * integral[dq/q Im(-1/epsilon(W,q))].
+
+    The selected projectile supplies z and beta. The established high-mass
+    energy-loss cutoff is retained separately by heavy_projectile_Emax().
+    """
+    beta2 = projectile_beta2(Tj)
+    if beta2 <= 0.0:
+        return 0.0
+    return float(
+        2.0 * PROJECTILE_CHARGE**2
+        / (np.pi * a0 * N * MC2_eV * beta2)
+    )
 
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for channels (excitation / ionization)
@@ -756,12 +839,66 @@ def _integrate_channel_single_E(
     return float(int_cons * accum)
 
 def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
-    raise RuntimeError("Relativistic electron q-bound path is disabled for heavy projectiles.")
+    if Ei > _projectile_energy_loss_upper_eV(Tj):
+        return 0.0
+    qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
+    if qhi <= qlo or qlo <= 0.0:
+        return 0.0
+
+    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
+    qvals = np.exp(xi)
+    E_arr = np.array([Ei], float)
+    e1 = model.epsilon1_valence_Eq(E_arr, qvals, s, C)
+    e2 = model.epsilon2_valence_Eq(E_arr, qvals, s, C)
+    denominator = e1["total"][:, 0] ** 2 + e2["total"][:, 0] ** 2
+    denominator = np.where(denominator == 0.0, np.finfo(float).tiny, denominator)
+    if channel_type == "excitation":
+        vals = e2["excitations"][idx][:, 0] / denominator
+    elif channel_type == "ionization":
+        vals = e2["ionizations"][idx][:, 0] / denominator
+    else:
+        raise ValueError("channel_type must be 'excitation' or 'ionization'")
+    vals = vals * _elf_rolloff_factor(Ei)
+    return float(
+        _projectile_relativistic_longitudinal_prefactor(Tj)
+        * _simpson_integrate(vals, xi)
+    )
 
 def _integrate_channel_single_E_trans(
     Ei, Tj, idx, channel_type, s, C, Nq=0, use_density_effect=False
 ):
-    raise RuntimeError("Transverse/density electron correction path is disabled for heavy projectiles.")
+    """Return the optical Fano transverse term for the selected ion.
+
+    dLambda_T/dW = z^2 / (pi a0 N m_e c^2 beta^2) * ELF(W,0)
+                   * [ln(1/(1-beta^2)) - beta^2].
+
+    No density-effect subtraction is applied because phase-specific ice
+    Sternheimer parameters are not available.
+    """
+    if use_density_effect:
+        raise ValueError("Density-effect DCS is unavailable for ice ion tables.")
+    if Ei > _projectile_energy_loss_upper_eV(Tj):
+        return 0.0
+    beta2 = projectile_beta2(Tj)
+    if beta2 <= 0.0:
+        return 0.0
+    bracket = -np.log1p(-beta2) - beta2
+
+    E_arr = np.array([Ei], float)
+    q_zero = np.array([0.0], float)
+    e1 = model.epsilon1_valence_Eq(E_arr, q_zero, s, C)
+    e2 = model.epsilon2_valence_Eq(E_arr, q_zero, s, C, partitioned=True)
+    denominator = e1["total"][0, 0] ** 2 + e2["total"][0, 0] ** 2
+    denominator = max(float(denominator), np.finfo(float).tiny)
+    if channel_type == "excitation":
+        elf0 = float(e2["excitations"][idx][0, 0]) / denominator
+    elif channel_type == "ionization":
+        elf0 = float(e2["ionizations"][idx][0, 0]) / denominator
+    else:
+        raise ValueError("channel_type must be 'excitation' or 'ionization'")
+    elf0 *= float(_elf_rolloff_factor(Ei))
+    prefactor = PROJECTILE_CHARGE**2 / (np.pi * a0 * N * MC2_eV * beta2)
+    return float(prefactor * elf0 * max(bracket, 0.0))
 
 # ----------------------------------------------------------------------
 # Low-energy Mott–Coulomb (MC) corrections using PWBA kernel evaluations
@@ -868,7 +1005,27 @@ def _integrate_kshell_single_E(
     return float(int_cons * accum)
 
 def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
-    raise RuntimeError("Relativistic electron q-bound path is disabled for heavy projectiles.")
+    if not include_kshell or (s.kshell is None) or KSHELL_MODEL == "none":
+        return 0.0
+    threshold = _kshell_threshold_eV(s)
+    if threshold is None or Ei <= threshold or Ei > _projectile_energy_loss_upper_eV(Tj):
+        return 0.0
+    qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
+    if qhi <= qlo or qlo <= 0.0:
+        return 0.0
+    xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
+    qvals = np.exp(xi)
+    if KSHELL_MODEL == "old-optical":
+        vals = np.full_like(xi, _kshell_old_optical_elf(Ei, s))
+        vals = vals * _elf_rolloff_factor(Ei)
+    elif KSHELL_MODEL == "hydrogenic-gos":
+        vals = _kshell_hydrogenic_gos_elf(Ei, qvals, s)
+    else:
+        return 0.0
+    return float(
+        _projectile_relativistic_longitudinal_prefactor(Tj)
+        * _simpson_integrate(vals, xi)
+    )
 
 # ----------------------------------------------------------------------
 # Q-integrated ELF per channel, on its own E-grid
@@ -942,7 +1099,7 @@ def integrate_elf_channels_per_channel_q(
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_channel_single_E(
-                Ei, T, k, "excitation", s, C, Nq=Nq, use_rel_bounds=use_rel_long
+                Ei, T, k, "excitation", s, C, Nq=Nq, use_rel_bounds=False
             )
 
             # Relativistic-longitudinal corrected inner-q integral
@@ -977,7 +1134,7 @@ def integrate_elf_channels_per_channel_q(
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_channel_single_E(
-                Ei, T, j, "ionization", s, C, Nq=Nq, use_rel_bounds=use_rel_long
+                Ei, T, j, "ionization", s, C, Nq=Nq, use_rel_bounds=False
             )
 
             # Relativistic-longitudinal corrected inner-q integral
@@ -1003,7 +1160,7 @@ def integrate_elf_channels_per_channel_q(
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_kshell_single_E(
-                Ei, T, s, Nq=Nq, include_kshell=include_kshell, use_rel_bounds=use_rel_long
+                Ei, T, s, Nq=Nq, include_kshell=include_kshell, use_rel_bounds=False
             )
 
             # Relativistic-longitudinal corrected inner-q integral
@@ -1988,6 +2145,11 @@ def save_cross_section_corrections_npz(
         dcs_table_variable="energy_loss_eV",
         electron_exchange_correction_applied=False,
         electron_relativistic_q_bounds_applied=False,
+        projectile_relativistic_dcs=bool(PROJECTILE_RELATIVISTIC_DCS),
+        projectile_relativistic_q_bounds_applied=bool(PROJECTILE_RELATIVISTIC_DCS),
+        projectile_relativistic_beta_prefactor_applied=bool(PROJECTILE_RELATIVISTIC_DCS),
+        projectile_transverse_dcs_applied=bool(INCLUDE_TRANSVERSE_DCS),
+        projectile_density_effect_dcs_applied=False,
         include_kshell=bool(include_kshell),
         kshell_model=KSHELL_MODEL,
         kshell_B_eV=float(KSHELL_B_EV if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
@@ -2952,6 +3114,8 @@ def _init_dcs_worker(
     ice_type,
     projectile_key,
     kshell_model,
+    projectile_relativistic_dcs,
+    include_transverse_dcs,
 ):
     global _DCS_WORKER_S, _DCS_WORKER_C
     global _DCS_WORKER_T_LINE, _DCS_WORKER_E_LINE, _DCS_WORKER_NQ
@@ -2965,6 +3129,9 @@ def _init_dcs_worker(
     _set_mc_correction(apply_mc=apply_mc)
     set_projectile(projectile_key)
     _set_kshell_model(kshell_model)
+    _set_projectile_relativistic_dcs(
+        projectile_relativistic_dcs, include_transverse_dcs
+    )
 
     _DCS_WORKER_S = model.epsilon_optical(ice_type)
     _DCS_WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
@@ -3076,7 +3243,7 @@ def write_emfietzoglou_dcs_tables(
         born_reference_charge = BORN_REFERENCE_CHARGE
     if born_reference_explicit_charge is None:
         born_reference_explicit_charge = BORN_REFERENCE_EXPLICIT_CHARGE
-    mode_suffix = _charge_mode_tag(
+    mode_suffix = _projectile_kernel_tag() + _charge_mode_tag(
         charge_mode,
         include_barkas_dcs,
         explicit_charge=explicit_charge,
@@ -3226,6 +3393,8 @@ def write_emfietzoglou_dcs_tables(
                     ice_type,
                     PROJECTILE_KEY,
                     KSHELL_MODEL,
+                    PROJECTILE_RELATIVISTIC_DCS,
+                    INCLUDE_TRANSVERSE_DCS,
                 ),
             ) as ex:
                 futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
@@ -3400,6 +3569,8 @@ def _init_worker(
     ice_type,
     projectile_key,
     kshell_model,
+    projectile_relativistic_dcs,
+    include_transverse_dcs,
 ):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
@@ -3415,6 +3586,9 @@ def _init_worker(
     _set_mc_correction(apply_mc=apply_mc)
     set_projectile(projectile_key)
     _set_kshell_model(kshell_model)
+    _set_projectile_relativistic_dcs(
+        projectile_relativistic_dcs, include_transverse_dcs
+    )
     _WORKER_S = model.epsilon_optical(ice_type)
     _WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
     _WORKER_KW = dict(
@@ -3455,6 +3629,11 @@ def main():
     explicit_charge = _explicit_charge_from_argv(default=None)
     include_barkas_dcs = _include_barkas_dcs_from_argv(default=False)
     include_bloch_dcs = _include_bloch_dcs_from_argv(default=False)
+    projectile_relativistic_dcs = _projectile_relativistic_dcs_from_argv(default=False)
+    include_transverse_dcs = _include_transverse_dcs_from_argv(default=False)
+    _set_projectile_relativistic_dcs(
+        projectile_relativistic_dcs, include_transverse_dcs
+    )
     born_reference_charge = _born_reference_charge_from_argv(default="bare_Z")
     born_reference_explicit_charge = _born_reference_explicit_charge_from_argv(default=None)
     if charge_mode == "explicit" and explicit_charge is None:
@@ -3479,6 +3658,7 @@ def main():
         run_label = f"{run_label}_per_u"
     run_label = (
         f"{run_label}"
+        f"{_projectile_kernel_tag()}"
         f"{_charge_mode_tag(charge_mode, include_barkas_dcs, explicit_charge=explicit_charge, born_reference_charge=born_reference_charge, born_reference_explicit_charge=born_reference_explicit_charge)}"
         f"{_energy_range_tag(energy_min_eV, energy_max_eV, energy_points, energy_grid)}"
     )
@@ -3506,6 +3686,11 @@ def main():
         f"charge_mode={charge_mode}, explicit_charge={explicit_charge}, "
         f"include_barkas_dcs={include_barkas_dcs}, include_bloch_dcs={include_bloch_dcs}, "
         f"born_reference_charge={born_reference_charge}"
+    )
+    print(
+        "Ion dielectric kernel: "
+        f"relativistic={PROJECTILE_RELATIVISTIC_DCS}, "
+        f"transverse={INCLUDE_TRANSVERSE_DCS}, density_effect=False"
     )
     print(f"Integration resolution: dE={NE}, dq={Nq}")
     print(f"Merge energy patches into DAT tables: {merge_energy_patches}")
@@ -3623,6 +3808,8 @@ def main():
                     ICE_TYPE,
                     PROJECTILE_KEY,
                     KSHELL_MODEL,
+                    PROJECTILE_RELATIVISTIC_DCS,
+                    INCLUDE_TRANSVERSE_DCS,
                 ),
         ) as ex:
             futures = [ex.submit(_compute_for_T, T) for T in T_list]
