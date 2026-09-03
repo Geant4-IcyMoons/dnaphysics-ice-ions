@@ -9,8 +9,8 @@ from typing import Iterable, Mapping
 from scipy.stats import t as student_t
 
 
-DEFAULT_STATISTICAL_RELATIVE_TOLERANCE = 0.005
 DEFAULT_STATISTICAL_CONFIDENCE = 0.95
+DEFAULT_MEANINGFUL_SIGNIFICANT_DIGITS = 2
 DEFAULT_MINIMUM_TRAJECTORIES = 1_000
 DEFAULT_MAXIMUM_TRAJECTORIES = 1_024_000
 DEFAULT_TRAJECTORY_BATCH_SIZE = 1_000
@@ -22,6 +22,60 @@ OBSERVABLES = (
     "mean_recoil_energy_ev_per_collision",
     "mean_one_minus_cosine_per_collision",
 )
+
+OBSERVABLE_UNITS = {
+    "hard_collision_rate_per_angstrom": "angstrom^-1",
+    "hard_nuclear_stopping_ev_per_angstrom": "eV angstrom^-1",
+    "hard_transport_rate_per_angstrom": "angstrom^-1",
+    "mean_recoil_energy_ev_per_collision": "eV collision^-1",
+    "mean_one_minus_cosine_per_collision": "collision^-1",
+}
+
+
+def numerical_tolerance(value: float, significant_digits: int) -> float:
+    """Return the JCGM 101:2008 section 7.9.2 decimal tolerance for ``value``.
+
+    The caller, rather than JCGM, is responsible for choosing how many digits
+    the numerical result must retain.
+    """
+
+    if not math.isfinite(value) or value == 0.0:
+        raise ValueError("A finite nonzero calibration value is required.")
+    if significant_digits < 1:
+        raise ValueError("significant_digits must be positive.")
+    leading_exponent = math.floor(math.log10(abs(value)))
+    significand = abs(value) / 10.0**leading_exponent
+    rounded_significand = round(significand, significant_digits - 1)
+    if rounded_significand >= 10.0:
+        leading_exponent += 1
+    last_place_exponent = leading_exponent - significant_digits + 1
+    return 0.5 * 10.0**last_place_exponent
+
+
+def absolute_tolerances_from_estimates(
+    estimates: Mapping[str, float], significant_digits: int
+) -> dict[str, float]:
+    """Freeze one absolute width per observable from calibration estimates."""
+
+    if set(estimates) != set(OBSERVABLES):
+        raise ValueError(f"Estimates must contain exactly {OBSERVABLES}.")
+    return {
+        name: numerical_tolerance(float(estimates[name]), significant_digits)
+        for name in OBSERVABLES
+    }
+
+
+def validate_absolute_tolerances(
+    tolerances: Mapping[str, float],
+) -> dict[str, float]:
+    """Validate and normalize a complete absolute fixed-width contract."""
+
+    if set(tolerances) != set(OBSERVABLES):
+        raise ValueError(f"Absolute tolerances must contain exactly {OBSERVABLES}.")
+    normalized = {name: float(tolerances[name]) for name in OBSERVABLES}
+    if any(not math.isfinite(value) or value <= 0.0 for value in normalized.values()):
+        raise ValueError("Absolute tolerances must be finite and positive.")
+    return normalized
 
 
 @dataclass
@@ -88,7 +142,7 @@ class RatioStatistics:
                 "estimate": None,
                 "standard_error": None,
                 "confidence_half_width": None,
-                "relative_confidence_half_width": None,
+                "confidence_width": None,
                 "finite": False,
             }
         estimate = self.numerator_sum / self.denominator_sum
@@ -109,13 +163,17 @@ class RatioStatistics:
             self.count * residual_square_sum / (self.count - 1)
         ) / self.denominator_sum
         half_width = critical_value * standard_error
-        relative = half_width / abs(estimate) if estimate != 0.0 else None
+        width = 2.0 * half_width
+        finite = all(
+            math.isfinite(value)
+            for value in (estimate, standard_error, half_width, width)
+        ) and not (estimate == 0.0 and standard_error == 0.0)
         return {
             "estimate": estimate,
             "standard_error": standard_error,
             "confidence_half_width": half_width,
-            "relative_confidence_half_width": relative,
-            "finite": relative is not None and math.isfinite(relative),
+            "confidence_width": width,
+            "finite": finite,
         }
 
 
@@ -196,17 +254,16 @@ def simultaneous_dkw_half_width(
 def convergence_report(
     statistics: Mapping[str, RatioStatistics],
     *,
-    tolerance: float,
+    absolute_tolerances: Mapping[str, float],
     confidence: float,
     scheduled_look_count: int,
     look_index: int,
 ) -> dict[str, object]:
-    """Assess all registered observables at one pre-scheduled sample size."""
+    """Apply a simultaneous absolute fixed-width rule at one scheduled look."""
 
     if set(statistics) != set(OBSERVABLES):
         raise ValueError(f"Statistics must contain exactly {OBSERVABLES}.")
-    if not math.isfinite(tolerance) or tolerance <= 0.0:
-        raise ValueError("tolerance must be finite and positive.")
+    tolerances = validate_absolute_tolerances(absolute_tolerances)
     counts = {value.count for value in statistics.values()}
     if len(counts) != 1:
         raise ValueError("All observables must contain the same trajectories.")
@@ -222,20 +279,26 @@ def convergence_report(
     observable_reports: dict[str, dict[str, object]] = {}
     for name in OBSERVABLES:
         interval = statistics[name].interval(critical)
+        width = interval["confidence_width"]
+        interval["absolute_tolerance"] = tolerances[name]
+        interval["unit"] = OBSERVABLE_UNITS[name]
+        interval["normalized_confidence_width"] = (
+            float(width) / tolerances[name] if width is not None else None
+        )
         interval["passes"] = bool(
             interval["finite"]
-            and interval["relative_confidence_half_width"] is not None
-            and float(interval["relative_confidence_half_width"]) <= tolerance
+            and width is not None
+            and float(width) <= tolerances[name]
         )
         observable_reports[name] = interval
     converged = all(
         bool(report["passes"]) for report in observable_reports.values()
     )
-    finite_widths = [
-        float(report["relative_confidence_half_width"])
+    normalized_widths = [
+        float(report["normalized_confidence_width"])
         for report in observable_reports.values()
         if bool(report["finite"])
-        and report["relative_confidence_half_width"] is not None
+        and report["normalized_confidence_width"] is not None
     ]
     return {
         "converged": converged,
@@ -245,14 +308,19 @@ def convergence_report(
         "familywise_confidence": confidence,
         "individual_interval_confidence": individual_confidence,
         "critical_value": critical,
-        "relative_tolerance": tolerance,
-        "maximum_finite_relative_confidence_half_width": (
-            max(finite_widths) if finite_widths else None
+        "absolute_tolerances": tolerances,
+        "maximum_normalized_confidence_width": (
+            max(normalized_widths) if normalized_widths else None
         ),
         "observables": observable_reports,
         "method": (
-            "trajectory-clustered ratio delta method with Student-t intervals; "
+            "trajectory-clustered ratio delta method with simultaneous "
+            "Student-t confidence intervals; absolute fixed-width stopping; "
             "Bonferroni correction across observables and scheduled looks"
+        ),
+        "references": (
+            "Glynn and Whitt (1992), doi:10.1214/aoap/1177005770; "
+            "Flegal and Gong (2015), doi:10.5705/ss.2013.209"
         ),
     }
 

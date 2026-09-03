@@ -23,7 +23,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from bca.config import DEFAULT_PROJECTILES  # noqa: E402
-from bca.convergence import OBSERVABLES  # noqa: E402
+from bca.convergence import (  # noqa: E402
+    DEFAULT_MEANINGFUL_SIGNIFICANT_DIGITS,
+    OBSERVABLES,
+    absolute_tolerances_from_estimates,
+    validate_absolute_tolerances,
+)
 from ion_ice import ICE_STRUCTURES_ROOT, PROCESS_EVIDENCE_ROOT  # noqa: E402
 
 
@@ -91,7 +96,13 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--workers", type=int, default=0)
-    parser.add_argument("--tolerance", type=float, default=0.005)
+    parser.add_argument(
+        "--meaningful-significant-digits",
+        type=int,
+        default=DEFAULT_MEANINGFUL_SIGNIFICANT_DIGITS,
+    )
+    parser.add_argument("--interpolation-tolerance", type=float, default=0.005)
+    parser.add_argument("--trajectory-cdf-tolerance", type=float, default=0.005)
     parser.add_argument("--confidence", type=float, default=0.95)
     parser.add_argument("--calibration-trajectories", type=int, default=10_000)
     parser.add_argument("--minimum-trajectories", type=int, default=200_000)
@@ -137,8 +148,12 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("At least two distinct positive base energies are required.")
     if energies[0] < 1.0e3 or energies[-1] > 1.0e8:
         raise ValueError("The retained kernel range is 1 keV--100 MeV.")
-    if not math.isfinite(args.tolerance) or not 0.0 < args.tolerance < 1.0:
-        raise ValueError("--tolerance must lie strictly between zero and one.")
+    if args.meaningful_significant_digits < 1:
+        raise ValueError("--meaningful-significant-digits must be positive.")
+    for name in ("interpolation_tolerance", "trajectory_cdf_tolerance"):
+        value = float(getattr(args, name))
+        if not math.isfinite(value) or not 0.0 < value < 1.0:
+            raise ValueError(f"--{name.replace('_', '-')} must lie in (0, 1).")
     if not 0.0 < args.confidence < 1.0:
         raise ValueError("--confidence must lie strictly between zero and one.")
     if args.calibration_trajectories < 2:
@@ -235,7 +250,9 @@ def _manifest(path: Path) -> dict[str, object]:
     return value
 
 
-def _report_quality(report: dict[str, object]) -> float:
+def _report_quality(
+    report: dict[str, object], absolute_tolerances: dict[str, float]
+) -> float:
     observables = report.get("observables")
     if not isinstance(observables, dict) or set(observables) != set(OBSERVABLES):
         return math.inf
@@ -244,17 +261,13 @@ def _report_quality(report: dict[str, object]) -> float:
         record = observables[name]
         if not isinstance(record, dict):
             return math.inf
-        estimate = record.get("estimate")
-        width = record.get("relative_confidence_half_width")
+        width = record.get("confidence_width")
         if (
-            estimate is None
-            or width is None
-            or not math.isfinite(float(estimate))
-            or float(estimate) <= 0.0
+            width is None
             or not math.isfinite(float(width))
         ):
             return math.inf
-        widths.append(float(width))
+        widths.append(float(width) / absolute_tolerances[name])
     return max(widths)
 
 
@@ -267,6 +280,7 @@ def _run_simulator(
     stage: str,
     fixed_trajectories: int | None,
     control_variate: bool,
+    absolute_tolerances: dict[str, float] | None = None,
 ) -> tuple[int, Path, list[str]]:
     structure, metadata = _structure_paths(
         args.structure_directory, case.structure_seed
@@ -293,12 +307,12 @@ def _run_simulator(
         str(workers),
         "--trajectory-batch-size",
         str(args.trajectory_batch_size),
-        "--statistical-relative-tolerance",
-        f"{args.tolerance:.17g}",
         "--statistical-confidence",
         f"{args.confidence:.17g}",
         "--trajectory-cdf-tolerance",
-        f"{args.tolerance:.17g}",
+        f"{args.trajectory_cdf_tolerance:.17g}",
+        "--meaningful-significant-digits",
+        str(args.meaningful_significant_digits),
         "--output-detail",
         "summary",
         "--output-directory",
@@ -309,6 +323,17 @@ def _run_simulator(
         f"{getattr(args, 'tube_mixture_fraction', 0.5):.17g}",
         *ORIENTATIONS[case.orientation],
     ]
+    if absolute_tolerances is not None:
+        command.extend(
+            (
+                "--statistical-absolute-tolerances-json",
+                json.dumps(
+                    validate_absolute_tolerances(absolute_tolerances),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            )
+        )
     if fixed_trajectories is None:
         command.extend(
             (
@@ -374,14 +399,30 @@ def _calibrate_case(
     raw = manifest["raw_statistical_convergence"]
     if not isinstance(corrected, dict) or not isinstance(raw, dict):
         raise RuntimeError(f"Calibration reports are malformed: {manifest_path}")
-    corrected_quality = _report_quality(corrected)
-    raw_quality = _report_quality(raw)
+    raw_observables = raw.get("observables")
+    if not isinstance(raw_observables, dict):
+        raise RuntimeError(f"Raw calibration report is malformed: {manifest_path}")
+    reference_estimates = {
+        name: float(raw_observables[name]["estimate"]) for name in OBSERVABLES
+    }
+    absolute_tolerances = absolute_tolerances_from_estimates(
+        reference_estimates, args.meaningful_significant_digits
+    )
+    corrected_quality = _report_quality(corrected, absolute_tolerances)
+    raw_quality = _report_quality(raw, absolute_tolerances)
     use_control = corrected_quality < raw_quality
     return {
         "selected": "straight_line_control_variate" if use_control else "raw",
         "use_control_variate": use_control,
-        "corrected_maximum_relative_half_width": corrected_quality,
-        "raw_maximum_relative_half_width": raw_quality,
+        "corrected_maximum_normalized_confidence_width": corrected_quality,
+        "raw_maximum_normalized_confidence_width": raw_quality,
+        "absolute_tolerances": absolute_tolerances,
+        "tolerance_reference_estimates": reference_estimates,
+        "meaningful_significant_digits": args.meaningful_significant_digits,
+        "tolerance_method": (
+            "predeclared project reporting precision; decimal tolerance "
+            "defined by JCGM 101:2008 section 7.9.2"
+        ),
         "selection_data_reused_in_production": False,
         "manifest": str(manifest_path),
     }
@@ -409,6 +450,9 @@ def _run_production_case(
         stage="production",
         fixed_trajectories=None,
         control_variate=bool(calibration.get("use_control_variate", False)),
+        absolute_tolerances=validate_absolute_tolerances(
+            calibration["absolute_tolerances"]
+        ),
     )
     if args.dry_run:
         print("DRY RUN:", " ".join(command))
@@ -417,7 +461,8 @@ def _run_production_case(
         raise RuntimeError(
             f"Case reached {_runtime_trajectory_ceiling(args):,} trajectories "
             "without "
-            f"meeting every 0.5% gate: {case}. Checkpoints are resumable."
+            "meeting every simultaneous absolute fixed-width gate: "
+            f"{case}. Checkpoints are resumable."
         )
     if return_code != 0:
         raise RuntimeError(f"Production case failed with status {return_code}: {case}")
@@ -605,16 +650,18 @@ def _analyze_interval(
                         "distribution": field,
                     }
     scalar_passes = float(worst_scalar["relative_error"]) <= math.log1p(
-        args.tolerance
+        args.interpolation_tolerance
     )
-    cdf_passes = float(worst_cdf["absolute_error"]) <= args.tolerance
+    cdf_passes = (
+        float(worst_cdf["absolute_error"]) <= args.interpolation_tolerance
+    )
     return {
         "lower_energy_ev": lower_energy,
         "upper_energy_ev": upper_energy,
         "validation_midpoint_energy_ev": midpoint_energy,
         "scalar_interpolation": worst_scalar,
         "trajectory_cdf_interpolation": worst_cdf,
-        "tolerance": args.tolerance,
+        "tolerance": args.interpolation_tolerance,
         "passes": scalar_passes and cdf_passes,
     }
 
@@ -629,7 +676,9 @@ def _controller_configuration(args: argparse.Namespace) -> dict[str, object]:
         "orientations": list(args.orientations),
         "base_energies_ev": sorted(set(float(v) for v in args.base_energies_ev)),
         "kernel_path": str(args.kernels.resolve()),
-        "tolerance": args.tolerance,
+        "meaningful_significant_digits": args.meaningful_significant_digits,
+        "interpolation_tolerance": args.interpolation_tolerance,
+        "trajectory_cdf_tolerance": args.trajectory_cdf_tolerance,
         "confidence": args.confidence,
         "calibration_trajectories": args.calibration_trajectories,
         "minimum_trajectories": args.minimum_trajectories,
@@ -644,7 +693,8 @@ def _controller_configuration(args: argparse.Namespace) -> dict[str, object]:
         "maximum_energy_points": args.maximum_energy_points,
         "numerical_contract": {
             "scalar_monte_carlo": (
-                "95% simultaneous relative confidence half-width <= tolerance"
+                "95% simultaneous absolute confidence width <= independent-"
+                "calibration JCGM numerical tolerance"
             ),
             "trajectory_cdf_monte_carlo": (
                 "simultaneous DKW absolute half-width <= tolerance"
@@ -765,7 +815,8 @@ def main() -> int:
                 _atomic_json(state_path, state)
                 raise RuntimeError(
                     f"Energy interval {lower:g}-{upper:g} eV did not meet "
-                    f"the {args.tolerance:.3%} gate by depth {depth}."
+                    f"the {args.interpolation_tolerance:.3%} interpolation "
+                    f"gate by depth {depth}."
                 )
             intervals.extend(
                 ((lower, midpoint, depth + 1), (midpoint, upper, depth + 1))

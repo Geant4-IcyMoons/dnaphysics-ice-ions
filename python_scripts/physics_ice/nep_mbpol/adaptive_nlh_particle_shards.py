@@ -76,7 +76,13 @@ def _common_prepare_arguments(parser: argparse.ArgumentParser) -> None:
             / "sharded_adaptive_particles"
         ),
     )
-    parser.add_argument("--tolerance", type=float, default=0.005)
+    parser.add_argument(
+        "--meaningful-significant-digits",
+        type=int,
+        default=serial.DEFAULT_MEANINGFUL_SIGNIFICANT_DIGITS,
+    )
+    parser.add_argument("--interpolation-tolerance", type=float, default=0.005)
+    parser.add_argument("--trajectory-cdf-tolerance", type=float, default=0.005)
     parser.add_argument("--confidence", type=float, default=0.95)
     parser.add_argument("--calibration-trajectories", type=int, default=10_000)
     parser.add_argument("--minimum-trajectories", type=int, default=200_000)
@@ -133,7 +139,9 @@ def _serial_args(args: argparse.Namespace) -> argparse.Namespace:
         kernels=args.kernels.expanduser().resolve(),
         output_root=args.output_root.expanduser().resolve(),
         workers=0,
-        tolerance=args.tolerance,
+        meaningful_significant_digits=args.meaningful_significant_digits,
+        interpolation_tolerance=args.interpolation_tolerance,
+        trajectory_cdf_tolerance=args.trajectory_cdf_tolerance,
         confidence=args.confidence,
         calibration_trajectories=args.calibration_trajectories,
         minimum_trajectories=args.minimum_trajectories,
@@ -447,7 +455,8 @@ def prepare_wave(raw_args: argparse.Namespace) -> tuple[str, Path, int]:
                 _atomic_json(state_path, state)
                 raise RuntimeError(
                     f"Energy interval {lower:g}-{upper:g} eV failed the "
-                    f"{args.tolerance:.3%} gate at depth {depth}."
+                    f"{args.interpolation_tolerance:.3%} interpolation gate "
+                    f"at depth {depth}."
                 )
             next_frontier.extend(
                 (
@@ -495,7 +504,15 @@ def _args_from_wave(payload: dict[str, Any]) -> argparse.Namespace:
         kernels=Path(configuration["kernel_path"]),
         output_root=Path(payload["particle_root"]).parent.parent,
         workers=0,
-        tolerance=float(configuration["tolerance"]),
+        meaningful_significant_digits=int(
+            configuration["meaningful_significant_digits"]
+        ),
+        interpolation_tolerance=float(
+            configuration["interpolation_tolerance"]
+        ),
+        trajectory_cdf_tolerance=float(
+            configuration["trajectory_cdf_tolerance"]
+        ),
         confidence=float(configuration["confidence"]),
         calibration_trajectories=int(configuration["calibration_trajectories"]),
         minimum_trajectories=int(configuration["minimum_trajectories"]),

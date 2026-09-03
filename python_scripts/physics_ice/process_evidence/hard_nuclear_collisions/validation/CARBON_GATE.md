@@ -44,9 +44,15 @@ the source reports RMS errors of 3.56% for C--H and 9.51% for C--O.
    the 1 keV and 100 MeV endpoints: 18 jobs. These fixed samples estimate
    observable variances and runtime only; they make no convergence claim.
 3. **Hexagonal base matrix.** Use the pilot variances to set explicit sample
-   counts, then evaluate three snapshots, three directions, and six base
+   counts and freeze each case's absolute confidence-width tolerances from the
+   independent raw calibration estimate using JCGM 101:2008 section 7.9.2 and
+   the project's predeclared requirement of two meaningful significant digits.
+   JCGM defines the decimal tolerance; it does not prescribe the number of
+   digits. Then evaluate three snapshots, three directions, and six base
    energies from 1 keV to 100 MeV. Report the Monte Carlo confidence intervals
-   separately from the 0.5% kernel-interpolation budget.
+   separately from the 0.5% kernel-interpolation budget. The two-digit rule is
+   frozen for acceptance before further sampling; looser sensitivity results
+   cannot replace it.
 4. **Energy refinement.** Add midpoint energies wherever direct atomistic
    observables are not reproduced within their declared numerical/statistical
    envelope. Refine until the rate, nuclear stopping, transport moment, recoil
@@ -87,18 +93,46 @@ qsub -v RUN_MODE=carbon_variance_pilot -J 0-17 \
   pbs/run_nlh_hard_collision_trajectories.pbs
 ```
 
-After the pilot-derived sampling plan is recorded, submit the 54-case base
-matrix with the chosen adaptive bounds:
+Production uses the particle controller, which performs the independent
+calibration and passes the frozen per-observable widths to the simulator:
 
 ```bash
-qsub -v RUN_MODE=carbon_base_grid,MINIMUM_TRAJECTORIES=1000,\
-MAXIMUM_TRAJECTORIES=<pilot-derived-limit>,\
-STATISTICAL_RELATIVE_TOLERANCE=<declared-MC-tolerance> -J 0-53 \
-  pbs/run_nlh_hard_collision_trajectories.pbs
+bash pbs/launch_adaptive_nlh_particle_shards.sh C
 ```
 
 Every case writes checksum-bound batches immediately and resumes only from a
 configuration-compatible checkpoint.
+
+The active carbon wave was launched before the hard/soft kernel consolidation
+and is signed as trajectory implementation v3. Reassess its preserved
+sufficient statistics without resampling:
+
+```bash
+python_scripts/physics_ice/nep_mbpol/.venv/bin/python \
+  python_scripts/physics_ice/nep_mbpol/audit_nlh_absolute_fixed_width.py \
+  <campaign-root>
+```
+
+Only cases that fail this audit may receive additional trajectories. Their
+v3 trajectory stream must use the pinned node-local compatibility runner,
+never the v4 default runner:
+
+```bash
+qsub -J 0-<failed-case-count-minus-one> \
+  -v WAVE_MANIFEST=<wave>,AUDIT=<absolute-fixed-width-audit>,\
+WORKERS=64,REPO_ROOT="$PWD",\
+LEGACY_COMMIT=5f4adfe2585c4707c6d53dba10d580e876e1a688 \
+  pbs/run_adaptive_nlh_particle_shard_v3_resume.pbs
+```
+
+Submit this launcher as an array over the audit's failed-case indices. Each
+element advances one case only to its next predeclared scheduled look; rerun
+the audit before requesting another look.
+
+The pinned revision is the repository state that launched the v3 production
+jobs. It is extracted only to compute-node scratch. The canonical v3 batch
+directories remain the sole source of progress; v4 namespaces cannot be
+combined with them.
 
 The particle-generic adaptive implementation superseding a manually fixed
 carbon sample count is `adaptive_nlh_particle_transport.py`. It uses the same

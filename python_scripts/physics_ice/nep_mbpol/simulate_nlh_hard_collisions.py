@@ -27,16 +27,18 @@ sys.path.insert(0, str(HERE.parents[2]))
 from bca.config import DEFAULT_PROJECTILES, DEFAULT_WORKERS  # noqa: E402
 from bca.convergence import (  # noqa: E402
     DEFAULT_MAXIMUM_TRAJECTORIES,
+    DEFAULT_MEANINGFUL_SIGNIFICANT_DIGITS,
     DEFAULT_MINIMUM_TRAJECTORIES,
     DEFAULT_STATISTICAL_CONFIDENCE,
-    DEFAULT_STATISTICAL_RELATIVE_TOLERANCE,
     DEFAULT_TRAJECTORY_BATCH_SIZE,
     OBSERVABLES,
     RatioStatistics,
+    absolute_tolerances_from_estimates,
     convergence_report,
     doubling_schedule,
     merge_statistics,
     simultaneous_dkw_half_width,
+    validate_absolute_tolerances,
 )
 from bca.runtime import AdaptiveKernelTable  # noqa: E402
 from bca.structure import IceStructure, load_ice_structure  # noqa: E402
@@ -117,10 +119,23 @@ def parse_args() -> argparse.Namespace:
         help="Restart/checkpoint batch size (default: 1000).",
     )
     parser.add_argument(
-        "--statistical-relative-tolerance",
-        type=float,
-        default=DEFAULT_STATISTICAL_RELATIVE_TOLERANCE,
-        help="Required simultaneous relative confidence half-width (default: 0.005).",
+        "--statistical-absolute-tolerances-json",
+        type=json.loads,
+        help=(
+            "JSON object mapping every registered observable to its required "
+            "absolute simultaneous confidence-interval width. Required for "
+            "adaptive sampling; fixed calibration runs derive a reporting "
+            "contract from their raw estimates."
+        ),
+    )
+    parser.add_argument(
+        "--meaningful-significant-digits",
+        type=int,
+        default=DEFAULT_MEANINGFUL_SIGNIFICANT_DIGITS,
+        help=(
+            "JCGM 101:2008 section 7.9.2 digits used only when a fixed "
+            "calibration run derives its absolute reporting widths."
+        ),
     )
     parser.add_argument(
         "--statistical-confidence",
@@ -224,12 +239,19 @@ def _validate_args(args: argparse.Namespace) -> None:
         )
     if args.trajectory_batch_size < 1:
         raise ValueError("--trajectory-batch-size must be positive.")
-    if (
-        not math.isfinite(args.statistical_relative_tolerance)
-        or args.statistical_relative_tolerance <= 0.0
-    ):
-        raise ValueError(
-            "--statistical-relative-tolerance must be finite and positive."
+    if args.meaningful_significant_digits < 1:
+        raise ValueError("--meaningful-significant-digits must be positive.")
+    if args.statistical_absolute_tolerances_json is None:
+        if args.trajectories is None:
+            raise ValueError(
+                "Adaptive sampling requires --statistical-absolute-"
+                "tolerances-json from an independent calibration."
+            )
+    else:
+        args.statistical_absolute_tolerances_json = (
+            validate_absolute_tolerances(
+                args.statistical_absolute_tolerances_json
+            )
         )
     if not 0.0 < args.statistical_confidence < 1.0:
         raise ValueError(
@@ -1092,7 +1114,7 @@ def _write_manifest(
     raw_statistics = _statistics_from_records(records, "raw_statistics")
     raw_statistical_report = convergence_report(
         raw_statistics,
-        tolerance=args.statistical_relative_tolerance,
+        absolute_tolerances=statistical_report["absolute_tolerances"],
         confidence=args.statistical_confidence,
         scheduled_look_count=len(schedule),
         look_index=int(statistical_report["look_index"]),
@@ -1213,8 +1235,11 @@ def _write_manifest(
             "fixed_trajectories": args.trajectories,
             "adaptive_trajectory_schedule": list(schedule),
             "trajectory_batch_size": args.trajectory_batch_size,
-            "statistical_relative_tolerance": (
-                args.statistical_relative_tolerance
+            "statistical_absolute_tolerances": statistical_report[
+                "absolute_tolerances"
+            ],
+            "meaningful_significant_digits": (
+                args.meaningful_significant_digits
             ),
             "statistical_confidence": args.statistical_confidence,
             "trajectory_cdf_tolerance": args.trajectory_cdf_tolerance,
@@ -1354,8 +1379,8 @@ def _write_manifest(
                 "separate adaptive energy/impact grid with nominal 0.5% budget"
             ),
             "trajectory_monte_carlo": (
-                f"{args.statistical_relative_tolerance:.3%} simultaneous "
-                "relative confidence-half-width target"
+                "simultaneous absolute fixed-width confidence intervals; "
+                "per-observable widths recorded in the convergence report"
             ),
             "combined_claim": (
                 "not formed: interpolation and sampling errors are reported "
@@ -1569,9 +1594,25 @@ def main() -> int:
                         progress.update(stop - completed)
                         completed = stop
             statistics = _statistics_from_records(records)
+            absolute_tolerances = args.statistical_absolute_tolerances_json
+            if absolute_tolerances is None:
+                raw_statistics = _statistics_from_records(
+                    records, "raw_statistics"
+                )
+                raw_estimates: dict[str, float] = {}
+                for name in OBSERVABLES:
+                    estimate = raw_statistics[name].interval(1.0)["estimate"]
+                    if estimate is None:
+                        raise RuntimeError(
+                            "Calibration could not estimate every observable."
+                        )
+                    raw_estimates[name] = float(estimate)
+                absolute_tolerances = absolute_tolerances_from_estimates(
+                    raw_estimates, args.meaningful_significant_digits
+                )
             last_report = convergence_report(
                 statistics,
-                tolerance=args.statistical_relative_tolerance,
+                absolute_tolerances=absolute_tolerances,
                 confidence=args.statistical_confidence,
                 scheduled_look_count=len(schedule),
                 look_index=look_index,
@@ -1615,16 +1656,16 @@ def main() -> int:
                     last_report["converged"] and cdf_passes
                 )
             maximum_width = last_report[
-                "maximum_finite_relative_confidence_half_width"
+                "maximum_normalized_confidence_width"
             ]
             width_text = (
-                f"{float(maximum_width):.3%}"
+                f"{float(maximum_width):.3f} x tolerance"
                 if maximum_width is not None
                 else "undefined"
             )
             print(
                 f"Statistical look {look_index}/{len(schedule)}: "
-                f"N={completed:,}, maximum finite relative half-width="
+                f"N={completed:,}, maximum normalized confidence width="
                 f"{width_text}; "
                 + (
                     "CDF half-width="

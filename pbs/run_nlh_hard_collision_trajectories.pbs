@@ -20,7 +20,7 @@
 #       pbs/run_nlh_hard_collision_trajectories.pbs
 #
 # One base-grid element is one structure, projectile, orientation, and energy.
-# It samples adaptively to the driver's 0.5% simultaneous confidence target.
+# Adaptive runs require the independently calibrated absolute-width JSON.
 # Repeating an identical element resumes checksum-verified trajectory batches.
 # The carbon-only hexagonal decision-gate subset has 54 elements:
 #
@@ -227,10 +227,14 @@ trajectory_args=()
 if [[ -n "${FIXED_TRAJECTORIES}" ]]; then
     trajectory_args=(--trajectories "${FIXED_TRAJECTORIES}")
 else
+    if [[ -z "${STATISTICAL_ABSOLUTE_TOLERANCES_JSON:-}" ]]; then
+        echo "Adaptive runs require STATISTICAL_ABSOLUTE_TOLERANCES_JSON." >&2
+        exit 2
+    fi
     trajectory_args=(
         --minimum-trajectories "${MINIMUM_TRAJECTORIES:-1000}"
         --maximum-trajectories "${MAXIMUM_TRAJECTORIES:-1024000}"
-        --statistical-relative-tolerance "${STATISTICAL_RELATIVE_TOLERANCE:-0.005}"
+        --statistical-absolute-tolerances-json "${STATISTICAL_ABSOLUTE_TOLERANCES_JSON}"
     )
 fi
 
@@ -251,6 +255,7 @@ cmd=(
     --path-length-angstrom "${PATH_LENGTH_ANGSTROM:-100}"
     --seed "${MASTER_SEED}"
     --workers "${WORKERS}"
+    --meaningful-significant-digits "${MEANINGFUL_SIGNIFICANT_DIGITS:-2}"
     --sampling-mode "${SAMPLING_MODE:-collision_tube_mixture}"
     --tube-mixture-fraction "${TUBE_MIXTURE_FRACTION:-0.5}"
     --output-directory "${OUTPUT_DIRECTORY}"
@@ -276,7 +281,7 @@ echo "Fixed trajectories: ${FIXED_TRAJECTORIES:-adaptive}"
 if [[ -z "${FIXED_TRAJECTORIES}" ]]; then
     echo "Adaptive minimum trajectories: ${MINIMUM_TRAJECTORIES:-1000}"
     echo "Adaptive maximum trajectories: ${MAXIMUM_TRAJECTORIES:-1024000}"
-    echo "Monte Carlo relative tolerance: ${STATISTICAL_RELATIVE_TOLERANCE:-0.005}"
+    echo "Monte Carlo absolute widths: ${STATISTICAL_ABSOLUTE_TOLERANCES_JSON}"
 fi
 echo "Output directory: ${OUTPUT_DIRECTORY}"
 echo "Started UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

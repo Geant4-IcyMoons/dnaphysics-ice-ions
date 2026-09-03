@@ -22,9 +22,11 @@ if str(NEP_MBPOL) not in sys.path:
 from bca.convergence import (  # noqa: E402
     OBSERVABLES,
     RatioStatistics,
+    absolute_tolerances_from_estimates,
     convergence_report,
     doubling_schedule,
     merge_statistics,
+    numerical_tolerance,
     simultaneous_critical_value,
     simultaneous_dkw_half_width,
 )
@@ -92,6 +94,29 @@ def test_trajectory_cli_accepts_light_projectiles(monkeypatch, projectile) -> No
         ],
     )
     assert simulator.parse_args().projectile == projectile
+
+
+def test_adaptive_cli_requires_independently_calibrated_absolute_widths(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "simulate_nlh_hard_collisions.py",
+            "ice.xyz",
+            "--projectile",
+            "C",
+            "--energy-ev",
+            "1000",
+        ],
+    )
+    args = simulator.parse_args()
+    with pytest.raises(ValueError, match="independent calibration"):
+        simulator._validate_args(args)
+
+    args.trajectories = 100
+    simulator._validate_args(args)
 
 
 def test_run_signature_rejects_obsolete_numerical_checkpoints() -> None:
@@ -248,7 +273,7 @@ def test_dkw_budget_covers_two_distributions_and_scheduled_looks() -> None:
 def test_convergence_requires_every_rate_and_moment() -> None:
     passing = convergence_report(
         _statistics(scale=0.001),
-        tolerance=0.005,
+        absolute_tolerances={name: 1.0 for name in OBSERVABLES},
         confidence=0.95,
         scheduled_look_count=4,
         look_index=1,
@@ -256,7 +281,7 @@ def test_convergence_requires_every_rate_and_moment() -> None:
     assert passing["converged"]
     failing = convergence_report(
         _statistics(scale=2.0),
-        tolerance=0.005,
+        absolute_tolerances={name: 1.0e-12 for name in OBSERVABLES},
         confidence=0.95,
         scheduled_look_count=4,
         look_index=1,
@@ -292,15 +317,42 @@ def test_zero_event_sample_is_reported_as_unresolved_not_infinite() -> None:
         statistics["mean_one_minus_cosine_per_collision"].add(0.0, 0.0)
     report = convergence_report(
         statistics,
-        tolerance=0.005,
+        absolute_tolerances={name: 1.0 for name in OBSERVABLES},
         confidence=0.95,
         scheduled_look_count=1,
         look_index=1,
     )
     assert not report["converged"]
-    assert report["observables"][
+    assert not report["observables"][
         "hard_collision_rate_per_angstrom"
-    ]["relative_confidence_half_width"] is None
+    ]["finite"]
     assert report["observables"][
         "mean_recoil_energy_ev_per_collision"
-    ]["relative_confidence_half_width"] is None
+    ]["confidence_width"] is None
+
+
+@pytest.mark.parametrize(
+    ("value", "digits", "expected"),
+    (
+        (12.3, 2, 0.5),
+        (0.0863, 2, 0.0005),
+        (1.23e-9, 2, 0.5e-10),
+        (9.999, 2, 0.5),
+    ),
+)
+def test_jcgm_numerical_tolerance(value, digits, expected) -> None:
+    assert numerical_tolerance(value, digits) == pytest.approx(expected)
+
+
+def test_reporting_precision_is_an_explicit_input() -> None:
+    value = 0.0863
+    assert numerical_tolerance(value, 1) == pytest.approx(0.005)
+    assert numerical_tolerance(value, 2) == pytest.approx(0.0005)
+    assert numerical_tolerance(value, 3) == pytest.approx(0.00005)
+
+
+def test_absolute_widths_are_frozen_from_all_calibration_estimates() -> None:
+    estimates = {name: float(index + 1) for index, name in enumerate(OBSERVABLES)}
+    tolerances = absolute_tolerances_from_estimates(estimates, 2)
+    assert set(tolerances) == set(OBSERVABLES)
+    assert all(value > 0.0 for value in tolerances.values())

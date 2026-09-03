@@ -177,14 +177,20 @@ order.
 If `--trajectories` is omitted, production sampling is adaptive. Independent
 histories are added in restartable batches of 1,000 and assessed after
 1,000, 2,000, 4,000, ... histories, up to 1,024,000 by default. Sampling stops
-only when the asymptotic 95% simultaneous relative confidence half-width is at
-most 0.5% for the hard-event rate, hard nuclear stopping, hard transport rate,
-mean recoil energy per collision, and mean `1-cos(theta_lab)` per collision. The
-trajectory is the independent statistical unit, so collisions correlated
-along one history are not falsely counted as independent. Student-t ratio
-intervals use a Bonferroni correction over all five observables and every
-scheduled look, preventing interim checks from weakening the stated
-confidence level.
+only when the full 95% simultaneous confidence-interval width is below the
+predeclared absolute width for each of the hard-event rate, hard nuclear
+stopping, hard transport rate, mean recoil energy per collision, and mean
+`1-cos(theta_lab)` per collision. Each case freezes those widths from its
+independent raw 10,000-history calibration estimate using the numerical
+tolerance in JCGM 101:2008 section 7.9.2. Two digits are the predeclared project
+reporting requirement; JCGM defines the decimal tolerance but does not prescribe
+that precision. The production sample is not reused to set its own stopping
+boundary. The trajectory is the independent statistical unit, and Student-t
+ratio intervals use a Bonferroni correction over all five observables and every
+scheduled look. This implements the absolute fixed-width procedure of Glynn and
+Whitt (1992; DOI `10.1214/aoap/1177005770`). Flegal and Gong (2015; DOI
+`10.5705/ss.2013.209`) provide the related relative-width framework; they do not
+set the retained numerical precision.
 
 Every completed batch is checksum-protected below
 `.trajectory_checkpoints/<configuration hash>/`; rerunning the same command
@@ -224,11 +230,11 @@ does not itself prove a bias, because the sequential solver still processes
 the competing events, but it requires a multi-centre-force comparison before
 the binary ordering can be accepted.
 
-The 0.5% Monte Carlo gate is separate from the adaptive collision-kernel
-interpolation budget. It certifies normalization and first energy/angular
-moments, not rare tails or a binned angular/recoil CDF. Those distributions
-require a separate confidence-band test when the final Geant4 reducer is
-added.
+The 0.5% threshold applies to adaptive collision-kernel interpolation and the
+separately reported trajectory-CDF band, not to scalar Monte Carlo means. The
+absolute-width gates certify normalization and first energy/angular moments;
+they do not certify rare tails. Tail-sensitive or binned downstream products
+require their own predeclared confidence-band test.
 
 The output directory contains:
 
@@ -332,10 +338,11 @@ The underlying NLH references and corrected dataset are documented in
 O, and S. It is not particle-specific code. For each requested projectile it:
 
 1. uses an independent 10,000-trajectory calibration sample to choose between
-   the raw estimator and a straight-line difference-estimator control variate;
+   the raw estimator and a straight-line difference-estimator control variate,
+   and freezes the JCGM absolute widths from the raw estimates;
 2. runs a distinct production sample with a predeclared sequential schedule;
 3. increases trajectory count until every integral rate/first moment has a 95%
-   simultaneous relative half-width at most 0.5%;
+   simultaneous confidence-interval width below its frozen absolute width;
 4. requires a simultaneous Dvoretzky--Kiefer--Wolfowitz absolute band at most
    0.005 for the complete trajectory-level total-recoil and final-deflection
    CDFs; and
@@ -378,15 +385,23 @@ Launch one selected projectile with:
 bash pbs/launch_adaptive_nlh_particle_shards.sh C
 ```
 
-Each case shard requests 128 CPUs, 8 GB, and 96 hours. Jobs 106876 and the
-August 2026 carbon checkpoints show that 256 workers have poor incremental
-scaling, whereas 128 workers allow two cases to occupy one 256-core node. The
-measured rates predict roughly 12--16 hours for the previously observed slow
-cases; one case per shard therefore leaves room for about three sequential
-energy-refinement waves within a 48-hour active-compute target. PBS arrays are
-limited to 50 elements, so the supervisor splits a wave into non-overlapping
-array groups while preserving one global shard index. Queueing is not included
-in the 48-hour estimate.
+Current case shards request 64 CPUs and 16 GB. The measured 128-worker rate is
+only 1.49 times the 64-worker rate for twice the cores, so 64 is the efficient
+campaign allocation; the higher memory request is scheduling headroom and
+does not change the calculation. PBS arrays are limited to 50 elements, so the
+supervisor splits a wave into non-overlapping array groups while preserving one
+global shard index.
+
+The carbon campaign rooted at configuration
+`a14a646b863910cc662c2ec19f61292f9af5e12393e5cbec2d0ff6da199e9d28` began
+with trajectory implementation v3. The repository later introduced the
+distinct multi-kernel v4 signature. Its existing batches are therefore resumed
+only by `pbs/run_adaptive_nlh_particle_shard_v3_resume.pbs`, which materializes
+the exact launching revision `5f4adfe2585c4707c6d53dba10d580e876e1a688` in
+node-local scratch. No persistent second checkout is created, and v3 and v4
+batches are never merged. The runner requires the current absolute-width audit
+and advances each failed case only to its next predeclared scheduled look. The old
+mean-relative acceptance path is not used.
 
 The earlier single-allocation controller remains available for diagnostics:
 
@@ -400,8 +415,9 @@ without changing trajectory seeds or results; interruption loses at most the
 currently executing batch. A repeated shard submission checksum-reuses every
 completed batch.
 
-The 0.5% criteria above are numerical sampling/interpolation tolerances. They
-do not reduce the separately reported NLH/DMol pair-potential uncertainty.
+The 0.5% criteria retained here apply to kernel/energy interpolation and the
+predeclared trajectory-CDF band, not to scalar Monte Carlo means. They do not
+reduce the separately reported NLH/DMol pair-potential uncertainty.
 These jobs produce structure-sensitive validation and correction evidence;
 they do not regenerate the exact analytic hard cross section. H and He outputs
 must not overlap HTran in Geant4 and remain validation products until a
