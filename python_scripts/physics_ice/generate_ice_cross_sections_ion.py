@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
 
+"""Generate phase-specific ion excitation and ionisation tables for ice.
+
+The optional relativistic projectile kernel implements the finite-Q RPWBA
+DDCS of Dominguez-Munoz et al., Radiat. Phys. Chem. 199 (2022) 110363,
+doi:10.1016/j.radphyschem.2022.110363, Eqs. (1)-(4), with the condensed-medium
+Fermi density correction of Eqs. (7)-(9). Their liquid-water GOS is replaced
+by this repository's phase-specific finite-q ice dielectric response. The
+paper validates protons from 100 to 300 MeV; use for other bare ions is an
+explicit first-Born extrapolation at the same projectile velocity.
+"""
+
 import os, sys
 import shutil
 os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -60,6 +71,9 @@ BORN_REFERENCE_CHARGE = "bare_Z"
 BORN_REFERENCE_EXPLICIT_CHARGE = None
 PROJECTILE_RELATIVISTIC_DCS = False
 INCLUDE_TRANSVERSE_DCS = False
+RPWBA_DENSITY_EFFECT = False
+RPWBA_MODEL_NAME = "dominguez-munoz-2022-finite-Q"
+RPWBA_REFERENCE_DOI = "10.1016/j.radphyschem.2022.110363"
 DEFAULT_ENERGY_MIN_EV = 1.0e6
 DEFAULT_ENERGY_MAX_EV = 1.0e8
 DEFAULT_ENERGY_POINTS = 1000
@@ -266,12 +280,36 @@ def _include_transverse_dcs_from_argv(default=False):
             enabled = _bool_from_text(arg.split("=", 1)[1], enabled)
     return bool(enabled)
 
-def _set_projectile_relativistic_dcs(enabled=False, include_transverse=False):
+def _rpwba_density_effect_from_argv(default=True):
+    enabled = _bool_from_text(os.environ.get("ICE_RPWBA_DENSITY_EFFECT"), default)
+    for arg in sys.argv[1:]:
+        if arg == "--rpwba-density-effect":
+            enabled = True
+        elif arg == "--no-rpwba-density-effect":
+            enabled = False
+        elif arg.startswith("--rpwba-density-effect="):
+            enabled = _bool_from_text(arg.split("=", 1)[1], enabled)
+    return bool(enabled)
+
+def _set_projectile_relativistic_dcs(
+    enabled=False,
+    include_transverse=None,
+    use_density_effect=True,
+):
     global PROJECTILE_RELATIVISTIC_DCS, INCLUDE_TRANSVERSE_DCS
+    global RPWBA_DENSITY_EFFECT
     PROJECTILE_RELATIVISTIC_DCS = bool(enabled)
+    if include_transverse is None:
+        include_transverse = PROJECTILE_RELATIVISTIC_DCS
     INCLUDE_TRANSVERSE_DCS = bool(include_transverse)
+    RPWBA_DENSITY_EFFECT = bool(PROJECTILE_RELATIVISTIC_DCS and use_density_effect)
     if INCLUDE_TRANSVERSE_DCS and not PROJECTILE_RELATIVISTIC_DCS:
         raise ValueError("--include-transverse-dcs requires --relativistic-projectile-dcs.")
+    if PROJECTILE_RELATIVISTIC_DCS and not INCLUDE_TRANSVERSE_DCS:
+        raise ValueError(
+            "Dominguez-Munoz RPWBA requires both finite-Q longitudinal and "
+            "transverse terms; --no-include-transverse-dcs is not a physical mode."
+        )
 
 def _born_reference_charge_from_argv(default="bare_Z"):
     ref = str(
@@ -392,7 +430,10 @@ def _charge_mode_tag(
 def _projectile_kernel_tag():
     if not PROJECTILE_RELATIVISTIC_DCS:
         return ""
-    return "_relproj_transverse" if INCLUDE_TRANSVERSE_DCS else "_relproj"
+    suffix = "_rpwba_dm2022"
+    if not RPWBA_DENSITY_EFFECT:
+        suffix += "_no_density"
+    return suffix
 
 def _print_cli_help_and_exit():
     supported = ", ".join(PROJECTILE_LIBRARY)
@@ -424,9 +465,11 @@ def _print_cli_help_and_exit():
         "                                 add the OOS Barkas Z^3 DCS kernel (default: false)\n"
         "  --include-bloch-dcs=false      Bloch DCS is intentionally unsupported\n"
         "  --relativistic-projectile-dcs[=true|false]\n"
-        "                                 use exact ion q bounds and the beta^-2 longitudinal kernel\n"
+        "                                 use the finite-Q Dominguez-Munoz RPWBA kernel\n"
         "  --include-transverse-dcs[=true|false]\n"
-        "                                 add the optical Fano transverse term; requires relativistic mode\n"
+        "                                 compatibility flag; full RPWBA requires true\n"
+        "  --rpwba-density-effect[=true|false]\n"
+        "                                 apply the finite-Q dielectric Fermi correction (default: true in RPWBA)\n"
         "  --merge-energy-patches         merge this energy patch into existing DAT tables (default)\n"
         "  --no-merge-energy-patches      write only this energy patch to DAT tables\n"
     )
@@ -645,9 +688,9 @@ def _energy_grid(Emin, Emax, N, use_log=True):
 
 def _regime_flags(Tj):
     # Electron exchange/Mott corrections remain excluded. This optional path is
-    # the relativistic heavy-ion dielectric kernel, not the electron correction.
+    # the complete finite-Q projectile RPWBA, not the electron correction.
     if PROJECTILE_RELATIVISTIC_DCS:
-        return False, True, bool(INCLUDE_TRANSVERSE_DCS), False
+        return False, True, True, bool(RPWBA_DENSITY_EFFECT)
     return False, False, False, False
 
 def _elf_rolloff_factor(Ei):
@@ -689,7 +732,7 @@ def beta2_rel(Tj):
 
 def delta_fermi(T):
     """
-    Steinheimer-Fano density effect for liquid water.
+    Sternheimer-Fano density effect for liquid water.
     """
     b2 = beta2_rel(T)
     b2 = min(max(float(b2), np.finfo(float).tiny), 1.0 - np.finfo(float).eps)
@@ -771,13 +814,16 @@ def _q_bounds_scalar_rel(Ei, Tj):
     return float(qlo), float(qhi)
 
 def _projectile_relativistic_longitudinal_prefactor(Tj):
-    """Microscopic relativistic longitudinal DIMFP prefactor.
+    """Microscopic Dominguez-Munoz RPWBA longitudinal DCS prefactor.
 
-    dLambda_L/dW = 2 z^2 / (pi a0 N m_e c^2 beta^2)
+    d sigma_L/dW = 2 z^2 / (pi a0 N m_e c^2 beta^2)
                    * integral[dq/q Im(-1/epsilon(W,q))].
 
-    The selected projectile supplies z and beta. The established high-mass
-    energy-loss cutoff is retained separately by heavy_projectile_Emax().
+    This is Eq. (3) of Dominguez-Munoz et al. (2022), after substituting
+    their Eq. (9), changing variables from recoil energy Q to momentum q,
+    and dividing the macroscopic DIMFP by molecular density N. The selected
+    projectile supplies z and beta. The established high-mass energy-loss
+    cutoff remains unchanged in heavy_projectile_Emax().
     """
     beta2 = projectile_beta2(Tj)
     if beta2 <= 0.0:
@@ -786,6 +832,66 @@ def _projectile_relativistic_longitudinal_prefactor(Tj):
         2.0 * PROJECTILE_CHARGE**2
         / (np.pi * a0 * N * MC2_eV * beta2)
     )
+
+def _rpwba_transverse_ratio(
+    W_eV,
+    q_au,
+    beta2,
+    epsilon1=None,
+    epsilon2=None,
+    use_density_effect=False,
+):
+    """Return the finite-Q transverse/longitudinal integrand ratio.
+
+    With R = Q(Q + 2 m_e c^2) = (q c)^2 and rho = W^2/R, the second
+    term in braces in Dominguez-Munoz et al. Eq. (3), divided by the first,
+    is
+
+        rho * (beta^2 - rho) / (1 - rho)^2.
+
+    When requested, Eq. (8) replaces that vacuum transverse term with the
+    condensed-medium result
+
+        W/(2 m_e c^2) * |epsilon|^2 * (beta^2 - rho)
+        / [(1 - rho epsilon_1)^2 + (rho epsilon_2)^2].
+
+    The latter is the algebraic sum of the Eq. (3) transverse term and the
+    Eq. (8) Fermi correction. No optical-q=0 or Sternheimer approximation is
+    used here.
+    """
+    q_au = np.asarray(q_au, dtype=float)
+    W_eV = float(W_eV)
+    beta2 = float(beta2)
+    qc_eV = C_AU * EH * q_au
+    recoil_product = qc_eV * qc_eV
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        rho = (W_eV * W_eV) / recoil_product
+
+    tolerance = 256.0 * np.finfo(float).eps * max(1.0, abs(beta2))
+    if np.any(rho > beta2 + tolerance):
+        raise FloatingPointError("RPWBA q grid violates beta^2 - W^2/(qc)^2 >= 0.")
+    beta_minus_rho = np.maximum(beta2 - rho, 0.0)
+
+    if use_density_effect:
+        if epsilon1 is None or epsilon2 is None:
+            raise ValueError("Finite-Q epsilon1 and epsilon2 are required for the density effect.")
+        epsilon1 = np.asarray(epsilon1, dtype=float)
+        epsilon2 = np.asarray(epsilon2, dtype=float)
+        denominator = (1.0 - rho * epsilon1) ** 2 + (rho * epsilon2) ** 2
+        denominator = np.maximum(denominator, np.finfo(float).tiny)
+        ratio = (
+            (W_eV / (2.0 * MC2_eV))
+            * (epsilon1 * epsilon1 + epsilon2 * epsilon2)
+            * beta_minus_rho
+            / denominator
+        )
+    else:
+        denominator = np.maximum((1.0 - rho) ** 2, np.finfo(float).tiny)
+        ratio = rho * beta_minus_rho / denominator
+
+    if np.any(~np.isfinite(ratio)) or np.any(ratio < 0.0):
+        raise FloatingPointError("Non-finite or negative RPWBA transverse kernel.")
+    return ratio
 
 # ----------------------------------------------------------------------
 # Inner q-integral at fixed Ei for channels (excitation / ionization)
@@ -838,12 +944,28 @@ def _integrate_channel_single_E(
 
     return float(int_cons * accum)
 
-def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
+def _integrate_channel_single_E_rpwba_components(
+    Ei,
+    Tj,
+    idx,
+    channel_type,
+    s,
+    C,
+    Nq=400,
+    use_density_effect=False,
+):
+    """Return finite-Q longitudinal and transverse RPWBA DCS components.
+
+    The integration is Eq. (4) of Dominguez-Munoz et al. (2022), evaluated
+    on logarithmic q after applying Eqs. (2), (3), and (9). Both terms use
+    the same channel-resolved finite-q GOS/ELF. The density option applies
+    their Eqs. (7)-(9) directly through the complex ice dielectric function.
+    """
     if Ei > _projectile_energy_loss_upper_eV(Tj):
-        return 0.0
+        return 0.0, 0.0
     qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
     if qhi <= qlo or qlo <= 0.0:
-        return 0.0
+        return 0.0, 0.0
 
     xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
     qvals = np.exp(xi)
@@ -859,46 +981,40 @@ def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
     else:
         raise ValueError("channel_type must be 'excitation' or 'ionization'")
     vals = vals * _elf_rolloff_factor(Ei)
-    return float(
-        _projectile_relativistic_longitudinal_prefactor(Tj)
-        * _simpson_integrate(vals, xi)
+    beta2 = projectile_beta2(Tj)
+    transverse_ratio = _rpwba_transverse_ratio(
+        Ei,
+        qvals,
+        beta2,
+        epsilon1=e1["total"][:, 0],
+        epsilon2=e2["total"][:, 0],
+        use_density_effect=use_density_effect,
     )
+    prefactor = _projectile_relativistic_longitudinal_prefactor(Tj)
+    longitudinal = prefactor * _simpson_integrate(vals, xi)
+    transverse = prefactor * _simpson_integrate(vals * transverse_ratio, xi)
+    return float(longitudinal), float(transverse)
+
+def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
+    longitudinal, _ = _integrate_channel_single_E_rpwba_components(
+        Ei, Tj, idx, channel_type, s, C, Nq=Nq, use_density_effect=False
+    )
+    return longitudinal
 
 def _integrate_channel_single_E_trans(
-    Ei, Tj, idx, channel_type, s, C, Nq=0, use_density_effect=False
+    Ei, Tj, idx, channel_type, s, C, Nq=400, use_density_effect=False
 ):
-    """Return the optical Fano transverse term for the selected ion.
-
-    dLambda_T/dW = z^2 / (pi a0 N m_e c^2 beta^2) * ELF(W,0)
-                   * [ln(1/(1-beta^2)) - beta^2].
-
-    No density-effect subtraction is applied because phase-specific ice
-    Sternheimer parameters are not available.
-    """
-    if use_density_effect:
-        raise ValueError("Density-effect DCS is unavailable for ice ion tables.")
-    if Ei > _projectile_energy_loss_upper_eV(Tj):
-        return 0.0
-    beta2 = projectile_beta2(Tj)
-    if beta2 <= 0.0:
-        return 0.0
-    bracket = -np.log1p(-beta2) - beta2
-
-    E_arr = np.array([Ei], float)
-    q_zero = np.array([0.0], float)
-    e1 = model.epsilon1_valence_Eq(E_arr, q_zero, s, C)
-    e2 = model.epsilon2_valence_Eq(E_arr, q_zero, s, C, partitioned=True)
-    denominator = e1["total"][0, 0] ** 2 + e2["total"][0, 0] ** 2
-    denominator = max(float(denominator), np.finfo(float).tiny)
-    if channel_type == "excitation":
-        elf0 = float(e2["excitations"][idx][0, 0]) / denominator
-    elif channel_type == "ionization":
-        elf0 = float(e2["ionizations"][idx][0, 0]) / denominator
-    else:
-        raise ValueError("channel_type must be 'excitation' or 'ionization'")
-    elf0 *= float(_elf_rolloff_factor(Ei))
-    prefactor = PROJECTILE_CHARGE**2 / (np.pi * a0 * N * MC2_eV * beta2)
-    return float(prefactor * elf0 * max(bracket, 0.0))
+    _, transverse = _integrate_channel_single_E_rpwba_components(
+        Ei,
+        Tj,
+        idx,
+        channel_type,
+        s,
+        C,
+        Nq=Nq,
+        use_density_effect=use_density_effect,
+    )
+    return transverse
 
 # ----------------------------------------------------------------------
 # Low-energy Mott–Coulomb (MC) corrections using PWBA kernel evaluations
@@ -934,8 +1050,82 @@ def _sigma_pwba_excitation_shifted_T(s, C, Tshift, Tj, k, NE=400, Nq=400, use_re
 def _sigma_mc_ionization(s, C, Tj, j, NE=400, Nq=400, use_rel=False):
     raise RuntimeError("Mott-Coulomb/exchange correction is disabled for heavy projectiles.")
 
-def _total_transverse_sigma(s, C, Tj, NE=400, use_density_effect=False):
-    raise RuntimeError("Transverse/density electron correction path is disabled for heavy projectiles.")
+def _total_transverse_sigma(
+    s,
+    C,
+    Tj,
+    NE=400,
+    Nq=400,
+    use_density_effect=False,
+    include_kshell=True,
+    return_valence=False,
+):
+    """Integrate the finite-Q RPWBA transverse DCS over all energy losses."""
+    E_upper = _projectile_energy_loss_upper_eV(Tj)
+    total = 0.0
+    for idx in range(len(s.excitations)):
+        if s.Bmin >= E_upper:
+            continue
+        energies = _energy_grid(float(s.Bmin), E_upper, NE)
+        values = np.array(
+            [
+                _integrate_channel_single_E_trans(
+                    W,
+                    Tj,
+                    idx,
+                    "excitation",
+                    s,
+                    C,
+                    Nq=Nq,
+                    use_density_effect=use_density_effect,
+                )
+                for W in energies
+            ]
+        )
+        total += _simpson_integrate(values, energies)
+    for idx, oscillator in enumerate(s.ionizations):
+        if oscillator.Bth >= E_upper:
+            continue
+        energies = _energy_grid(float(oscillator.Bth), E_upper, NE)
+        values = np.array(
+            [
+                _integrate_channel_single_E_trans(
+                    W,
+                    Tj,
+                    idx,
+                    "ionization",
+                    s,
+                    C,
+                    Nq=Nq,
+                    use_density_effect=use_density_effect,
+                )
+                for W in energies
+            ]
+        )
+        total += _simpson_integrate(values, energies)
+    valence_total = float(total)
+    if include_kshell and s.kshell is not None and KSHELL_MODEL != "none":
+        threshold = _kshell_threshold_eV(s)
+        if threshold is not None and threshold < E_upper:
+            energies = _energy_grid(float(threshold), E_upper, NE)
+            values = np.array(
+                [
+                    _integrate_kshell_single_E_rpwba_components(
+                        W,
+                        Tj,
+                        s,
+                        C,
+                        Nq=Nq,
+                        include_kshell=True,
+                        use_density_effect=use_density_effect,
+                    )[1]
+                    for W in energies
+                ]
+            )
+            total += _simpson_integrate(values, energies)
+    if return_valence:
+        return valence_total, float(total)
+    return float(total)
 
 def _kshell_threshold_eV(s):
     if KSHELL_MODEL == "hydrogenic-gos":
@@ -1004,15 +1194,31 @@ def _integrate_kshell_single_E(
 
     return float(int_cons * accum)
 
-def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
+def _integrate_kshell_single_E_rpwba_components(
+    Ei,
+    Tj,
+    s,
+    C,
+    Nq=400,
+    include_kshell=True,
+    use_density_effect=False,
+):
+    """Return longitudinal and transverse RPWBA O K-shell DCS components.
+
+    The hydrogenic K-shell GOS is additive and has no corresponding complex
+    K-shell epsilon in the current ice model. The Eq. (8) screening factor is
+    therefore evaluated with the finite-q valence epsilon. This approximation
+    is recorded in output metadata and is relevant only when the density
+    correction is enabled.
+    """
     if not include_kshell or (s.kshell is None) or KSHELL_MODEL == "none":
-        return 0.0
+        return 0.0, 0.0
     threshold = _kshell_threshold_eV(s)
     if threshold is None or Ei <= threshold or Ei > _projectile_energy_loss_upper_eV(Tj):
-        return 0.0
+        return 0.0, 0.0
     qlo, qhi = _q_bounds_scalar_rel(Ei, Tj)
     if qhi <= qlo or qlo <= 0.0:
-        return 0.0
+        return 0.0, 0.0
     xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
     qvals = np.exp(xi)
     if KSHELL_MODEL == "old-optical":
@@ -1021,11 +1227,35 @@ def _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=400, include_kshell=True):
     elif KSHELL_MODEL == "hydrogenic-gos":
         vals = _kshell_hydrogenic_gos_elf(Ei, qvals, s)
     else:
-        return 0.0
-    return float(
-        _projectile_relativistic_longitudinal_prefactor(Tj)
-        * _simpson_integrate(vals, xi)
+        return 0.0, 0.0
+
+    E_arr = np.array([Ei], float)
+    e1 = model.epsilon1_valence_Eq(E_arr, qvals, s, C)
+    e2 = model.epsilon2_valence_Eq(E_arr, qvals, s, C)
+    transverse_ratio = _rpwba_transverse_ratio(
+        Ei,
+        qvals,
+        projectile_beta2(Tj),
+        epsilon1=e1["total"][:, 0],
+        epsilon2=e2["total"][:, 0],
+        use_density_effect=use_density_effect,
     )
+    prefactor = _projectile_relativistic_longitudinal_prefactor(Tj)
+    longitudinal = prefactor * _simpson_integrate(vals, xi)
+    transverse = prefactor * _simpson_integrate(vals * transverse_ratio, xi)
+    return float(longitudinal), float(transverse)
+
+def _integrate_kshell_single_E_rel(Ei, Tj, s, C, Nq=400, include_kshell=True):
+    longitudinal, _ = _integrate_kshell_single_E_rpwba_components(
+        Ei,
+        Tj,
+        s,
+        C,
+        Nq=Nq,
+        include_kshell=include_kshell,
+        use_density_effect=False,
+    )
+    return longitudinal
 
 # ----------------------------------------------------------------------
 # Q-integrated ELF per channel, on its own E-grid
@@ -1079,6 +1309,7 @@ def integrate_elf_channels_per_channel_q(
         "kshell_E": None,
         "kshell_int": None,
         "kshell_int_rel": None,
+        "kshell_int_rel_trans": None,
     }
 
     # ------------------- Excitations -------------------
@@ -1102,12 +1333,17 @@ def integrate_elf_channels_per_channel_q(
                 Ei, T, k, "excitation", s, C, Nq=Nq, use_rel_bounds=False
             )
 
-            # Relativistic-longitudinal corrected inner-q integral
+            # Full finite-Q RPWBA components.
             if use_rel_long:
-                vals_rel[i] = _integrate_channel_single_E_rel(Ei, T, k, "excitation", s, C, Nq=Nq)
-            if use_rel_trans:
-                vals_rel_trans[i] = _integrate_channel_single_E_trans(
-                    Ei, T, k, "excitation", s, C, use_density_effect=use_density_effect
+                vals_rel[i], vals_rel_trans[i] = _integrate_channel_single_E_rpwba_components(
+                    Ei,
+                    T,
+                    k,
+                    "excitation",
+                    s,
+                    C,
+                    Nq=Nq,
+                    use_density_effect=bool(use_rel_trans and use_density_effect),
                 )
 
 
@@ -1137,12 +1373,17 @@ def integrate_elf_channels_per_channel_q(
                 Ei, T, j, "ionization", s, C, Nq=Nq, use_rel_bounds=False
             )
 
-            # Relativistic-longitudinal corrected inner-q integral
+            # Full finite-Q RPWBA components.
             if use_rel_long:
-                vals_rel[i] = _integrate_channel_single_E_rel(Ei, T, j, "ionization", s, C, Nq=Nq)
-            if use_rel_trans:
-                vals_rel_trans[i] = _integrate_channel_single_E_trans(
-                    Ei, T, j, "ionization", s, C, use_density_effect=use_density_effect
+                vals_rel[i], vals_rel_trans[i] = _integrate_channel_single_E_rpwba_components(
+                    Ei,
+                    T,
+                    j,
+                    "ionization",
+                    s,
+                    C,
+                    Nq=Nq,
+                    use_density_effect=bool(use_rel_trans and use_density_effect),
                 )
 
 
@@ -1156,6 +1397,7 @@ def integrate_elf_channels_per_channel_q(
         Egrid = _energy_grid(kshell_Emin, kshell_Emax, NE)
         vals = np.empty_like(Egrid)
         vals_rel = np.zeros_like(Egrid)
+        vals_rel_trans = np.zeros_like(Egrid)
 
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
@@ -1163,15 +1405,22 @@ def integrate_elf_channels_per_channel_q(
                 Ei, T, s, Nq=Nq, include_kshell=include_kshell, use_rel_bounds=False
             )
 
-            # Relativistic-longitudinal corrected inner-q integral
+            # Full finite-Q RPWBA components.
             if use_rel_long:
-                vals_rel[i] = _integrate_kshell_single_E_rel(
-                    Ei, T, s, Nq=Nq, include_kshell=include_kshell
+                vals_rel[i], vals_rel_trans[i] = _integrate_kshell_single_E_rpwba_components(
+                    Ei,
+                    T,
+                    s,
+                    C,
+                    Nq=Nq,
+                    include_kshell=include_kshell,
+                    use_density_effect=bool(use_rel_trans and use_density_effect),
                 )
 
         results["kshell_E"] = Egrid
         results["kshell_int"] = vals
         results["kshell_int_rel"] = vals_rel if use_rel_long else None
+        results["kshell_int_rel_trans"] = vals_rel_trans if use_rel_trans else None
 
     return results
 
@@ -1239,6 +1488,7 @@ def integrate_elf_double_integral(
     ion_sigma_rel = []
     ion_sigma_rel_trans = []
     kshell_sigma_rel = None
+    kshell_sigma_rel_trans = None
 
     for k in range(len(s.excitations)):
         E_k = integ["excitation_E"][k]
@@ -1257,10 +1507,15 @@ def integrate_elf_double_integral(
     if integ["kshell_E"] is not None:
         E_K = integ["kshell_E"]
         y_K_rel = integ.get("kshell_int_rel", None)
+        y_K_trans = integ.get("kshell_int_rel_trans", None)
         if (y_K_rel is None) or (E_K.size == 0):
             kshell_sigma_rel = 0.0
         else:
             kshell_sigma_rel = float(_simpson_integrate(y_K_rel, E_K))
+        if (y_K_trans is None) or (E_K.size == 0):
+            kshell_sigma_rel_trans = 0.0
+        else:
+            kshell_sigma_rel_trans = float(_simpson_integrate(y_K_trans, E_K))
 
     valence_sigma_rel = float(np.sum(exc_sigma_rel) + np.sum(ion_sigma_rel))
     valence_sigma_rel_trans = float(np.sum(exc_sigma_rel_trans) + np.sum(ion_sigma_rel_trans))
@@ -1268,15 +1523,26 @@ def integrate_elf_double_integral(
         total_sigma_rel = valence_sigma_rel + kshell_sigma_rel
     else:
         total_sigma_rel = valence_sigma_rel
-    total_sigma_rel_trans = valence_sigma_rel_trans
+    total_sigma_rel_trans = valence_sigma_rel_trans + (
+        kshell_sigma_rel_trans if kshell_sigma_rel_trans is not None else 0.0
+    )
     total_sigma_rel_total = total_sigma_rel + total_sigma_rel_trans
     valence_sigma_rel_trans_no_density = None
     total_sigma_rel_trans_no_density = None
     if use_rel_trans and use_density_effect:
-        valence_sigma_rel_trans_no_density = _total_transverse_sigma(
-            s, C, T, NE=NE, use_density_effect=False
+        (
+            valence_sigma_rel_trans_no_density,
+            total_sigma_rel_trans_no_density,
+        ) = _total_transverse_sigma(
+            s,
+            C,
+            T,
+            NE=NE,
+            Nq=Nq,
+            use_density_effect=False,
+            include_kshell=include_kshell,
+            return_valence=True,
         )
-        total_sigma_rel_trans_no_density = valence_sigma_rel_trans_no_density
 
     # -------------------- Mott-Coulomb --------------------
     exc_sigma_mc = None
@@ -1328,12 +1594,18 @@ def integrate_elf_double_integral(
             exc_sigma = [a + b for a, b in zip(exc_sigma_rel, exc_sigma_rel_trans)]
             ion_sigma = [a + b for a, b in zip(ion_sigma_rel, ion_sigma_rel_trans)]
             valence_sigma = float(valence_sigma_rel + valence_sigma_rel_trans)
+            kshell_sigma = (
+                (kshell_sigma_rel or 0.0) + (kshell_sigma_rel_trans or 0.0)
+                if kshell_sigma_rel is not None
+                else kshell_sigma_pwba
+            )
+            total_sigma = float(total_sigma_rel_total)
         else:
             exc_sigma = list(exc_sigma_rel)
             ion_sigma = list(ion_sigma_rel)
             valence_sigma = float(valence_sigma_rel)
-        kshell_sigma = kshell_sigma_rel if kshell_sigma_rel is not None else kshell_sigma_pwba
-        total_sigma = valence_sigma + (kshell_sigma if kshell_sigma is not None else 0.0)
+            kshell_sigma = kshell_sigma_rel if kshell_sigma_rel is not None else kshell_sigma_pwba
+            total_sigma = valence_sigma + (kshell_sigma if kshell_sigma is not None else 0.0)
 
     # Optional convenience: combined
     total_sigma_plus_rel = total_sigma_pwba + total_sigma_rel
@@ -1366,6 +1638,7 @@ def integrate_elf_double_integral(
         "ionization_sigma_rel_trans": ion_sigma_rel_trans,
 
         "kshell_sigma_rel": kshell_sigma_rel,
+        "kshell_sigma_rel_trans": kshell_sigma_rel_trans,
         "valence_sigma_rel": valence_sigma_rel,
         "valence_sigma_rel_trans": valence_sigma_rel_trans,
         "valence_sigma_rel_trans_no_density": valence_sigma_rel_trans_no_density,
@@ -2120,6 +2393,15 @@ def save_cross_section_corrections_npz(
         [float(s.get("kshell_sigma_rel", np.nan)) if s.get("kshell_sigma_rel", None) is not None else np.nan for s in sigma_list],
         float,
     )
+    kshell_sigma_rel_trans = np.array(
+        [
+            float(s.get("kshell_sigma_rel_trans", np.nan))
+            if s.get("kshell_sigma_rel_trans", None) is not None
+            else np.nan
+            for s in sigma_list
+        ],
+        float,
+    )
 
     np_save_args = dict(
         T_eV=T_arr,
@@ -2149,7 +2431,24 @@ def save_cross_section_corrections_npz(
         projectile_relativistic_q_bounds_applied=bool(PROJECTILE_RELATIVISTIC_DCS),
         projectile_relativistic_beta_prefactor_applied=bool(PROJECTILE_RELATIVISTIC_DCS),
         projectile_transverse_dcs_applied=bool(INCLUDE_TRANSVERSE_DCS),
-        projectile_density_effect_dcs_applied=False,
+        projectile_density_effect_dcs_applied=bool(RPWBA_DENSITY_EFFECT),
+        projectile_rpwba_model=(
+            RPWBA_MODEL_NAME if PROJECTILE_RELATIVISTIC_DCS else "none"
+        ),
+        projectile_rpwba_reference_doi=(
+            RPWBA_REFERENCE_DOI if PROJECTILE_RELATIVISTIC_DCS else ""
+        ),
+        projectile_rpwba_finite_q_transverse=bool(PROJECTILE_RELATIVISTIC_DCS),
+        projectile_rpwba_optical_transverse_approximation=False,
+        projectile_rpwba_validated_scope="proton 100-300 MeV",
+        projectile_rpwba_heavy_ion_extrapolation=bool(
+            PROJECTILE_RELATIVISTIC_DCS and PROJECTILE_KEY != "proton"
+        ),
+        projectile_rpwba_kshell_density_epsilon=(
+            "valence-only"
+            if PROJECTILE_RELATIVISTIC_DCS and RPWBA_DENSITY_EFFECT and include_kshell
+            else "not-used"
+        ),
         include_kshell=bool(include_kshell),
         kshell_model=KSHELL_MODEL,
         kshell_B_eV=float(KSHELL_B_EV if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
@@ -2171,6 +2470,7 @@ def save_cross_section_corrections_npz(
         total_sigma_plus_rel_total=total_sigma_plus_rel_total,
         kshell_sigma=kshell_sigma,
         kshell_sigma_rel=kshell_sigma_rel,
+        kshell_sigma_rel_trans=kshell_sigma_rel_trans,
         corr_stage1_mc=corr_mc,
         corr_stage2_rel_long=corr_rel_long,
         corr_stage3_rel_trans=corr_rel_trans,
@@ -3090,7 +3390,7 @@ def _compute_dcs_channel_values(
             elif Ei < kshell_B or Ei > E_upper:
                 val = 0.0
             else:
-                val = _selected_dsigma_kshell(Ei, Tj, s, Nq)
+                val = _selected_dsigma_kshell(Ei, Tj, s, C, Nq)
         else:
             raise ValueError(f"Unknown channel type: {channel_type}")
 
@@ -3116,6 +3416,7 @@ def _init_dcs_worker(
     kshell_model,
     projectile_relativistic_dcs,
     include_transverse_dcs,
+    rpwba_density_effect,
 ):
     global _DCS_WORKER_S, _DCS_WORKER_C
     global _DCS_WORKER_T_LINE, _DCS_WORKER_E_LINE, _DCS_WORKER_NQ
@@ -3130,7 +3431,9 @@ def _init_dcs_worker(
     set_projectile(projectile_key)
     _set_kshell_model(kshell_model)
     _set_projectile_relativistic_dcs(
-        projectile_relativistic_dcs, include_transverse_dcs
+        projectile_relativistic_dcs,
+        include_transverse_dcs,
+        use_density_effect=rpwba_density_effect,
     )
 
     _DCS_WORKER_S = model.epsilon_optical(ice_type)
@@ -3169,12 +3472,17 @@ def _selected_dsigma_excitation(Ei, Tj, k, s, C, Nq):
         Tshift = float(Tj + 2.0 * Bk)
         return _dsigma_pwba_dE(Ei, Tshift, k, "excitation", s, C, Nq=Nq, use_rel=use_rel_long)
     if use_rel_long:
-        val = _integrate_channel_single_E_rel(Ei, Tj, k, "excitation", s, C, Nq=Nq)
-        if use_rel_trans:
-            val += _integrate_channel_single_E_trans(
-                Ei, Tj, k, "excitation", s, C, use_density_effect=use_density_effect
-            )
-        return val
+        longitudinal, transverse = _integrate_channel_single_E_rpwba_components(
+            Ei,
+            Tj,
+            k,
+            "excitation",
+            s,
+            C,
+            Nq=Nq,
+            use_density_effect=use_density_effect,
+        )
+        return longitudinal + (transverse if use_rel_trans else 0.0)
     return _integrate_channel_single_E(Ei, Tj, k, "excitation", s, C, Nq=Nq, use_rel_bounds=False)
 
 def _selected_dsigma_ionization(Ei, Tj, j, s, C, Nq):
@@ -3182,20 +3490,34 @@ def _selected_dsigma_ionization(Ei, Tj, j, s, C, Nq):
     if use_mc:
         return _dsigma_mc_ionization_dE(Ei, Tj, j, s, C, Nq=Nq, use_rel=use_rel_long)
     if use_rel_long:
-        val = _integrate_channel_single_E_rel(Ei, Tj, j, "ionization", s, C, Nq=Nq)
-        if use_rel_trans:
-            val += _integrate_channel_single_E_trans(
-                Ei, Tj, j, "ionization", s, C, use_density_effect=use_density_effect
-            )
-        return val
+        longitudinal, transverse = _integrate_channel_single_E_rpwba_components(
+            Ei,
+            Tj,
+            j,
+            "ionization",
+            s,
+            C,
+            Nq=Nq,
+            use_density_effect=use_density_effect,
+        )
+        return longitudinal + (transverse if use_rel_trans else 0.0)
     return _integrate_channel_single_E(Ei, Tj, j, "ionization", s, C, Nq=Nq, use_rel_bounds=False)
 
-def _selected_dsigma_kshell(Ei, Tj, s, Nq):
+def _selected_dsigma_kshell(Ei, Tj, s, C, Nq):
     if s.kshell is None or KSHELL_MODEL == "none":
         return 0.0
-    _, use_rel_long, _, _ = _regime_flags(Tj)
+    _, use_rel_long, use_rel_trans, use_density_effect = _regime_flags(Tj)
     if use_rel_long:
-        return _integrate_kshell_single_E_rel(Ei, Tj, s, Nq=Nq, include_kshell=True)
+        longitudinal, transverse = _integrate_kshell_single_E_rpwba_components(
+            Ei,
+            Tj,
+            s,
+            C,
+            Nq=Nq,
+            include_kshell=True,
+            use_density_effect=use_density_effect,
+        )
+        return longitudinal + (transverse if use_rel_trans else 0.0)
     return _integrate_kshell_single_E(Ei, Tj, s, Nq=Nq, include_kshell=True, use_rel_bounds=False)
 
 def write_emfietzoglou_dcs_tables(
@@ -3395,6 +3717,7 @@ def write_emfietzoglou_dcs_tables(
                     KSHELL_MODEL,
                     PROJECTILE_RELATIVISTIC_DCS,
                     INCLUDE_TRANSVERSE_DCS,
+                    RPWBA_DENSITY_EFFECT,
                 ),
             ) as ex:
                 futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
@@ -3571,6 +3894,7 @@ def _init_worker(
     kshell_model,
     projectile_relativistic_dcs,
     include_transverse_dcs,
+    rpwba_density_effect,
 ):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
@@ -3587,7 +3911,9 @@ def _init_worker(
     set_projectile(projectile_key)
     _set_kshell_model(kshell_model)
     _set_projectile_relativistic_dcs(
-        projectile_relativistic_dcs, include_transverse_dcs
+        projectile_relativistic_dcs,
+        include_transverse_dcs,
+        use_density_effect=rpwba_density_effect,
     )
     _WORKER_S = model.epsilon_optical(ice_type)
     _WORKER_C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
@@ -3630,9 +3956,14 @@ def main():
     include_barkas_dcs = _include_barkas_dcs_from_argv(default=False)
     include_bloch_dcs = _include_bloch_dcs_from_argv(default=False)
     projectile_relativistic_dcs = _projectile_relativistic_dcs_from_argv(default=False)
-    include_transverse_dcs = _include_transverse_dcs_from_argv(default=False)
+    include_transverse_dcs = _include_transverse_dcs_from_argv(
+        default=projectile_relativistic_dcs
+    )
+    rpwba_density_effect = _rpwba_density_effect_from_argv(default=True)
     _set_projectile_relativistic_dcs(
-        projectile_relativistic_dcs, include_transverse_dcs
+        projectile_relativistic_dcs,
+        include_transverse_dcs,
+        use_density_effect=rpwba_density_effect,
     )
     born_reference_charge = _born_reference_charge_from_argv(default="bare_Z")
     born_reference_explicit_charge = _born_reference_explicit_charge_from_argv(default=None)
@@ -3690,8 +4021,21 @@ def main():
     print(
         "Ion dielectric kernel: "
         f"relativistic={PROJECTILE_RELATIVISTIC_DCS}, "
-        f"transverse={INCLUDE_TRANSVERSE_DCS}, density_effect=False"
+        f"finite_q_transverse={INCLUDE_TRANSVERSE_DCS}, "
+        f"density_effect={RPWBA_DENSITY_EFFECT}"
     )
+    if PROJECTILE_RELATIVISTIC_DCS:
+        print(
+            "RPWBA reference: Dominguez-Munoz et al., Radiat. Phys. Chem. "
+            f"199 (2022) 110363, doi:{RPWBA_REFERENCE_DOI}; finite-Q Eqs. "
+            "(1)-(4) and dielectric density correction Eqs. (7)-(9)."
+        )
+        if PROJECTILE_KEY != "proton":
+            print(
+                "WARNING: Dominguez-Munoz et al. validated protons at "
+                "100-300 MeV; this projectile is a bare-ion first-Born "
+                "extrapolation at the calculated beta."
+            )
     print(f"Integration resolution: dE={NE}, dq={Nq}")
     print(f"Merge energy patches into DAT tables: {merge_energy_patches}")
     if KSHELL_MODEL == "old-optical":
@@ -3810,6 +4154,7 @@ def main():
                     KSHELL_MODEL,
                     PROJECTILE_RELATIVISTIC_DCS,
                     INCLUDE_TRANSVERSE_DCS,
+                    RPWBA_DENSITY_EFFECT,
                 ),
         ) as ex:
             futures = [ex.submit(_compute_for_T, T) for T in T_list]

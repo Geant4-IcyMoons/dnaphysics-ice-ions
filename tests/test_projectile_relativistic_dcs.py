@@ -26,10 +26,10 @@ PROJECTILES = tuple(MODULE.PROJECTILE_LIBRARY)
 def reset_projectile_kernel() -> None:
     MODULE.set_projectile("proton")
     MODULE._set_kshell_model("hydrogenic-gos")
-    MODULE._set_projectile_relativistic_dcs(False, False)
+    MODULE._set_projectile_relativistic_dcs(False, False, use_density_effect=False)
     yield
     MODULE.set_projectile("proton")
-    MODULE._set_projectile_relativistic_dcs(False, False)
+    MODULE._set_projectile_relativistic_dcs(False, False, use_density_effect=False)
 
 
 def _optical_and_dispersion():
@@ -42,14 +42,23 @@ def _optical_and_dispersion():
     return optical, dispersion
 
 
-def test_relativistic_mode_is_optional_and_separately_tagged() -> None:
+def test_rpwba_mode_is_optional_complete_and_separately_tagged() -> None:
     assert MODULE._projectile_kernel_tag() == ""
-    MODULE._set_projectile_relativistic_dcs(True, False)
-    assert MODULE._projectile_kernel_tag() == "_relproj"
-    MODULE._set_projectile_relativistic_dcs(True, True)
-    assert MODULE._projectile_kernel_tag() == "_relproj_transverse"
+    MODULE._set_projectile_relativistic_dcs(True)
+    assert MODULE.INCLUDE_TRANSVERSE_DCS
+    assert MODULE.RPWBA_DENSITY_EFFECT
+    assert MODULE._projectile_kernel_tag() == "_rpwba_dm2022"
+    MODULE._set_projectile_relativistic_dcs(True, True, use_density_effect=False)
+    assert MODULE._projectile_kernel_tag() == "_rpwba_dm2022_no_density"
     with pytest.raises(ValueError, match="requires"):
         MODULE._set_projectile_relativistic_dcs(False, True)
+    with pytest.raises(ValueError, match="requires both"):
+        MODULE._set_projectile_relativistic_dcs(True, False)
+
+
+def test_rpwba_reference_is_dominguez_munoz_2022() -> None:
+    assert MODULE.RPWBA_MODEL_NAME == "dominguez-munoz-2022-finite-Q"
+    assert MODULE.RPWBA_REFERENCE_DOI == "10.1016/j.radphyschem.2022.110363"
 
 
 @pytest.mark.parametrize("projectile", PROJECTILES)
@@ -82,6 +91,50 @@ def test_longitudinal_prefactor_uses_selected_ions_z_squared_at_fixed_beta() -> 
     assert np.asarray(reduced) == pytest.approx(reduced[0], rel=2.0e-14)
 
 
+def test_finite_q_transverse_ratio_matches_dominguez_munoz_eq3() -> None:
+    W_eV = 100.0
+    beta2 = 0.2
+    q_au = np.array([0.2, 0.5, 1.0, 2.0])
+    recoil_product = (MODULE.C_AU * MODULE.EH * q_au) ** 2
+    longitudinal_factor = 2.0 * MODULE.MC2_eV / (W_eV * recoil_product)
+    transverse_factor = (
+        2.0
+        * MODULE.MC2_eV
+        * W_eV
+        / (recoil_product - W_eV**2) ** 2
+        * (beta2 - W_eV**2 / recoil_product)
+    )
+    expected = transverse_factor / longitudinal_factor
+    actual = MODULE._rpwba_transverse_ratio(W_eV, q_au, beta2)
+    assert actual == pytest.approx(expected, rel=3.0e-15)
+
+
+def test_density_corrected_ratio_matches_dominguez_munoz_eq8() -> None:
+    W_eV = 100.0
+    beta2 = 0.2
+    q_au = np.array([0.2, 0.5, 1.0, 2.0])
+    epsilon1 = np.array([1.8, 1.4, 1.1, 1.02])
+    epsilon2 = np.array([0.8, 0.4, 0.15, 0.03])
+    recoil_product = (MODULE.C_AU * MODULE.EH * q_au) ** 2
+    epsilon = epsilon1 + 1j * epsilon2
+    medium_transverse_factor = (
+        np.imag(epsilon / (recoil_product - W_eV**2 * epsilon))
+        * (np.abs(epsilon) ** 2 / epsilon2)
+        * (beta2 - W_eV**2 / recoil_product)
+    )
+    longitudinal_factor = 2.0 * MODULE.MC2_eV / (W_eV * recoil_product)
+    expected = medium_transverse_factor / longitudinal_factor
+    actual = MODULE._rpwba_transverse_ratio(
+        W_eV,
+        q_au,
+        beta2,
+        epsilon1=epsilon1,
+        epsilon2=epsilon2,
+        use_density_effect=True,
+    )
+    assert actual == pytest.approx(expected, rel=3.0e-14)
+
+
 def test_relativistic_lower_q_bound_is_stable_for_heaviest_supported_ion() -> None:
     MODULE.set_projectile("sulfur")
     incident_eV = MODULE.PROJECTILE_MASS_NUMBER * 1.0e8
@@ -93,19 +146,29 @@ def test_relativistic_lower_q_bound_is_stable_for_heaviest_supported_ion() -> No
 @pytest.mark.parametrize("projectile", PROJECTILES)
 def test_relativistic_kernels_are_finite_for_every_supported_ion(projectile: str) -> None:
     MODULE.set_projectile(projectile)
-    MODULE._set_projectile_relativistic_dcs(True, True)
+    MODULE._set_projectile_relativistic_dcs(True, True, use_density_effect=True)
     optical, dispersion = _optical_and_dispersion()
     incident_eV = MODULE.PROJECTILE_MASS_NUMBER * 1.0e8
-    longitudinal = MODULE._integrate_channel_single_E_rel(
-        100.0, incident_eV, 0, "ionization", optical, dispersion, Nq=40
+    longitudinal, transverse = MODULE._integrate_channel_single_E_rpwba_components(
+        100.0,
+        incident_eV,
+        0,
+        "ionization",
+        optical,
+        dispersion,
+        Nq=40,
+        use_density_effect=True,
     )
-    transverse = MODULE._integrate_channel_single_E_trans(
-        100.0, incident_eV, 0, "ionization", optical, dispersion
+    k_longitudinal, k_transverse = MODULE._integrate_kshell_single_E_rpwba_components(
+        600.0,
+        incident_eV,
+        optical,
+        dispersion,
+        Nq=40,
+        include_kshell=True,
+        use_density_effect=True,
     )
-    k_shell = MODULE._integrate_kshell_single_E_rel(
-        600.0, incident_eV, optical, Nq=40, include_kshell=True
-    )
-    values = np.asarray([longitudinal, transverse, k_shell])
+    values = np.asarray([longitudinal, transverse, k_longitudinal, k_transverse])
     assert np.all(np.isfinite(values))
     assert np.all(values >= 0.0)
     assert longitudinal > 0.0
@@ -129,18 +192,49 @@ def test_default_kernel_remains_the_existing_nonrelativistic_pwba() -> None:
     assert selected == pytest.approx(baseline, rel=1.0e-14)
 
 
-def test_selected_relativistic_kernel_adds_transverse_only_when_enabled() -> None:
+def test_selected_rpwba_kernel_is_longitudinal_plus_finite_q_transverse() -> None:
     optical, dispersion = _optical_and_dispersion()
-    MODULE._set_projectile_relativistic_dcs(True, False)
-    longitudinal = MODULE._selected_dsigma_ionization(
-        100.0, 1.0e8, 0, optical, dispersion, 60
+    MODULE._set_projectile_relativistic_dcs(True, True, use_density_effect=False)
+    longitudinal, transverse = MODULE._integrate_channel_single_E_rpwba_components(
+        100.0,
+        1.0e8,
+        0,
+        "ionization",
+        optical,
+        dispersion,
+        Nq=60,
+        use_density_effect=False,
     )
-    MODULE._set_projectile_relativistic_dcs(True, True)
     combined = MODULE._selected_dsigma_ionization(
         100.0, 1.0e8, 0, optical, dispersion, 60
     )
-    transverse = MODULE._integrate_channel_single_E_trans(
-        100.0, 1.0e8, 0, "ionization", optical, dispersion
-    )
     assert transverse > 0.0
     assert combined == pytest.approx(longitudinal + transverse, rel=1.0e-14)
+
+
+def test_density_effect_uses_finite_q_dielectric_and_changes_transverse_term() -> None:
+    optical, dispersion = _optical_and_dispersion()
+    T_eV = 300.0e6
+    vacuum = MODULE._integrate_channel_single_E_trans(
+        30.0,
+        T_eV,
+        0,
+        "ionization",
+        optical,
+        dispersion,
+        Nq=80,
+        use_density_effect=False,
+    )
+    dense = MODULE._integrate_channel_single_E_trans(
+        30.0,
+        T_eV,
+        0,
+        "ionization",
+        optical,
+        dispersion,
+        Nq=80,
+        use_density_effect=True,
+    )
+    assert np.isfinite(vacuum) and vacuum >= 0.0
+    assert np.isfinite(dense) and dense >= 0.0
+    assert not np.isclose(dense, vacuum, rtol=1.0e-6, atol=0.0)
