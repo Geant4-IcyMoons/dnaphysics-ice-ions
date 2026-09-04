@@ -21,7 +21,6 @@ from pathlib import Path
 
 from constants import (
     DIELECTRIC_PLOTS_DIR,
-    EH,
     FONT_COURIER,
     FONTSIZE_16,
     HFONT_COURIER,
@@ -48,7 +47,6 @@ ArrayLike = Union[float, np.ndarray]
 OXYGEN_K_B_EV = 543.4
 OXYGEN_K_ZEFF = 7.7
 OXYGEN_K_OCCUPANCY = 2.0
-OXYGEN_K_FSUM_TARGET = 0.179
 OXYGEN_K_GOS_VERSION = "heredia-avalos-2005-unshifted-v1"
 ION_FINITE_Q_SUM_RULE_VERSION = "joint-outer-k-continuum-v1"
 WATER_TOTAL_OSCILLATOR_STRENGTH = 10.0
@@ -56,7 +54,6 @@ RYD_ELECTRON_VOLT = 13.605693122994
 DEFAULT_A_FJ = (3.82, 2.47, 2.47, 3.01, 2.44)
 DEFAULT_B_FJ = (0.0272, 0.0295, 0.0311, 0.0111, 0.0633)
 DEFAULT_C_FJ = (0.098, 0.075, 0.074, 0.765, 0.425)
-_OXYGEN_K_ELF_NORM_CACHE = {}
 _OXYGEN_K_STRENGTH_CACHE = {}
 
 # ---- partitioning helpers (Kyriakou et al.) ----
@@ -571,50 +568,13 @@ def oxygen_K_hydrogenic_occupancy_remainder(
         Zeff=Zeff,
     )
 
-def _oxygen_K_hydrogenic_elf_norm(
-    B_K_eV=OXYGEN_K_B_EV,
-    Zeff=OXYGEN_K_ZEFF,
-    Ep_eV=20.82,
-    total_oscillator_strength=WATER_TOTAL_OSCILLATOR_STRENGTH,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
-):
-    """Optional optical-area diagnostic; not used by the ion table kernel."""
-    key = (
-        round(float(B_K_eV), 12),
-        round(float(Zeff), 12),
-        round(float(Ep_eV), 12),
-        round(float(total_oscillator_strength), 12),
-        round(float(fsum_target), 12),
-    )
-    cached = _OXYGEN_K_ELF_NORM_CACHE.get(key)
-    if cached is not None:
-        return cached
-
-    x = np.geomspace(1.0e-8, 1.0e8, 12000)
-    E = float(B_K_eV) + x
-    df = oxygen_K_hydrogenic_gos_df_dE(E, 0.0, B_K_eV=B_K_eV, Zeff=Zeff)
-    shape = (
-        0.5
-        * np.pi
-        * float(Ep_eV) ** 2
-        / float(total_oscillator_strength)
-        * np.where(E > 0.0, df / E, 0.0)
-    )
-    area = float(np.trapezoid(E * shape, E))
-    target = 0.5 * np.pi * float(Ep_eV) ** 2 * float(fsum_target)
-    norm = target / area if np.isfinite(area) and area > 0.0 else 0.0
-    _OXYGEN_K_ELF_NORM_CACHE[key] = norm
-    return norm
-
 def oxygen_K_hydrogenic_gos_elf(
     E_eV,
     q_au,
     B_K_eV=OXYGEN_K_B_EV,
     Zeff=OXYGEN_K_ZEFF,
-    normalize_fsum=False,
     Ep_eV=20.82,
     total_oscillator_strength=WATER_TOTAL_OSCILLATOR_STRENGTH,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
 ):
     """
     Return the additive O K-shell ELF from the published hydrogenic GOS.
@@ -622,9 +582,9 @@ def oxygen_K_hydrogenic_gos_elf(
     The GOS-to-ELF conversion uses the same Ep/Z convention as the dielectric
     model:
         Im[-1/epsilon_K] ~= (pi/2) * Ep^2 / Z * (1/E) * df_K(q,E)/dE
-    By default, preserve the published GOS amplitude. normalize_fsum=True
-    requests the legacy optical-area diagnostic explicitly; it is not used
-    for ion tables and does not enforce a finite-q molecular sum rule.
+    The published GOS amplitude is preserved. This API deliberately exposes no
+    independent optical-area normalization: the K continuum participates in
+    the joint finite-q molecular oscillator-strength allocation instead.
     """
     E, q = np.broadcast_arrays(np.asarray(E_eV, float), np.asarray(q_au, float))
     df = oxygen_K_hydrogenic_gos_df_dE(E, q, B_K_eV=B_K_eV, Zeff=Zeff)
@@ -636,14 +596,6 @@ def oxygen_K_hydrogenic_gos_elf(
         * np.divide(df, E, out=np.zeros_like(df), where=E > 0.0)
     )
     elf = np.where(E > float(B_K_eV), elf, 0.0)
-    if normalize_fsum:
-        elf = elf * _oxygen_K_hydrogenic_elf_norm(
-            B_K_eV=B_K_eV,
-            Zeff=Zeff,
-            Ep_eV=Ep_eV,
-            total_oscillator_strength=total_oscillator_strength,
-            fsum_target=fsum_target,
-        )
     return elf
 
 def oxygen_K_ion_hydrogenic_gos_elf(
@@ -651,9 +603,7 @@ def oxygen_K_ion_hydrogenic_gos_elf(
     q_au,
     B_K_eV=OXYGEN_K_B_EV,
     Zeff=OXYGEN_K_ZEFF,
-    normalize_fsum=False,
     Ep_eV=20.82,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
 ):
     """
     Ion/projectile O K-shell ELF from the q-dependent hydrogenic 1s GOS.
@@ -663,32 +613,23 @@ def oxygen_K_ion_hydrogenic_gos_elf(
         q_au,
         B_K_eV=B_K_eV,
         Zeff=Zeff,
-        normalize_fsum=normalize_fsum,
         Ep_eV=Ep_eV,
-        fsum_target=fsum_target,
     )
 
 def oxygen_K_hydrogenic_gos_fsum(
     B_K_eV=OXYGEN_K_B_EV,
     Zeff=OXYGEN_K_ZEFF,
-    Ep_eV=20.82,
-    normalize_fsum=False,
-    fsum_target=OXYGEN_K_FSUM_TARGET,
 ):
-    """Return the optical-limit K-shell f-sum fraction implied by the GOS ELF."""
-    x = np.geomspace(1.0e-8, 1.0e8, 12000)
-    E = float(B_K_eV) + x
-    elf = oxygen_K_hydrogenic_gos_elf(
-        E,
-        0.0,
-        B_K_eV=B_K_eV,
-        Zeff=Zeff,
-        normalize_fsum=normalize_fsum,
-        Ep_eV=Ep_eV,
-        fsum_target=fsum_target,
+    """Return the unscaled optical K-continuum fraction of the H2O f-sum.
+
+    The denominator is the ten-electron molecular oscillator-strength budget.
+    This is a diagnostic of the published threshold-gated continuum, not a
+    normalization target.
+    """
+    strength = oxygen_K_hydrogenic_gos_continuum_strength(
+        0.0, B_K_eV=B_K_eV, Zeff=Zeff
     )
-    area = float(np.trapezoid(E * elf, E))
-    return area / (0.5 * np.pi * float(Ep_eV) ** 2)
+    return float(strength) / WATER_TOTAL_OSCILLATOR_STRENGTH
 
 def epsilon2_Kshell_E0_fsum_corrected(E, s):
     r"""

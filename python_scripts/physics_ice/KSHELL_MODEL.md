@@ -22,9 +22,11 @@ occupancy of two is included once; conversion from reduced energy to eV
 divides the GOS by `H`.
 
 The ion kernel preserves the published amplitude: no optical-area multiplier
-and no hydrogenic ELF rolloff. The optional `normalize_fsum=True` Python
-argument remains an explicitly requested optical-area diagnostic, not the
-production ion convention. The legacy electron optical K shell is unchanged.
+and no hydrogenic ELF rolloff. The ion K-shell API has no independent
+optical-area rescaling option; normalization is handled only through the joint
+finite-q molecular allocation described below. The legacy electron optical K
+shell is unchanged. Generated metadata records `kshell_fsum_target` as null or
+NaN and records the calculated unscaled fraction as `kshell_optical_fsum`.
 
 For ion runs only, the separate excitation, outer-ionization, and K-continuum
 parameterizations now share one molecular oscillator-strength budget. At each

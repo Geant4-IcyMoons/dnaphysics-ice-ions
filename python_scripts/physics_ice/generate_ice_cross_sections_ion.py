@@ -11,9 +11,10 @@ paper validates protons from 100 to 300 MeV; use for other bare ions is an
 explicit first-Born extrapolation at the same projectile velocity.
 """
 
-import os, sys
 import json
+import os
 import shutil
+import sys
 from functools import lru_cache
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -49,10 +50,7 @@ from constants import (
     PROJECTILE_LIBRARY,
     PROTON_MASS_AU,
     RC_BASE_ELASTIC,
-    REGIME_I_MAX_eV,
     REGIME_II_MAX_eV,
-    REGIME_III_MAX_eV,
-    REGIME_IV_MAX_eV,
     a0,
     rcparams_with_fontsize,
 )
@@ -548,13 +546,16 @@ EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
 
 KSHELL_B_EV = model.OXYGEN_K_B_EV
 KSHELL_ZEFF = model.OXYGEN_K_ZEFF
-KSHELL_FSUM_TARGET = model.OXYGEN_K_FSUM_TARGET
 HYDROGENIC_KSHELL_ROLLOFF_APPLIED = False
 KSHELL_NORMALIZATION = "published-unscaled"
 
 
 def _kshell_generation_metadata():
-    """Return JSON-safe provenance for the selected ion K-shell path."""
+    """Return JSON-safe provenance for the selected ion K-shell path.
+
+    ``kshell_fsum_target`` is intentionally null: the published continuum is
+    not forced to the obsolete 0.179 optical-area target.
+    """
     hydrogenic = KSHELL_MODEL == "hydrogenic-gos"
     return {
         "kshell_model": KSHELL_MODEL,
@@ -567,11 +568,8 @@ def _kshell_generation_metadata():
         "kshell_B_eV": float(KSHELL_B_EV) if hydrogenic else None,
         "kshell_Zeff": float(KSHELL_ZEFF) if hydrogenic else None,
         "kshell_fsum_target": None,
-        "kshell_reference_optical_fsum_target": (
-            float(KSHELL_FSUM_TARGET) if hydrogenic else None
-        ),
         "kshell_optical_fsum": (
-            float(model.oxygen_K_hydrogenic_gos_fsum(normalize_fsum=False))
+            float(model.oxygen_K_hydrogenic_gos_fsum())
             if hydrogenic else None
         ),
         "kshell_q_dependent": hydrogenic,
@@ -662,7 +660,6 @@ def _optical_normalization(Ep, Bmin, excitations, ionizations, density_g_cm3):
         0.0,
         B_K_eV=KSHELL_B_EV,
         Zeff=KSHELL_ZEFF,
-        normalize_fsum=False,
         Ep_eV=Ep,
     )
     valence_moment = float(np.trapezoid(energies * valence_elf, energies))
@@ -1312,7 +1309,6 @@ def _kshell_hydrogenic_gos_elf(Ei, qvals, s):
         qvals,
         B_K_eV=KSHELL_B_EV,
         Zeff=KSHELL_ZEFF,
-        normalize_fsum=False,
         Ep_eV=float(s.Ep),
     )
 
@@ -2666,9 +2662,6 @@ def save_cross_section_corrections_npz(
         kshell_B_eV=float(KSHELL_B_EV if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
         kshell_Zeff=float(KSHELL_ZEFF if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
         kshell_fsum_target=np.nan,
-        kshell_reference_optical_fsum_target=(
-            float(KSHELL_FSUM_TARGET) if KSHELL_MODEL == "hydrogenic-gos" else np.nan
-        ),
         kshell_gos_version=_kshell_generation_metadata()["kshell_gos_version"],
         kshell_normalization=_kshell_generation_metadata()["kshell_normalization"],
         finite_q_sum_rule=_kshell_generation_metadata()["finite_q_sum_rule"],
@@ -2676,7 +2669,6 @@ def save_cross_section_corrections_npz(
             model.oxygen_K_hydrogenic_gos_fsum(
                 B_K_eV=KSHELL_B_EV,
                 Zeff=KSHELL_ZEFF,
-                normalize_fsum=False,
             )
             if KSHELL_MODEL == "hydrogenic-gos" else np.nan
         ),
@@ -4332,8 +4324,6 @@ def main():
         k_fsum = model.oxygen_K_hydrogenic_gos_fsum(
             B_K_eV=KSHELL_B_EV,
             Zeff=KSHELL_ZEFF,
-            Ep_eV=float(s.Ep),
-            normalize_fsum=False,
         )
         print(
             "Hydrogenic O K-shell: "
@@ -4357,17 +4347,13 @@ def main():
         use_log=(energy_grid == "log"),
     )
 
-    # Computing Choices
-    # use_mott_coulomb = True
-    # apply_mc = True
-    # apply_regime_ii = True
-    # apply_regime_iii = True
-    # apply_regime_iv = True
-    use_mott_coulomb = False     # Changed to False
-    apply_mc = False             # Changed to False
-    apply_regime_ii = False      # Changed to False
-    apply_regime_iii = False     # Changed to False
-    apply_regime_iv = False      # Changed to False
+    # Electron exchange/Mott and historical energy-regime corrections are not
+    # part of the ion table model. RPWBA is selected by its dedicated CLI flag.
+    use_mott_coulomb = False
+    apply_mc = False
+    apply_regime_ii = False
+    apply_regime_iii = False
+    apply_regime_iv = False
 
     _set_regime_corrections(
         apply_regime_ii=apply_regime_ii,

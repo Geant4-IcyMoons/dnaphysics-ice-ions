@@ -144,7 +144,7 @@ def test_generator_uses_unscaled_gos_and_no_rolloff(monkeypatch, phase):
     expected = (np.pi/2.) * s.Ep**2 / 10. * model.oxygen_K_hydrogenic_gos_df_dE(E, q) / E
     np.testing.assert_allclose(generator._kshell_hydrogenic_gos_elf(E, q, s), expected,
                                rtol=2e-15, atol=0.)
-    assert model.oxygen_K_hydrogenic_gos_fsum(Ep_eV=s.Ep) == pytest.approx(
+    assert model.oxygen_K_hydrogenic_gos_fsum() == pytest.approx(
         1.736914215348305/10., rel=3e-6,
     )
 
@@ -255,6 +255,7 @@ def test_cache_provenance_rejects_old_gos(monkeypatch, tmp_path):
     assert cache["kshell_normalization"].item() == "published-unscaled"
     assert cache["finite_q_sum_rule"].item() == model.ION_FINITE_Q_SUM_RULE_VERSION
     assert np.isnan(cache["kshell_fsum_target"])
+    assert "kshell_reference_optical_fsum_target" not in cache
     assert cache["kshell_optical_fsum"] == pytest.approx(0.1736914215348305, rel=3e-6)
     for field, bad in [("kshell_gos_version", "threshold-shifted"),
                        ("kshell_normalization", "optical-fsum"),

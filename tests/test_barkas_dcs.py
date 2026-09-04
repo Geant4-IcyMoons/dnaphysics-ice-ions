@@ -158,14 +158,9 @@ def test_oos_normalization_is_separate_from_finite_q_kshell_fsum():
     assert np.isclose(oos.ok_integral_raw * oos.ok_norm, 2.0, rtol=1e-12)
     assert np.isclose(oos.total_integral_norm_grid, 10.0, rtol=1e-12)
 
-    kshell_fsum = model.oxygen_K_hydrogenic_gos_fsum(
-        B_K_eV=model.OXYGEN_K_B_EV,
-        Zeff=model.OXYGEN_K_ZEFF,
-        normalize_fsum=True,
-        fsum_target=model.OXYGEN_K_FSUM_TARGET,
-    )
-    assert np.isclose(kshell_fsum, model.OXYGEN_K_FSUM_TARGET, rtol=1e-4)
-    assert not np.isclose(2.0, model.OXYGEN_K_FSUM_TARGET)
+    continuum_strength = model.oxygen_K_hydrogenic_gos_continuum_strength(0.0)
+    assert np.isclose(continuum_strength, 1.736914215348305, rtol=3e-6)
+    assert not np.isclose(continuum_strength, 2.0)
 
 
 def test_born_reference_charge_scaling_modes():

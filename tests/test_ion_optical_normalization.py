@@ -93,7 +93,6 @@ def test_no_kshell_does_not_renormalize_valence_or_change_barkas(phase):
     assert oos.ok_integral_raw * oos.ok_norm == pytest.approx(2.0)
     assert gen.KSHELL_B_EV == 543.4
     assert gen.KSHELL_ZEFF == 7.7
-    assert gen.KSHELL_FSUM_TARGET == 0.179
     assert gen.HYDROGENIC_KSHELL_ROLLOFF_APPLIED is False
 
 

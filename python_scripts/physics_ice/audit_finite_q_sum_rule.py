@@ -98,7 +98,6 @@ def component_audit(phase, q_value, points):
         E,
         float(q_value),
         Ep_eV=s.Ep,
-        normalize_fsum=False,
     )
 
     exc_strength, exc_moment = _strength_and_energy_moment(E, excitation_elf, s.Ep)
