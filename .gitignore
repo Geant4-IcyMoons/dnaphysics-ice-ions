@@ -18,6 +18,7 @@ plots/
 python_scripts/physics_ice/output/*.png
 python_scripts/physics_ice/output/*.pdf
 python_scripts/physics_ice/output/cross_section_corrections_*.npz
+python_scripts/physics_ice/output/stopping_power_imfp_*.json
 python_scripts/physics_ice/cross-sections/
 python_scripts/physics_ice/*.png
 examples/**/outputs/*.png

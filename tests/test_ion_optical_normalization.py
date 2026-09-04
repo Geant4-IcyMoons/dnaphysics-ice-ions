@@ -59,7 +59,14 @@ def test_independent_full_optical_sum_and_convergence(phase):
     sums = []
     for upper, points in [(1e8, 120001), (1e9, 240001)]:
         W = np.geomspace(s.Bmin, upper, points)
-        valence = gen.model.elf_Eq(W, 0.0, s, dispersion(), include_kshell=False)[0]
+        q_zero = np.array([0.0])
+        e1 = gen._ion_epsilon1_valence(W, q_zero, s, dispersion())
+        e2 = gen._ion_epsilon2_valence(W, q_zero, s, dispersion())
+        denominator = np.maximum(
+            e1["total"][0] ** 2 + e2["total"][0] ** 2,
+            np.finfo(float).tiny,
+        )
+        valence = e2["total"][0] / denominator
         # Integrate the actual hydrogenic curve independently of its analytic
         # normalization target, on a grid starting immediately above its edge.
         K_W = np.geomspace(gen.KSHELL_B_EV + 1e-6, upper, points)

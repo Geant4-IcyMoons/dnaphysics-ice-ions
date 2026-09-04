@@ -529,9 +529,9 @@ ICE_LABEL = f"{ICE_TYPE}_ice"
 
 # One material density per phase. Normalize the ELF-derived GOS to its
 # physical electron density (10 electrons/H2O), then divide by N_H2O.
-ION_NORMALIZATION_VERSION = "optical-fsum-per-H2O-v1"
-OPTICAL_SUM_POINTS = 60001
-OPTICAL_SUM_MAX_EV = 1.0e8
+ION_NORMALIZATION_VERSION = "optical-fsum-per-H2O-v2"
+OPTICAL_SUM_POINTS = 240001
+OPTICAL_SUM_MAX_EV = 1.0e9
 # integral W*ELF dW = OPTICAL_SUM_UNIT_EV2_M3 * electron density.
 # SI plasma-frequency identity, with hbar converted to eV s.
 OPTICAL_SUM_UNIT_EV2_M3 = (
@@ -550,6 +550,37 @@ KSHELL_B_EV = model.OXYGEN_K_B_EV
 KSHELL_ZEFF = model.OXYGEN_K_ZEFF
 KSHELL_FSUM_TARGET = model.OXYGEN_K_FSUM_TARGET
 HYDROGENIC_KSHELL_ROLLOFF_APPLIED = False
+KSHELL_NORMALIZATION = "published-unscaled"
+
+
+def _kshell_generation_metadata():
+    """Return JSON-safe provenance for the selected ion K-shell path."""
+    hydrogenic = KSHELL_MODEL == "hydrogenic-gos"
+    return {
+        "kshell_model": KSHELL_MODEL,
+        "kshell_gos_version": (
+            model.OXYGEN_K_GOS_VERSION if hydrogenic else "not_used"
+        ),
+        "kshell_normalization": (
+            KSHELL_NORMALIZATION if hydrogenic else "not_used"
+        ),
+        "kshell_B_eV": float(KSHELL_B_EV) if hydrogenic else None,
+        "kshell_Zeff": float(KSHELL_ZEFF) if hydrogenic else None,
+        "kshell_fsum_target": None,
+        "kshell_reference_optical_fsum_target": (
+            float(KSHELL_FSUM_TARGET) if hydrogenic else None
+        ),
+        "kshell_optical_fsum": (
+            float(model.oxygen_K_hydrogenic_gos_fsum(normalize_fsum=False))
+            if hydrogenic else None
+        ),
+        "kshell_q_dependent": hydrogenic,
+        "old_optical_kshell_used": KSHELL_MODEL == "old-optical",
+        "hydrogenic_kshell_rolloff_applied": False,
+        "finite_q_sum_rule": (
+            model.ION_FINITE_Q_SUM_RULE_VERSION if hydrogenic else "legacy"
+        ),
+    }
 
 # ----------------------------------------------------------------------
 # Constants for integration (from constants.py)
@@ -584,23 +615,62 @@ def _optical_normalization(Ep, Bmin, excitations, ionizations, density_g_cm3):
     See Dominguez-Munoz et al. (2022), Eqs. (3),(9), for the same ELF/GOS
     conversion. No stopping-power reference enters this normalization.
 
-    Always include the normalized optical K-shell moment, even for a
-    no-K-shell diagnostic: omitting a process must not amplify valence.
-    The existing 0.179 K fraction is not replaced by the separate Barkas
-    8+2 OOS convention. This is an optical normalization, not a repair of
-    the finite-q GOS or a refit of the complex dielectric function.
+    The reference moment uses the same joint outer/K allocation and unscaled
+    Heredia-Avalos continuum as the production hydrogenic-GOS path. Always
+    retain that reference normalization for no-K and old-optical diagnostics:
+    omitting or replacing a process must not amplify the remaining channels.
+    This global microscopic conversion is distinct from selectively rescaling
+    the K continuum and from the separate Barkas 8+2 OOS convention.
     """
     s = model.IceOpticalSet(Ep, Bmin, list(excitations), list(ionizations), None)
     energies = np.geomspace(Bmin, OPTICAL_SUM_MAX_EV, OPTICAL_SUM_POINTS)
     # At q=0 the dispersion coefficients drop out. Use the same partitioned
     # response as the ion kernel, not the unpartitioned optical diagnostic.
     C = model.DispersionCoeffs(0.0, 0.0, 0.0)
-    elf = model.elf_Eq(energies, 0.0, s, C, include_kshell=False)[0]
-    valence_moment = float(np.trapezoid(energies * elf, energies))
-    core_moment = 0.5 * np.pi * Ep**2 * KSHELL_FSUM_TARGET
+    q_zero = np.array([0.0])
+    k_strength = model.oxygen_K_hydrogenic_gos_continuum_strength(q_zero)
+    e1 = model.epsilon1_valence_Eq(
+        energies,
+        q_zero,
+        s,
+        C,
+        inner_shell_strength_electrons=k_strength,
+    )
+    e2 = model.epsilon2_valence_Eq(
+        energies,
+        q_zero,
+        s,
+        C,
+        partitioned=True,
+        inner_shell_strength_electrons=k_strength,
+    )
+    denominator = np.maximum(
+        e1["total"][0] ** 2 + e2["total"][0] ** 2,
+        np.finfo(float).tiny,
+    )
+    valence_elf = e2["total"][0] / denominator
+    core_energies = np.unique(np.concatenate((
+        np.geomspace(
+            np.nextafter(KSHELL_B_EV, np.inf),
+            OPTICAL_SUM_MAX_EV,
+            OPTICAL_SUM_POINTS,
+        ),
+        np.array([KSHELL_ZEFF**2 * model.RYD_ELECTRON_VOLT]),
+    )))
+    core_elf = model.oxygen_K_ion_hydrogenic_gos_elf(
+        core_energies,
+        0.0,
+        B_K_eV=KSHELL_B_EV,
+        Zeff=KSHELL_ZEFF,
+        normalize_fsum=False,
+        Ep_eV=Ep,
+    )
+    valence_moment = float(np.trapezoid(energies * valence_elf, energies))
+    core_moment = float(np.trapezoid(core_energies * core_elf, core_energies))
     full_moment = valence_moment + core_moment
     if (not np.isfinite(full_moment) or valence_moment <= 0.0
-            or np.any(~np.isfinite(elf)) or np.any(elf < 0.0)
+            or np.any(~np.isfinite(valence_elf)) or np.any(valence_elf < 0.0)
+            or np.any(~np.isfinite(core_elf)) or np.any(core_elf < 0.0)
             or not np.isfinite(density_g_cm3) or density_g_cm3 <= 0.0):
         raise RuntimeError("Invalid ion optical ELF f-sum; cannot normalize per H2O.")
     density = density_g_cm3 * 1e6 * AVOGADRO / H2O_MOLAR_MASS_G_MOL
@@ -641,9 +711,9 @@ def _ion_normalization_metadata(ice_type, s=None):
         "optical_full_moment_eV2": valence + core,
         "optical_fsum_fraction": (valence + core) / (0.5 * np.pi * s.Ep**2),
         "optical_electrons_per_H2O": model.WATER_TOTAL_OSCILLATOR_STRENGTH,
-        "optical_normalization_includes_full_kshell": True,
+        "optical_normalization_includes_hydrogenic_kshell_continuum": True,
         "optical_valence_electrons_per_H2O": model.WATER_TOTAL_OSCILLATOR_STRENGTH * valence / (valence + core),
-        "optical_kshell_electrons_per_H2O": model.WATER_TOTAL_OSCILLATOR_STRENGTH * core / (valence + core),
+        "optical_kshell_continuum_electrons_per_H2O": model.WATER_TOTAL_OSCILLATOR_STRENGTH * core / (valence + core),
         "material_density_g_cm3": rho,
         "material_molecular_density_m3": density,
         "material_density_applied_to_cross_sections": False,
@@ -956,7 +1026,15 @@ def _rpwba_transverse_ratio(
 # Inner q-integral at fixed Ei for channels (excitation / ionization)
 # ----------------------------------------------------------------------
 def _integrate_channel_single_E(
-    Ei, Tj, idx, channel_type, s, C, Nq=400, use_rel_bounds=False
+    Ei,
+    Tj,
+    idx,
+    channel_type,
+    s,
+    C,
+    Nq=400,
+    use_rel_bounds=False,
+    include_kshell_sum_rule=None,
 ):
     """
     Compute inner integral over q:
@@ -979,8 +1057,12 @@ def _integrate_channel_single_E(
     E_arr = np.array([Ei], float)
 
     # Vectorized dielectric functions at (Ei, qvals)
-    e1 = model.epsilon1_valence_Eq(E_arr, qvals, s, C)
-    e2 = model.epsilon2_valence_Eq(E_arr, qvals, s, C)
+    e1 = _ion_epsilon1_valence(
+        E_arr, qvals, s, C, include_kshell=include_kshell_sum_rule
+    )
+    e2 = _ion_epsilon2_valence(
+        E_arr, qvals, s, C, include_kshell=include_kshell_sum_rule
+    )
 
     e1t = e1["total"][:, 0]   # shape (Nq,)
     e2t = e2["total"][:, 0]
@@ -1013,6 +1095,7 @@ def _integrate_channel_single_E_rpwba_components(
     C,
     Nq=400,
     use_density_effect=False,
+    include_kshell_sum_rule=None,
 ):
     """Return finite-Q longitudinal and transverse RPWBA DCS components.
 
@@ -1030,8 +1113,12 @@ def _integrate_channel_single_E_rpwba_components(
     xi = np.linspace(np.log(qlo), np.log(qhi), Nq)
     qvals = np.exp(xi)
     E_arr = np.array([Ei], float)
-    e1 = model.epsilon1_valence_Eq(E_arr, qvals, s, C)
-    e2 = model.epsilon2_valence_Eq(E_arr, qvals, s, C)
+    e1 = _ion_epsilon1_valence(
+        E_arr, qvals, s, C, include_kshell=include_kshell_sum_rule
+    )
+    e2 = _ion_epsilon2_valence(
+        E_arr, qvals, s, C, include_kshell=include_kshell_sum_rule
+    )
     denominator = e1["total"][:, 0] ** 2 + e2["total"][:, 0] ** 2
     denominator = np.where(denominator == 0.0, np.finfo(float).tiny, denominator)
     if channel_type == "excitation":
@@ -1055,14 +1142,32 @@ def _integrate_channel_single_E_rpwba_components(
     transverse = prefactor * _simpson_integrate(vals * transverse_ratio, xi)
     return float(longitudinal), float(transverse)
 
-def _integrate_channel_single_E_rel(Ei, Tj, idx, channel_type, s, C, Nq=400):
+def _integrate_channel_single_E_rel(
+    Ei, Tj, idx, channel_type, s, C, Nq=400, include_kshell_sum_rule=None
+):
     longitudinal, _ = _integrate_channel_single_E_rpwba_components(
-        Ei, Tj, idx, channel_type, s, C, Nq=Nq, use_density_effect=False
+        Ei,
+        Tj,
+        idx,
+        channel_type,
+        s,
+        C,
+        Nq=Nq,
+        use_density_effect=False,
+        include_kshell_sum_rule=include_kshell_sum_rule,
     )
     return longitudinal
 
 def _integrate_channel_single_E_trans(
-    Ei, Tj, idx, channel_type, s, C, Nq=400, use_density_effect=False
+    Ei,
+    Tj,
+    idx,
+    channel_type,
+    s,
+    C,
+    Nq=400,
+    use_density_effect=False,
+    include_kshell_sum_rule=None,
 ):
     _, transverse = _integrate_channel_single_E_rpwba_components(
         Ei,
@@ -1073,6 +1178,7 @@ def _integrate_channel_single_E_trans(
         C,
         Nq=Nq,
         use_density_effect=use_density_effect,
+        include_kshell_sum_rule=include_kshell_sum_rule,
     )
     return transverse
 
@@ -1138,6 +1244,7 @@ def _total_transverse_sigma(
                     C,
                     Nq=Nq,
                     use_density_effect=use_density_effect,
+                    include_kshell_sum_rule=include_kshell,
                 )
                 for W in energies
             ]
@@ -1158,6 +1265,7 @@ def _total_transverse_sigma(
                     C,
                     Nq=Nq,
                     use_density_effect=use_density_effect,
+                    include_kshell_sum_rule=include_kshell,
                 )
                 for W in energies
             ]
@@ -1204,9 +1312,48 @@ def _kshell_hydrogenic_gos_elf(Ei, qvals, s):
         qvals,
         B_K_eV=KSHELL_B_EV,
         Zeff=KSHELL_ZEFF,
-        normalize_fsum=True,
+        normalize_fsum=False,
         Ep_eV=float(s.Ep),
-        fsum_target=KSHELL_FSUM_TARGET,
+    )
+
+
+def _ion_inner_shell_strength_electrons(qvals, include_kshell=None):
+    """K-continuum strength used in the ion finite-q molecular sum rule."""
+    if include_kshell is None:
+        include_kshell = KSHELL_MODEL != "none"
+    if not include_kshell or KSHELL_MODEL != "hydrogenic-gos":
+        return None
+    return model.oxygen_K_hydrogenic_gos_continuum_strength(
+        qvals,
+        B_K_eV=KSHELL_B_EV,
+        Zeff=KSHELL_ZEFF,
+    )
+
+
+def _ion_epsilon1_valence(E_arr, qvals, s, C, include_kshell=None):
+    return model.epsilon1_valence_Eq(
+        E_arr,
+        qvals,
+        s,
+        C,
+        inner_shell_strength_electrons=_ion_inner_shell_strength_electrons(
+            qvals, include_kshell=include_kshell
+        ),
+    )
+
+
+def _ion_epsilon2_valence(
+    E_arr, qvals, s, C, partitioned=True, include_kshell=None
+):
+    return model.epsilon2_valence_Eq(
+        E_arr,
+        qvals,
+        s,
+        C,
+        partitioned=partitioned,
+        inner_shell_strength_electrons=_ion_inner_shell_strength_electrons(
+            qvals, include_kshell=include_kshell
+        ),
     )
 
 # ----------------------------------------------------------------------
@@ -1291,8 +1438,8 @@ def _integrate_kshell_single_E_rpwba_components(
         return 0.0, 0.0
 
     E_arr = np.array([Ei], float)
-    e1 = model.epsilon1_valence_Eq(E_arr, qvals, s, C)
-    e2 = model.epsilon2_valence_Eq(E_arr, qvals, s, C)
+    e1 = _ion_epsilon1_valence(E_arr, qvals, s, C, include_kshell=True)
+    e2 = _ion_epsilon2_valence(E_arr, qvals, s, C, include_kshell=True)
     transverse_ratio = _rpwba_transverse_ratio(
         Ei,
         qvals,
@@ -1391,7 +1538,15 @@ def integrate_elf_channels_per_channel_q(
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_channel_single_E(
-                Ei, T, k, "excitation", s, C, Nq=Nq, use_rel_bounds=False
+                Ei,
+                T,
+                k,
+                "excitation",
+                s,
+                C,
+                Nq=Nq,
+                use_rel_bounds=False,
+                include_kshell_sum_rule=include_kshell,
             )
 
             # Full finite-Q RPWBA components.
@@ -1405,6 +1560,7 @@ def integrate_elf_channels_per_channel_q(
                     C,
                     Nq=Nq,
                     use_density_effect=bool(use_rel_trans and use_density_effect),
+                    include_kshell_sum_rule=include_kshell,
                 )
 
 
@@ -1431,7 +1587,15 @@ def integrate_elf_channels_per_channel_q(
         for i, Ei in enumerate(Egrid):
             # Nonrelativistic inner-q integral
             vals[i] = _integrate_channel_single_E(
-                Ei, T, j, "ionization", s, C, Nq=Nq, use_rel_bounds=False
+                Ei,
+                T,
+                j,
+                "ionization",
+                s,
+                C,
+                Nq=Nq,
+                use_rel_bounds=False,
+                include_kshell_sum_rule=include_kshell,
             )
 
             # Full finite-Q RPWBA components.
@@ -1445,6 +1609,7 @@ def integrate_elf_channels_per_channel_q(
                     C,
                     Nq=Nq,
                     use_density_effect=bool(use_rel_trans and use_density_effect),
+                    include_kshell_sum_rule=include_kshell,
                 )
 
 
@@ -2500,7 +2665,21 @@ def save_cross_section_corrections_npz(
         kshell_model=KSHELL_MODEL,
         kshell_B_eV=float(KSHELL_B_EV if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
         kshell_Zeff=float(KSHELL_ZEFF if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
-        kshell_fsum_target=float(KSHELL_FSUM_TARGET if KSHELL_MODEL == "hydrogenic-gos" else np.nan),
+        kshell_fsum_target=np.nan,
+        kshell_reference_optical_fsum_target=(
+            float(KSHELL_FSUM_TARGET) if KSHELL_MODEL == "hydrogenic-gos" else np.nan
+        ),
+        kshell_gos_version=_kshell_generation_metadata()["kshell_gos_version"],
+        kshell_normalization=_kshell_generation_metadata()["kshell_normalization"],
+        finite_q_sum_rule=_kshell_generation_metadata()["finite_q_sum_rule"],
+        kshell_optical_fsum=(
+            model.oxygen_K_hydrogenic_gos_fsum(
+                B_K_eV=KSHELL_B_EV,
+                Zeff=KSHELL_ZEFF,
+                normalize_fsum=False,
+            )
+            if KSHELL_MODEL == "hydrogenic-gos" else np.nan
+        ),
         kshell_q_dependent=bool(KSHELL_MODEL == "hydrogenic-gos"),
         old_optical_kshell_used=bool(KSHELL_MODEL == "old-optical"),
         hydrogenic_kshell_rolloff_applied=bool(HYDROGENIC_KSHELL_ROLLOFF_APPLIED),
@@ -2704,18 +2883,24 @@ def _npz_matches_params(
     if stored_kshell_model != str(kshell_model):
         return False
     if str(kshell_model) == "hydrogenic-gos":
+        if _npz_str_value(npz_data, "kshell_gos_version") != model.OXYGEN_K_GOS_VERSION:
+            return False
+        if _npz_str_value(npz_data, "kshell_normalization") != KSHELL_NORMALIZATION:
+            return False
+        if _npz_str_value(npz_data, "finite_q_sum_rule") != model.ION_FINITE_Q_SUM_RULE_VERSION:
+            return False
         if "kshell_q_dependent" not in npz_data:
             return False
         if not bool(np.asarray(npz_data["kshell_q_dependent"]).reshape(-1)[0]):
             return False
         stored_B = _npz_float_value(npz_data, "kshell_B_eV")
         stored_Zeff = _npz_float_value(npz_data, "kshell_Zeff")
-        stored_fsum = _npz_float_value(npz_data, "kshell_fsum_target")
         if stored_B is None or not np.isclose(stored_B, KSHELL_B_EV):
             return False
         if stored_Zeff is None or not np.isclose(stored_Zeff, KSHELL_ZEFF):
             return False
-        if stored_fsum is None or not np.isclose(stored_fsum, KSHELL_FSUM_TARGET):
+        stored_fsum = _npz_float_value(npz_data, "kshell_fsum_target")
+        if stored_fsum is None or not np.isnan(stored_fsum):
             return False
         if bool(np.asarray(npz_data.get("old_optical_kshell_used", np.array([True]))).reshape(-1)[0]):
             return False
@@ -3671,6 +3856,7 @@ def write_emfietzoglou_dcs_tables(
         "include_kshell": bool(include_kshell),
         "kshell_model": KSHELL_MODEL,
     })
+    table_metadata.update(_kshell_generation_metadata())
     if merge_energy_patches:
         _check_energy_patch_normalization(exc_out, ion_out, table_metadata)
 
@@ -4147,21 +4333,21 @@ def main():
             B_K_eV=KSHELL_B_EV,
             Zeff=KSHELL_ZEFF,
             Ep_eV=float(s.Ep),
-            normalize_fsum=True,
-            fsum_target=KSHELL_FSUM_TARGET,
+            normalize_fsum=False,
         )
         print(
             "Hydrogenic O K-shell: "
             f"B={KSHELL_B_EV:.6g} eV, Zeff={KSHELL_ZEFF:.6g}, "
-            f"optical f-sum={k_fsum:.6g} (target {KSHELL_FSUM_TARGET:.6g}), "
+            f"optical f-sum={k_fsum:.6g} (unrescaled; {10.0*k_fsum:.6g} strength), "
+            f"GOS={model.OXYGEN_K_GOS_VERSION}, "
+            f"sum-rule={model.ION_FINITE_Q_SUM_RULE_VERSION}, "
             f"hydrogenic rolloff applied={HYDROGENIC_KSHELL_ROLLOFF_APPLIED}"
         )
-    a_vec = np.array([3.82, 2.47, 2.47, 3.01, 2.44])
-    b_vec = np.array([0.0272, 0.0295, 0.0311, 0.0111, 0.0633])
-    c_vec = np.array([0.098, 0.075, 0.074, 0.765, 0.425])
-
-    # RR2017 defaults for c_disp, d_disp, b1, b2
-    C = model.DispersionCoeffs(a_fj=a_vec, b_fj=b_vec, c_fj=c_vec)
+    # Shared RR2017 defaults for excitation and outer-shell dispersion.
+    C = model.default_dispersion_coefficients()
+    a_vec = np.asarray(C.a_fj, float)
+    b_vec = np.asarray(C.b_fj, float)
+    c_vec = np.asarray(C.c_fj, float)
 
     # Incident projectile energy grid (eV)
     T_list = _energy_grid(
