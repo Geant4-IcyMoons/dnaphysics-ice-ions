@@ -8,6 +8,86 @@ itself validate the production optical oscillator-strength model.
 No additional acceptance record is created merely because a PWBA table was
 generated successfully.
 
+## Ion optical normalization
+
+Ion PWBA and RPWBA generation use one physical density per ice phase, from
+`constants.py`: 0.9343471678603292 g/cm3 for amorphous ice and 0.9335 g/cm3
+for hexagonal ice. The corresponding H2O molecular densities are
+3.1233320623e28 and 3.1205001529e28 m^-3. These are also the configured
+Geant4 material densities. There is no water-density divisor or adjustable
+target-density multiplier in the ion generator.
+
+For the partitioned optical ELF, define
+
+```
+N_H2O = rho * N_A / M_H2O                       (with consistent SI units)
+I_opt = integral W * ELF_valence(W,0) dW + (pi/2) * Ep_fit^2 * 0.179
+K = (pi/2) * hbar_eVs^2 * e^2 / (m_e * epsilon_0)
+ELF_scale = K * (10 * N_H2O) / I_opt
+df/dW = W * ELF_scale * ELF_raw(W,0) / (K * N_H2O)
+```
+
+Thus the full optical oscillator-strength integral is 10 per H2O. The
+physical plasma energies implied by the configured densities are 20.75231
+and 20.74290 eV. The original `Ep_fit` values (20.82 and 20.59 eV) remain
+parameters of the fitted spectral shapes, not additional material-density
+settings. Their small f-sum residuals are included in `I_opt`; no optical
+parameter is refitted and no ICRU/Matias stopping curve enters the calculation.
+
+The generator applies `ELF_scale/N_H2O` in every ion valence and K-shell
+Born kernel, including both RPWBA terms. The stored DCS remains microscopic
+per H2O molecule. Geant4 already computes the macroscopic rate as
+`N_H2O * sigma`, so no runtime density multiplier is added. The same
+normalization is used with and without the K shell; omitting that channel
+does not transfer its strength to valence. Barkas retains its separate
+8-valence + 2-core optical OOS normalization and is not rescaled again.
+
+The normalization integral uses 60001 logarithmic points from the valence
+onset to 1e8 eV and the independently normalized optical K-shell moment.
+Tests double the energy resolution and extend the upper bound. The existing
+valence high-energy rolloff is unchanged; its small additional loss of
+optical strength is tested separately. The K-shell B=543.4 eV, Zeff=7.7,
+0.179 fractional target, finite-q shape, and absence of hydrogenic rolloff
+are unchanged. In this Born partition the normalized core strength is about
+1.79, not the Barkas OOS occupancy of 2.
+
+This patch fixes the optical-to-molecular normalization only. It does not
+repair finite-q sum-rule violations, restore Kramers--Kronig consistency,
+or refit the complex dielectric screening used by RPWBA. Agreement with
+stopping-power data remains a separate validation question.
+
+### Regeneration and provenance
+
+NPZ metadata and a Geant4-compatible comment in each DAT file record
+`ion_normalization_version=optical-fsum-per-H2O-v1`, the material density,
+ELF scale, optical moments, and electron sum. DAT metadata also records
+the projectile, charge convention, K-shell selection, and PWBA/RPWBA mode.
+Old NPZ caches are rejected; old or incompatible DAT patches cannot be
+silently merged. Numeric DAT columns and their unit conversion are unchanged.
+
+Regenerate the complete desired energy range once with
+`--no-merge-energy-patches`, retaining the desired projectile, Barkas, and
+RPWBA flags. Subsequent compatible energy patches can use the default merge
+mode. Existing tables and simulation outputs are not corrected in place:
+regenerate the ion DCS/TCS tables and rerun dependent simulations. Electron
+generation and electron optical/K-shell behavior are unchanged.
+
+Focused regression command:
+
+```bash
+python -m pytest -q tests/test_ion_optical_normalization.py \
+  tests/test_barkas_dcs.py tests/test_projectile_relativistic_dcs.py \
+  tests/test_ice_phase_density.py
+```
+
+On 2026-09-04 all 83 checks passed, including bitwise serial/10-worker
+agreement and exported DCS/TCS consistency for both phases with PWBA/RPWBA
+and Barkas off/on. Independent integration to 1e9 eV gave full optical sums
+of 9.99999799 (amorphous) and 9.99999792 (hexagonal). Including the unchanged
+valence rolloff gave 9.99995487 and 9.99995872. These are numerical
+normalization checks, not experimental validation or regenerated production
+tables.
+
 ## Relativistic projectile kernel
 
 `generate_ice_cross_sections_ion.py --relativistic-projectile-dcs` uses the

@@ -12,13 +12,16 @@ explicit first-Born extrapolation at the same projectile velocity.
 """
 
 import os, sys
+import json
 import shutil
+from functools import lru_cache
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import numpy as np
+from scipy.constants import elementary_charge, electron_mass, epsilon_0, hbar
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -38,8 +41,8 @@ from constants import (
     FONTSIZE_24,
     MC2_HA,
     MC2_eV,
-    N,
-    N_REFERENCE_DENSITY_G_CM3,
+    AVOGADRO,
+    H2O_MOLAR_MASS_G_MOL,
     ICE_AMORPHOUS_DENSITY_G_CM3,
     ICE_HEXAGONAL_DENSITY_G_CM3,
     OUTPUT_DIR,
@@ -524,10 +527,17 @@ set_projectile(_projectile_from_argv())
 ICE_TYPE = os.environ.get("ICE_TYPE", "hexagonal").strip().lower()
 ICE_LABEL = f"{ICE_TYPE}_ice"
 
-# Density used for rel_mc cross-section scaling in this script.
-# Set to 1.0 to plot/reference cross sections at rho = 1 g/cm^3.
-# Set to None to use phase-specific nominal densities.
-REL_MC_TARGET_DENSITY_G_CM3 = 1.0
+# One material density per phase. Normalize the ELF-derived GOS to its
+# physical electron density (10 electrons/H2O), then divide by N_H2O.
+ION_NORMALIZATION_VERSION = "optical-fsum-per-H2O-v1"
+OPTICAL_SUM_POINTS = 60001
+OPTICAL_SUM_MAX_EV = 1.0e8
+# integral W*ELF dW = OPTICAL_SUM_UNIT_EV2_M3 * electron density.
+# SI plasma-frequency identity, with hbar converted to eV s.
+OPTICAL_SUM_UNIT_EV2_M3 = (
+    0.5 * np.pi * (hbar / elementary_charge)**2
+    * elementary_charge**2 / (electron_mass * epsilon_0)
+)
 
 # Extend DCS grid beyond Born table using a linear T grid.
 DCS_T_MAX_EEV = 1.0e7
@@ -554,27 +564,107 @@ def _normalize_ice_type(name):
         return "hexagonal"
     return None
 
-def _assumed_density_g_cm3(ice_type):
+def _material_density_g_cm3(ice_type):
     norm = _normalize_ice_type(ice_type)
     if norm == "amorphous":
         return float(ICE_AMORPHOUS_DENSITY_G_CM3)
     if norm == "hexagonal":
         return float(ICE_HEXAGONAL_DENSITY_G_CM3)
-    raise ValueError(f"Unsupported ice type for density scaling: {ice_type}")
+    raise ValueError(f"Unsupported ice phase: {ice_type}")
 
-def _target_density_g_cm3(ice_type):
-    norm = _normalize_ice_type(ice_type)
-    if norm is None:
-        raise ValueError(f"Unsupported ice type for density scaling: {ice_type}")
-    if REL_MC_TARGET_DENSITY_G_CM3 is None:
-        return _assumed_density_g_cm3(norm)
-    return float(REL_MC_TARGET_DENSITY_G_CM3)
+@lru_cache(maxsize=8)
+def _optical_normalization(Ep, Bmin, excitations, ionizations, density_g_cm3):
+    """Normalize the full optical ELF f-sum at the phase's physical density.
 
-def _density_scale_factor_for_ice(ice_type):
-    rho_ref = float(N_REFERENCE_DENSITY_G_CM3)
-    if rho_ref <= 0.0:
-        return 1.0
-    return _target_density_g_cm3(ice_type) / rho_ref
+    The f-sum identity is integral W*Im[-1/epsilon(W,0)] dW
+    = (pi/2)*(hbar*omega_p)^2, with omega_p^2 = n_e*e^2/(m_e*epsilon_0).
+    Set N_H2O = rho*N_A/M_H2O, and scale the ELF-derived GOS by
+    N_H2O*10*OPTICAL_SUM_UNIT_EV2_M3/integral before dividing by N_H2O.
+    This gives microscopic cross sections per H2O with one material density.
+    See Dominguez-Munoz et al. (2022), Eqs. (3),(9), for the same ELF/GOS
+    conversion. No stopping-power reference enters this normalization.
+
+    Always include the normalized optical K-shell moment, even for a
+    no-K-shell diagnostic: omitting a process must not amplify valence.
+    The existing 0.179 K fraction is not replaced by the separate Barkas
+    8+2 OOS convention. This is an optical normalization, not a repair of
+    the finite-q GOS or a refit of the complex dielectric function.
+    """
+    s = model.IceOpticalSet(Ep, Bmin, list(excitations), list(ionizations), None)
+    energies = np.geomspace(Bmin, OPTICAL_SUM_MAX_EV, OPTICAL_SUM_POINTS)
+    # At q=0 the dispersion coefficients drop out. Use the same partitioned
+    # response as the ion kernel, not the unpartitioned optical diagnostic.
+    C = model.DispersionCoeffs(0.0, 0.0, 0.0)
+    elf = model.elf_Eq(energies, 0.0, s, C, include_kshell=False)[0]
+    valence_moment = float(np.trapezoid(energies * elf, energies))
+    core_moment = 0.5 * np.pi * Ep**2 * KSHELL_FSUM_TARGET
+    full_moment = valence_moment + core_moment
+    if (not np.isfinite(full_moment) or valence_moment <= 0.0
+            or np.any(~np.isfinite(elf)) or np.any(elf < 0.0)
+            or not np.isfinite(density_g_cm3) or density_g_cm3 <= 0.0):
+        raise RuntimeError("Invalid ion optical ELF f-sum; cannot normalize per H2O.")
+    density = density_g_cm3 * 1e6 * AVOGADRO / H2O_MOLAR_MASS_G_MOL
+    scale = (
+        density * OPTICAL_SUM_UNIT_EV2_M3 * model.WATER_TOTAL_OSCILLATOR_STRENGTH
+        / full_moment
+    )
+    return density, scale, valence_moment, core_moment
+
+
+def _ion_elf_per_molecule_factor(s):
+    density, scale, _, _ = _optical_normalization(
+        s.Ep, s.Bmin, tuple(s.excitations), tuple(s.ionizations),
+        _material_density_g_cm3(s.material),
+    )
+    return scale / density
+
+
+def _ion_normalization_metadata(ice_type, s=None):
+    phase = _normalize_ice_type(ice_type)
+    rho = _material_density_g_cm3(phase)
+    if s is None:
+        s = model.epsilon_optical(phase)
+    if s.material != phase:
+        raise ValueError("Optical model and requested ice phase differ.")
+    density, scale, valence, core = _optical_normalization(
+        s.Ep, s.Bmin, tuple(s.excitations), tuple(s.ionizations), rho,
+    )
+    return {
+        "ion_normalization_version": ION_NORMALIZATION_VERSION,
+        "ice_type": phase,
+        "optical_fit_Ep_eV": float(s.Ep),
+        "physical_plasma_energy_eV": float(np.sqrt(
+            2.0 / np.pi * OPTICAL_SUM_UNIT_EV2_M3 * density
+            * model.WATER_TOTAL_OSCILLATOR_STRENGTH
+        )),
+        "optical_elf_fsum_scale": scale,
+        "optical_full_moment_eV2": valence + core,
+        "optical_fsum_fraction": (valence + core) / (0.5 * np.pi * s.Ep**2),
+        "optical_electrons_per_H2O": model.WATER_TOTAL_OSCILLATOR_STRENGTH,
+        "optical_normalization_includes_full_kshell": True,
+        "optical_valence_electrons_per_H2O": model.WATER_TOTAL_OSCILLATOR_STRENGTH * valence / (valence + core),
+        "optical_kshell_electrons_per_H2O": model.WATER_TOTAL_OSCILLATOR_STRENGTH * core / (valence + core),
+        "material_density_g_cm3": rho,
+        "material_molecular_density_m3": density,
+        "material_density_applied_to_cross_sections": False,
+        "density_scale_factor": 1.0,
+    }
+
+
+def _require_current_normalization(data, ice_type=None):
+    phase = ice_type or _npz_str_value(data, "ice_type")
+    if phase is None:
+        raise ValueError("Legacy ion normalization: regenerate the cross sections.")
+    for key, expected in _ion_normalization_metadata(phase).items():
+        if key not in data:
+            raise ValueError(f"Missing {key}: regenerate the ion cross sections.")
+        actual = np.asarray(data[key]).item()
+        matches = (
+            np.isclose(actual, expected, rtol=1e-10, atol=0.0)
+            if isinstance(expected, float) else actual == expected
+        )
+        if not matches:
+            raise ValueError(f"Incompatible {key}: regenerate the ion cross sections.")
 
 def _infer_ice_type_from_path(path_like):
     text = str(path_like).lower()
@@ -583,38 +673,6 @@ def _infer_ice_type_from_path(path_like):
     if "hex" in text:
         return "hexagonal"
     return None
-
-def _density_scale_factor_from_npz(npz_data):
-    if "density_scale_factor" not in npz_data:
-        return 1.0
-    try:
-        val = float(np.asarray(npz_data["density_scale_factor"]).reshape(-1)[0])
-    except Exception:
-        return 1.0
-    if not np.isfinite(val) or val <= 0.0:
-        return 1.0
-    return val
-
-def _scale_sigma_entry(sigma, factor):
-    if (not np.isfinite(factor)) or factor <= 0.0 or np.isclose(factor, 1.0):
-        return dict(sigma)
-    out = {}
-    for key, val in sigma.items():
-        if "sigma" not in key or val is None:
-            out[key] = val
-            continue
-        if np.isscalar(val):
-            out[key] = float(val) * factor
-        elif isinstance(val, np.ndarray):
-            out[key] = np.asarray(val, float) * factor
-        else:
-            out[key] = [float(x) * factor for x in val]
-    return out
-
-def _scale_sigma_list(sigma_list, factor):
-    if (not np.isfinite(factor)) or factor <= 0.0 or np.isclose(factor, 1.0):
-        return [dict(s) for s in sigma_list]
-    return [_scale_sigma_entry(sigma, factor) for sigma in sigma_list]
 
 # ----------------------------------------------------------------------
 # Helpers: Relativistic corrections
@@ -813,7 +871,7 @@ def _q_bounds_scalar_rel(Ei, Tj):
         return 0.0, 0.0
     return float(qlo), float(qhi)
 
-def _projectile_relativistic_longitudinal_prefactor(Tj):
+def _projectile_relativistic_longitudinal_prefactor(Tj, s):
     """Microscopic Dominguez-Munoz RPWBA longitudinal DCS prefactor.
 
     d sigma_L/dW = 2 z^2 / (pi a0 N m_e c^2 beta^2)
@@ -821,7 +879,8 @@ def _projectile_relativistic_longitudinal_prefactor(Tj):
 
     This is Eq. (3) of Dominguez-Munoz et al. (2022), after substituting
     their Eq. (9), changing variables from recoil energy Q to momentum q,
-    and dividing the macroscopic DIMFP by molecular density N. The selected
+    and dividing the sum-rule-normalized DIMFP by the phase molecular
+    density N. _ion_elf_per_molecule_factor supplies the ELF scale/N. The selected
     projectile supplies z and beta. The established high-mass energy-loss
     cutoff remains unchanged in heavy_projectile_Emax().
     """
@@ -829,8 +888,8 @@ def _projectile_relativistic_longitudinal_prefactor(Tj):
     if beta2 <= 0.0:
         return 0.0
     return float(
-        2.0 * PROJECTILE_CHARGE**2
-        / (np.pi * a0 * N * MC2_eV * beta2)
+        2.0 * PROJECTILE_CHARGE**2 * _ion_elf_per_molecule_factor(s)
+        / (np.pi * a0 * MC2_eV * beta2)
     )
 
 def _rpwba_transverse_ratio(
@@ -938,9 +997,10 @@ def _integrate_channel_single_E(
     vals = vals * _elf_rolloff_factor(Ei)
     accum = float(_simpson_integrate(vals, xi))
 
-    # int_cons = 1.0 / (np.pi * a0 * N * Tj)
     T_scaled = Tj / PROJECTILE_MASS_AU
-    int_cons = PROJECTILE_CHARGE**2 / (np.pi * a0 * N * T_scaled)
+    int_cons = PROJECTILE_CHARGE**2 * _ion_elf_per_molecule_factor(s) / (
+        np.pi * a0 * T_scaled
+    )
 
     return float(int_cons * accum)
 
@@ -990,7 +1050,7 @@ def _integrate_channel_single_E_rpwba_components(
         epsilon2=e2["total"][:, 0],
         use_density_effect=use_density_effect,
     )
-    prefactor = _projectile_relativistic_longitudinal_prefactor(Tj)
+    prefactor = _projectile_relativistic_longitudinal_prefactor(Tj, s)
     longitudinal = prefactor * _simpson_integrate(vals, xi)
     transverse = prefactor * _simpson_integrate(vals * transverse_ratio, xi)
     return float(longitudinal), float(transverse)
@@ -1188,9 +1248,10 @@ def _integrate_kshell_single_E(
 
     accum = float(_simpson_integrate(vals, xi))
 
-    # int_cons = 1.0 / (np.pi * a0 * N * Tj)
     T_scaled = Tj / PROJECTILE_MASS_AU
-    int_cons = PROJECTILE_CHARGE**2 / (np.pi * a0 * N * T_scaled)
+    int_cons = PROJECTILE_CHARGE**2 * _ion_elf_per_molecule_factor(s) / (
+        np.pi * a0 * T_scaled
+    )
 
     return float(int_cons * accum)
 
@@ -1240,7 +1301,7 @@ def _integrate_kshell_single_E_rpwba_components(
         epsilon2=e2["total"][:, 0],
         use_density_effect=use_density_effect,
     )
-    prefactor = _projectile_relativistic_longitudinal_prefactor(Tj)
+    prefactor = _projectile_relativistic_longitudinal_prefactor(Tj, s)
     longitudinal = prefactor * _simpson_integrate(vals, xi)
     transverse = prefactor * _simpson_integrate(vals * transverse_ratio, xi)
     return float(longitudinal), float(transverse)
@@ -1930,19 +1991,12 @@ def plot_total_cross_section(
 
 def _load_total_sigma_npz(npz_path):
     with np.load(npz_path) as data:
+        _require_current_normalization(data)
         T = np.asarray(data["T_eV"], float)
         pwba = np.asarray(data.get("total_sigma_pwba", []), float)
         corrected = np.asarray(
             data.get("total_sigma_corrected", data.get("total_sigma", [])), float
         )
-        stored = _density_scale_factor_from_npz(data)
-        inferred = _infer_ice_type_from_path(npz_path)
-        if inferred is not None:
-            target = _density_scale_factor_for_ice(inferred)
-            adjust = target / stored if stored > 0.0 else target
-            if np.isfinite(adjust) and adjust > 0.0 and (not np.isclose(adjust, 1.0)):
-                pwba = pwba * adjust
-                corrected = corrected * adjust
     return T, pwba, corrected
 
 def plot_total_cross_section_two_panel(
@@ -2021,16 +2075,12 @@ def plot_channel_cross_sections_two_panel(
     from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
     with np.load(amorphous_npz) as data_a:
-        stored_a = _density_scale_factor_from_npz(data_a)
-        target_a = _density_scale_factor_for_ice("amorphous")
-        adjust_a = target_a / stored_a if stored_a > 0.0 else target_a
-        T_a, sigma_a = _sigma_list_from_npz(data_a, scale_factor=adjust_a)
+        _require_current_normalization(data_a, "amorphous")
+        T_a, sigma_a = _sigma_list_from_npz(data_a)
 
     with np.load(hexagonal_npz) as data_h:
-        stored_h = _density_scale_factor_from_npz(data_h)
-        target_h = _density_scale_factor_for_ice("hexagonal")
-        adjust_h = target_h / stored_h if stored_h > 0.0 else target_h
-        T_h, sigma_h = _sigma_list_from_npz(data_h, scale_factor=adjust_h)
+        _require_current_normalization(data_h, "hexagonal")
+        T_h, sigma_h = _sigma_list_from_npz(data_h)
 
     fig = plt.figure(figsize=(14, 7))
     gs = GridSpec(2, 2, height_ratios=[3.0, 0.8], width_ratios=[1.0, 1.0], hspace=0.30, wspace=0.25)
@@ -2273,9 +2323,6 @@ def save_cross_section_corrections_npz(
     Nq=None,
     dcs_data=None,
     ice_label=None,
-    density_scale_factor=1.0,
-    density_ref_g_cm3=None,
-    density_assumed_g_cm3=None,
     include_kshell=True,
     energy_unit="total",
     charge_mode="bare",
@@ -2457,7 +2504,6 @@ def save_cross_section_corrections_npz(
         kshell_q_dependent=bool(KSHELL_MODEL == "hydrogenic-gos"),
         old_optical_kshell_used=bool(KSHELL_MODEL == "old-optical"),
         hydrogenic_kshell_rolloff_applied=bool(HYDROGENIC_KSHELL_ROLLOFF_APPLIED),
-        density_scale_factor=float(density_scale_factor),
         total_sigma_pwba=pwba_total,
         total_sigma_corrected=corrected_total,
         total_sigma=total_sigma,
@@ -2491,10 +2537,8 @@ def save_cross_section_corrections_npz(
         ionization_sigma_selected=ion_selected,
     )
 
-    if density_ref_g_cm3 is not None:
-        np_save_args["density_ref_g_cm3"] = float(density_ref_g_cm3)
-    if density_assumed_g_cm3 is not None:
-        np_save_args["density_assumed_g_cm3"] = float(density_assumed_g_cm3)
+    phase = _infer_ice_type_from_path(ice_label) if ice_label else ICE_TYPE
+    np_save_args.update(_ion_normalization_metadata(phase))
 
     if NE is not None:
         np_save_args["NE"] = int(NE)
@@ -2591,6 +2635,10 @@ def _npz_matches_params(
     born_reference_charge="bare_Z",
     born_reference_explicit_charge=None,
 ):
+    try:
+        _require_current_normalization(npz_data, ICE_TYPE)
+    except ValueError:
+        return False
     ne = _npz_int_value(npz_data, "NE")
     nq = _npz_int_value(npz_data, "Nq")
     if ne is None or nq is None:
@@ -2727,7 +2775,7 @@ def _dcs_data_from_npz(npz_data):
         "born_reference_charge": str(born_reference_charge),
     }
 
-def _sigma_list_from_npz(npz_data, scale_factor=1.0):
+def _sigma_list_from_npz(npz_data):
     if "T_eV" not in npz_data:
         raise KeyError("Missing T_eV in NPZ cache.")
     T_arr = np.asarray(npz_data["T_eV"], float)
@@ -2798,7 +2846,7 @@ def _sigma_list_from_npz(npz_data, scale_factor=1.0):
             "kshell_sigma": _scalar(kshell_sigma, i),
             "kshell_sigma_rel": _scalar(kshell_sigma_rel, i),
         }
-        sigma_list.append(_scale_sigma_entry(sigma, scale_factor))
+        sigma_list.append(sigma)
     return T_arr.tolist(), sigma_list
 
 def load_cross_section_corrections_npz(
@@ -2807,7 +2855,6 @@ def load_cross_section_corrections_npz(
     Nq,
     T_list=None,
     require_dcs=False,
-    target_density_scale_factor=None,
     include_kshell=True,
     kshell_model=None,
     energy_unit="total",
@@ -2841,14 +2888,7 @@ def load_cross_section_corrections_npz(
             dcs_data = _dcs_data_from_npz(npz_data)
             if require_dcs and dcs_data is None:
                 return None
-            stored_scale = _density_scale_factor_from_npz(npz_data)
-            if target_density_scale_factor is None:
-                scale_factor = stored_scale
-            else:
-                if (not np.isfinite(stored_scale)) or stored_scale <= 0.0:
-                    stored_scale = 1.0
-                scale_factor = float(target_density_scale_factor) / stored_scale
-            T_loaded, sigma_list = _sigma_list_from_npz(npz_data, scale_factor=scale_factor)
+            T_loaded, sigma_list = _sigma_list_from_npz(npz_data)
     except Exception as exc:
         print(f"Failed to load cached NPZ {npz_path}: {exc}")
         return None
@@ -2957,6 +2997,7 @@ def _write_dcs_tables_from_data(
     exc_t_min=None,
     ion_t_min=None,
     t_max=None,
+    table_metadata=None,
 ):
     T_line = np.asarray(dcs_data.get("T_line", []), float)
     E_line = np.asarray(dcs_data.get("E_line", []), float)
@@ -2986,6 +3027,8 @@ def _write_dcs_tables_from_data(
         ion_mask &= T_line <= tmax
 
     with open(exc_out, "w") as exc_handle, open(ion_out, "w") as ion_handle:
+        _write_table_metadata(exc_handle, table_metadata)
+        _write_table_metadata(ion_handle, table_metadata)
         for i in range(T_line.size):
             if exc_mask[i]:
                 exc_handle.write(_format_dcs_row(T_line[i], E_line[i], exc_vals[i]))
@@ -3061,18 +3104,52 @@ def _merge_dcs_energy_patch(existing_data, patch_data):
         }
     )
 
-def _prepare_dcs_data_for_output(dcs_data, exc_out, ion_out, t_min=None, t_max=None, merge_energy_patches=True):
+def _write_table_metadata(handle, metadata):
+    if metadata is not None:
+        handle.write("# ion_table_metadata: " + json.dumps(metadata, sort_keys=True, allow_nan=False) + "\n")
+
+
+def _check_energy_patch_normalization(exc_out, ion_out, metadata):
+    existing = [path for path in (exc_out, ion_out) if path.exists()]
+    if not existing:
+        return
+    if len(existing) != 2:
+        raise ValueError("Incomplete existing DCS pair; regenerate both tables with --no-merge-energy-patches.")
+    for path in existing:
+        with open(path) as handle:
+            first_line = handle.readline()
+        prefix = "# ion_table_metadata: "
+        if not first_line.startswith(prefix):
+            raise ValueError(
+                f"Legacy/unversioned DCS table {path}; cannot merge different normalizations. "
+                "Regenerate the full energy range with --no-merge-energy-patches."
+            )
+        stored = json.loads(first_line[len(prefix):])
+        _require_current_normalization(stored, metadata["ice_type"])
+        for key, value in metadata.items():
+            actual = stored.get(key)
+            matches = key in stored and (
+                actual is not None and np.isclose(actual, value, rtol=1e-10, atol=0.0)
+                if isinstance(value, float) else actual == value
+            )
+            if not matches:
+                raise ValueError(
+                    f"Incompatible DCS metadata {key} in {path}; use --no-merge-energy-patches "
+                    "to regenerate the full energy range."
+                )
+
+
+def _prepare_dcs_data_for_output(dcs_data, exc_out, ion_out, t_min=None, t_max=None, merge_energy_patches=True, table_metadata=None):
     patch_data = _slice_dcs_data(dcs_data, t_min=t_min, t_max=t_max)
     if not merge_energy_patches:
         return patch_data
-    if not (exc_out.exists() and ion_out.exists()):
+    if table_metadata is None:
+        raise ValueError("DCS energy-patch merge requires normalization metadata.")
+    _check_energy_patch_normalization(exc_out, ion_out, table_metadata)
+    if not exc_out.exists():
         return patch_data
-    try:
-        existing_data = _load_dcs_pair(exc_out, ion_out)
-        merged = _merge_dcs_energy_patch(existing_data, patch_data)
-    except Exception as exc:
-        print(f"Skipping DCS energy-patch merge for {exc_out.name}/{ion_out.name}: {exc}")
-        return patch_data
+    existing_data = _load_dcs_pair(exc_out, ion_out)
+    merged = _merge_dcs_energy_patch(existing_data, patch_data)
     print(
         "Merged DCS energy patches: "
         f"existing rows={len(existing_data['T_line'])}, "
@@ -3238,8 +3315,9 @@ def _run_projectile_pwba_sanity_checks(s, C, dcs_data=None, Nq=80, include_kshel
     if not (exc_ok and ion_ok):
         raise RuntimeError("DCS-integrated totals differ from direct same-grid totals.")
 
-def _write_total_table(T_vals, totals, out_path):
+def _write_total_table(T_vals, totals, out_path, table_metadata=None):
     with open(out_path, "w") as handle:
+        _write_table_metadata(handle, table_metadata)
         for Tval, row in zip(T_vals, totals):
             fields = [f"{Tval:.9E}"]
             fields.extend(f"{val:.9E}" for val in row)
@@ -3265,6 +3343,7 @@ def _write_total_tables_from_dcs(
     exc_t_min=None,
     ion_t_min=None,
     t_max=None,
+    table_metadata=None,
 ):
     T_line = np.asarray(dcs_data.get("T_line", []), float)
     E_line = np.asarray(dcs_data.get("E_line", []), float)
@@ -3280,8 +3359,8 @@ def _write_total_tables_from_dcs(
     )
     T_exc, exc_totals = _integrate_dcs_to_totals(T_exc_line, E_exc_line, exc_vals)
     T_ion, ion_totals = _integrate_dcs_to_totals(T_ion_line, E_ion_line, ion_vals)
-    _write_total_table(T_exc, exc_totals, exc_out)
-    _write_total_table(T_ion, ion_totals, ion_out)
+    _write_total_table(T_exc, exc_totals, exc_out, table_metadata)
+    _write_total_table(T_ion, ion_totals, ion_out, table_metadata)
 
 def _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data):
     if sigma_list is None or dcs_data is None:
@@ -3577,6 +3656,24 @@ def write_emfietzoglou_dcs_tables(
     exc_total_out = out_dir / f"sigma_excitation_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}_emfietzoglou_kyriakou.dat"
     ion_total_out = out_dir / f"sigma_ionisation_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}_emfietzoglou_kyriakou.dat"
 
+    table_metadata = _ion_normalization_metadata(ice_type or s.material, s)
+    table_metadata.update({
+        "projectile": PROJECTILE_KEY,
+        "projectile_mass_au": float(PROJECTILE_MASS_AU),
+        "projectile_charge": float(PROJECTILE_CHARGE),
+        "charge_mode": charge_mode,
+        "explicit_charge": explicit_charge,
+        "include_barkas_dcs": bool(include_barkas_dcs),
+        "born_reference_charge": born_reference_charge,
+        "born_reference_explicit_charge": born_reference_explicit_charge,
+        "projectile_kernel": RPWBA_MODEL_NAME if PROJECTILE_RELATIVISTIC_DCS else "pwba",
+        "rpwba_density_effect": bool(RPWBA_DENSITY_EFFECT),
+        "include_kshell": bool(include_kshell),
+        "kshell_model": KSHELL_MODEL,
+    })
+    if merge_energy_patches:
+        _check_energy_patch_normalization(exc_out, ion_out, table_metadata)
+
     if reuse_existing_tables and dcs_data is None and exc_out.exists() and ion_out.exists():
         print("Ignoring existing DCS tables; heavy-projectile Emax metadata is not available in DAT files.")
 
@@ -3787,6 +3884,7 @@ def write_emfietzoglou_dcs_tables(
         t_min=grid_t_min,
         t_max=grid_t_max,
         merge_energy_patches=merge_energy_patches,
+        table_metadata=table_metadata,
     )
     _write_dcs_tables_from_data(
         dcs_output_data,
@@ -3795,6 +3893,7 @@ def write_emfietzoglou_dcs_tables(
         exc_t_min=exc_write_t_min,
         ion_t_min=ion_write_t_min,
         t_max=None,
+        table_metadata=table_metadata,
     )
     _write_total_tables_from_dcs(
         dcs_output_data,
@@ -3803,6 +3902,7 @@ def write_emfietzoglou_dcs_tables(
         exc_t_min=exc_write_t_min,
         ion_t_min=ion_write_t_min,
         t_max=None,
+        table_metadata=table_metadata,
     )
     _export_to_custom_geant4([exc_out, ion_out, exc_total_out, ion_total_out])
 
@@ -4090,15 +4190,15 @@ def main():
     )
     _set_mc_correction(apply_mc=apply_mc)
 
-    rho_ref = float(N_REFERENCE_DENSITY_G_CM3)
-    rho_phase_nominal = _assumed_density_g_cm3(ICE_TYPE)
-    rho_target = _target_density_g_cm3(ICE_TYPE)
-    density_scale_factor = _density_scale_factor_for_ice(ICE_TYPE)
+    normalization = _ion_normalization_metadata(ICE_TYPE, s)
     print(
-        f"Density scaling for {ICE_TYPE}: "
-        f"rho_ref={rho_ref:.6g} g/cm^3, rho_target={rho_target:.6g} g/cm^3, "
-        f"rho_phase_nominal={rho_phase_nominal:.6g} g/cm^3, "
-        f"scale={density_scale_factor:.6g}"
+        f"Ion normalization: {ION_NORMALIZATION_VERSION}; "
+        f"optical sum={normalization['optical_electrons_per_H2O']:.6g} electrons/H2O, "
+        f"ELF f-sum scale={normalization['optical_elf_fsum_scale']:.9g}."
+    )
+    print(
+        f"Material density ({ICE_TYPE})={normalization['material_density_g_cm3']:.9g} g/cm^3; "
+        "applied only to macroscopic rates in transport, not to per-molecule tables."
     )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -4108,7 +4208,6 @@ def main():
         NE=NE,
         Nq=Nq,
         T_list=T_list,
-        target_density_scale_factor=density_scale_factor,
         include_kshell=include_kshell,
         kshell_model=KSHELL_MODEL,
         energy_unit=energy_unit,
@@ -4165,7 +4264,6 @@ def main():
 
         # Restore original T order
         sigma_list = [results_by_T[float(T)] for T in T_list]
-        sigma_list = _scale_sigma_list(sigma_list, density_scale_factor)
 
         dcs_data = write_emfietzoglou_dcs_tables(
             s,
@@ -4201,9 +4299,6 @@ def main():
             Nq=Nq,
             dcs_data=dcs_data,
             ice_label=run_label,
-            density_scale_factor=density_scale_factor,
-            density_ref_g_cm3=rho_ref,
-            density_assumed_g_cm3=rho_target,
             include_kshell=include_kshell,
             energy_unit=energy_unit,
             charge_mode=charge_mode,
@@ -4250,9 +4345,6 @@ def main():
                 Nq=Nq,
                 dcs_data=dcs_data,
                 ice_label=run_label,
-                density_scale_factor=density_scale_factor,
-                density_ref_g_cm3=rho_ref,
-                density_assumed_g_cm3=rho_target,
                 include_kshell=include_kshell,
                 energy_unit=energy_unit,
                 charge_mode=charge_mode,

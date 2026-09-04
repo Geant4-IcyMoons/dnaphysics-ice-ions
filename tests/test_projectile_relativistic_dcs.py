@@ -82,11 +82,12 @@ def test_exact_q_bounds_recover_each_ions_nonrelativistic_limit(projectile: str)
 
 def test_longitudinal_prefactor_uses_selected_ions_z_squared_at_fixed_beta() -> None:
     gamma = 1.02
+    optical, _ = _optical_and_dispersion()
     reduced = []
     for projectile in PROJECTILES:
         MODULE.set_projectile(projectile)
         kinetic_eV = (gamma - 1.0) * MODULE.projectile_rest_energy_eV()
-        prefactor = MODULE._projectile_relativistic_longitudinal_prefactor(kinetic_eV)
+        prefactor = MODULE._projectile_relativistic_longitudinal_prefactor(kinetic_eV, optical)
         reduced.append(prefactor / MODULE.PROJECTILE_CHARGE**2)
     assert np.asarray(reduced) == pytest.approx(reduced[0], rel=2.0e-14)
 

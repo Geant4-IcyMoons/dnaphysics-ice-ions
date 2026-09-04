@@ -229,6 +229,7 @@ class IceOpticalSet:
     excitations: List[Osc]   # 5 derivative-Drude terms
     ionizations: List[Osc]   # 4 Drude terms with thresholds
     kshell: Osc              # optional Drude (kept optical)
+    material: Union[Material, None] = None
 
 
 @dataclass(frozen=True)
@@ -318,7 +319,7 @@ def epsilon_optical(material: Material) -> IceOpticalSet:
     else:
         raise ValueError("material must be 'amorphous' or 'hexagonal'")
 
-    return IceOpticalSet(Ep=Ep, Bmin=Bmin, excitations=excit, ionizations=ioniz, kshell=kshell)
+    return IceOpticalSet(Ep=Ep, Bmin=Bmin, excitations=excit, ionizations=ioniz, kshell=kshell, material=material)
 
 # =====================================================================
 # q = 0: VALENCE-ONLY ε2, ε1, and separate K-shell ε2
