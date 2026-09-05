@@ -17,76 +17,94 @@ for hexagonal ice. The corresponding H2O molecular densities are
 Geant4 material densities. There is no water-density divisor or adjustable
 target-density multiplier in the ion generator.
 
-For the partitioned optical ELF, define
+The optical-to-molecular conversion uses the integral of the partitioned
+valence ELF plus the **unscaled, corrected** hydrogenic K continuum. It
+normalizes that optical integral to 10 electrons per H2O, without a fit to
+ICRU or Matias. The reference quadrature uses 240001 logarithmic nodes to
+1e9 eV. The obsolete fixed 0.179 core fraction is not used.
 
-```
-N_H2O = rho * N_A / M_H2O                       (with consistent SI units)
-I_opt = integral W * ELF_valence(W,0) dW + (pi/2) * Ep_fit^2 * 0.179
-K = (pi/2) * hbar_eVs^2 * e^2 / (m_e * epsilon_0)
-ELF_scale = K * (10 * N_H2O) / I_opt
-df/dW = W * ELF_scale * ELF_raw(W,0) / (K * N_H2O)
-```
+See [KSHELL_MODEL.md](../../../KSHELL_MODEL.md) for the finite-q molecular
+allocation, continuum convention, numerical checks, and unresolved physical
+bound-excitation contribution. Barkas keeps its separate optical OOS
+normalization of 8 valence + 2 core electrons. The fitted plasma energies
+remain spectral parameters, not extra material densities.
 
-Thus the full optical oscillator-strength integral is 10 per H2O. The
-physical plasma energies implied by the configured densities are 20.75231
-and 20.74290 eV. The original `Ep_fit` values (20.82 and 20.59 eV) remain
-parameters of the fitted spectral shapes, not additional material-density
-settings. Their small f-sum residuals are included in `I_opt`; no optical
-parameter is refitted and no ICRU/Matias stopping curve enters the calculation.
+## Export and transport numerics
 
-The generator applies `ELF_scale/N_H2O` in every ion valence and K-shell
-Born kernel, including both RPWBA terms. The stored DCS remains microscopic
-per H2O molecule. Geant4 already computes the macroscopic rate as
-`N_H2O * sigma`, so no runtime density multiplier is added. The same
-normalization is used with and without the K shell; omitting that channel
-does not transfer its strength to valence. Barkas retains its separate
-8-valence + 2-core optical OOS normalization and is not rescaled again.
+The ion DCS no longer borrows an electron-table grid. Each requested total-ion
+incident-energy node is exported. `--dE` sets the base logarithmic transfer
+grid size, supplemented by threshold/onset nodes and the hydrogenic branch
+boundary. Each row ends at the generator's established high-mass Wmax.
+`--dq` controls the independent momentum quadrature. Neither the Wmax
+formula nor the PWBA prefactor has been changed in this numerical repair.
 
-The normalization integral uses 60001 logarithmic points from the valence
-onset to 1e8 eV and the independently normalized optical K-shell moment.
-Tests double the energy resolution and extend the upper bound. The existing
-valence high-energy rolloff is unchanged; its small additional loss of
-optical strength is tested separately. The K-shell B=543.4 eV, Zeff=7.7,
-0.179 fractional target, finite-q shape, and absence of hydrogenic rolloff
-are unchanged. In this Born partition the normalized core strength is about
-1.79, not the Barkas OOS occupancy of 2.
+DAT values represent a density linear in W between successive nodes. TCS
+is its trapezoidal integral, including the final Born + Barkas sum when
+selected. Selected NPZ totals come from that same DCS; separately calculated
+PWBA/RPWBA diagnostics retain their identities. DAT coordinates retain
+17 significant digits, avoiding cutoff and incident-node rounding losses.
 
-This patch fixes the optical-to-molecular normalization only. It does not
-repair finite-q sum-rule violations, restore Kramers--Kronig consistency,
-or refit the complex dielectric screening used by RPWBA. Agreement with
-stopping-power data remains a separate validation question.
+Geant4 validates the supplied TCS against the DCS integral at load time.
+Between T nodes, DCS is interpolated linearly in log(T) at fixed W, with zero
+support outside each row and truncation at the current projectile Wmax.
+The runtime total and channel probabilities integrate this same interpolant.
+Sampling uses a mixture of the two neighbouring row densities, with exact
+quadratic-CDF inversion inside a linear-W segment. This supports unequal W
+grids without pairing values with another row's coordinates. Cumulative
+areas are precomputed once, avoiding a full row scan for every collision.
+Single-incident-energy tables are supported.
 
 ### Regeneration and provenance
 
-NPZ metadata and a Geant4-compatible comment in each DAT file record
-`ion_normalization_version=optical-fsum-per-H2O-v1`, the material density,
-ELF scale, optical moments, and electron sum. DAT metadata also records
-the projectile, charge convention, K-shell selection, and PWBA/RPWBA mode.
-Old NPZ caches are rejected; old or incompatible DAT patches cannot be
-silently merged. Numeric DAT columns and their unit conversion are unchanged.
+Metadata identifies `ion_normalization_version=optical-fsum-per-H2O-v2`,
+`dcs_numerics_version=requested-grid-linear-W-v1`, and
+`rpwba_density_kernel=dominguez-munoz-thesis-eq2.287`, alongside the K-shell,
+material, projectile, and charge settings. Old caches and incompatible
+energy patches are rejected.
 
-Regenerate the complete desired energy range once with
-`--no-merge-energy-patches`, retaining the desired projectile, Barkas, and
-RPWBA flags. Subsequent compatible energy patches can use the default merge
-mode. Existing tables and simulation outputs are not corrected in place:
-regenerate the ion DCS/TCS tables and rerun dependent simulations. Electron
-generation and electron optical/K-shell behavior are unchanged.
+Regenerate the complete desired energy range with
+`--no-merge-energy-patches`, then use normal merging for compatible patches.
+Regenerate both PWBA and RPWBA DCS/TCS, including the corresponding Barkas
+sets; rebuild the ion executable and rerun dependent simulations. Existing
+plots/ROOT results are not corrected in place. Electron generation is
+unchanged.
 
-Focused regression command:
+Focused regression commands (from the repository root):
 
 ```bash
-python -m pytest -q tests/test_ion_optical_normalization.py \
-  tests/test_barkas_dcs.py tests/test_projectile_relativistic_dcs.py \
-  tests/test_ice_phase_density.py
+python -m pytest -q tests/test_ion_dcs_export_grid.py \
+  tests/test_ion_optical_normalization.py tests/test_hydrogenic_kshell.py \
+  tests/test_barkas_dcs.py tests/test_projectile_relativistic_dcs.py
+cmake -S proton-pipeline -B proton-pipeline/build -DWITH_GEANT4_VIS=OFF
+cmake --build proton-pipeline/build --target ion_dcs_table_test dnaphysics_proton -j 10
+ctest --test-dir proton-pipeline/build -R '^ion_dcs_table_test$' --output-on-failure
 ```
 
-On 2026-09-04 all 83 checks passed, including bitwise serial/10-worker
-agreement and exported DCS/TCS consistency for both phases with PWBA/RPWBA
-and Barkas off/on. Independent integration to 1e9 eV gave full optical sums
-of 9.99999799 (amorphous) and 9.99999792 (hexagonal). Including the unchanged
-valence rolloff gave 9.99995487 and 9.99995872. These are numerical
-normalization checks, not experimental validation or regenerated production
-tables.
+These checks establish numerical consistency, not agreement with experiment
+or convergence for every projectile/energy/resolution choice. Production
+tables and long transport runs are not generated by the tests.
+
+On 2026-09-05 the native sampler test and ion executable build passed.
+The focused Python checks passed after increasing the former marginal
+30/60-node stopping-moment check to 60/120 nodes and tightening its tolerance
+from 1.1% to 0.2%; the measured difference was 0.0833%.
+
+A direct writer check used amorphous ice, protons, RPWBA with density effect,
+hydrogenic K shell, bare charge, no Barkas, Nq=160, and the dispersion vectors
+in `tests/test_projectile_relativistic_dcs.py::_optical_and_dispersion`.
+With 10 channel workers, NE=300 versus NE=600 gave the following fractional
+changes (coarse/fine - 1):
+
+| Total kinetic energy | TCS | Stopping moment |
+| --- | --- | --- |
+| 1 MeV | 4.5503e-5 | 1.3079e-4 |
+| 100 MeV | 1.4940e-4 | 4.8472e-4 |
+
+The stopping moment here integrates W times the linear-W density exactly:
+each segment contributes
+`dW/6 * [(2*W0+W1)*D0 + (W0+2*W1)*D1]`.
+This checks transfer-grid refinement at fixed momentum resolution, not
+independent q convergence or validation across all energies and ions.
 
 ## Relativistic projectile kernel
 
@@ -98,8 +116,30 @@ Physics and Chemistry* **199** (2022) 110363,
 <https://doi.org/10.1016/j.radphyschem.2022.110363>.
 
 The implementation evaluates the longitudinal and transverse terms of Eqs.
-(1)-(4) on the same finite-q grid and applies the condensed-medium dielectric
-correction of Eqs. (7)-(9) by default. It does not use the earlier optical-q=0
+(1)-(4) on the same finite-q grid. For the condensed-medium transverse term,
+the source is A. D. Dominguez Munoz, *Inelastic electronic cross section
+modelling of protons in liquid water for radiobiology studies with Monte
+Carlo codes*, University of Seville PhD thesis (May 2025), pp. 71-72,
+Eqs. (2.282)-(2.289), specifically Eq. (2.287):
+<https://idus.us.es/bitstreams/d1adf440-b21e-41dd-bc17-d44c484bc576/download>.
+
+Writing R=(qc)^2 and r=W^2/R, the transverse/longitudinal integrand ratio is
+
+```
+vacuum: r * (beta^2-r) / (1-r)^2
+medium: r * |epsilon|^2 * (beta^2-r) / |1-r*epsilon|^2
+```
+
+The medium expression reduces to the vacuum expression as epsilon tends to
+1. The previous factor W/(2*m_e*c^2), in place of r, failed this limit.
+We do not claim that the corrected expression is the literal printed
+Eq. (8) of the 2022 paper; that expression has a normalization discrepancy
+relative to the thesis derivation. The historical filename tag
+`rpwba_dm2022` is retained; the new metadata identifies this repair.
+
+As in the source's low-Q approximation, transverse GOS and dielectric
+response are replaced by their longitudinal counterparts. This is not an
+independently calculated transverse response. It does not use the earlier optical-q=0
 Fano transverse approximation. The paper's liquid-water GOS is replaced by
 the phase-specific ice dielectric response in this repository; consequently,
 this is an application of the published projectile kernel, not a reproduction

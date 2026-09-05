@@ -135,7 +135,7 @@ void G4DNAEmfietzoglou_iceProtonIonisationModel::Initialise(
       "sigmadiff_ionisation_" + projectile + "_" + phase + "_ice" + correction +
       "_emfietzoglou_kyriakou.dat";
 
-  fTable.Load(total, diff);
+  fTable.Load(total, diff, particle->GetPDGMass());
   ModelDataRegistry::Instance().Record(
       std::string("model_ref:") + GetName(),
       ModelDataRegistry::NormalizeDatBasename(total));

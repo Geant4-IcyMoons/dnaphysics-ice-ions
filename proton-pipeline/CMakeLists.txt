@@ -85,6 +85,14 @@ install(TARGETS dnaphysics_proton DESTINATION bin)
 
 enable_testing()
 add_executable(
+  ion_dcs_table_test
+  ../tests/test_ion_dcs_table.cc
+  src/G4DNAEmfietzoglou_iceProtonDcsTable.cc
+)
+target_link_libraries(ion_dcs_table_test ${Geant4_LIBRARIES})
+add_test(NAME ion_dcs_table_test COMMAND ion_dcs_table_test)
+
+add_executable(
   nlh_carbon_table_test
   ../tests/test_nlh_geant4_table.cc
   ../src/G4DNANLHHardElastic.cc

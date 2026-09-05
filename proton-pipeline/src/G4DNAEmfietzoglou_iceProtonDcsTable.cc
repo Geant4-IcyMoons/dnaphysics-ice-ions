@@ -79,11 +79,17 @@ std::string G4DNAEmfietzoglou_iceProtonDcsTable::ResolvePath(
 
 void G4DNAEmfietzoglou_iceProtonDcsTable::Load(
     const std::string& totalTableBase,
-    const std::string& diffTableFile)
+    const std::string& diffTableFile, G4double projectileMassEnergy)
 {
   fTotalRows.clear();
   fDiffGrids.clear();
   fNComponents = 0;
+  fEnergies.clear();
+  fProjectileMassEnergy = projectileMassEnergy;
+  if (!std::isfinite(projectileMassEnergy) || projectileMassEnergy <= 0.) {
+    G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                "protondcs007", FatalException, "Projectile rest energy must be positive.");
+  }
 
   fTotalPath = ResolvePath(totalTableBase);
   fDiffPath = ResolvePath(diffTableFile);
@@ -107,6 +113,10 @@ void G4DNAEmfietzoglou_iceProtonDcsTable::Load(
 
       G4double value = 0.;
       while (row >> value) parsed.xs.push_back(value * CrossSectionScale());
+      if (!row.eof()) {
+        G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                    "protondcs013", FatalException, "Malformed TCS numeric field.");
+      }
       if (parsed.xs.empty()) continue;
 
       if (fNComponents == 0) {
@@ -137,10 +147,25 @@ void G4DNAEmfietzoglou_iceProtonDcsTable::Load(
       G4double transfer = 0.;
       row >> energy >> transfer;
       if (!row) continue;
+      if (!std::isfinite(energy) || energy <= 0.
+          || !std::isfinite(transfer) || transfer <= 0.) {
+        G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                    "protondcs014", FatalException, "Invalid DCS energy.");
+      }
 
       std::vector<G4double> values;
       G4double value = 0.;
-      while (row >> value) values.push_back(std::max(0., value));
+      while (row >> value) {
+        if (!std::isfinite(value) || value < 0.) {
+          G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                      "protondcs008", FatalException, "Negative or non-finite DCS.");
+        }
+        values.push_back(value);
+      }
+      if (!row.eof()) {
+        G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                    "protondcs015", FatalException, "Malformed DCS numeric field.");
+      }
       if (values.empty()) continue;
       if (fNComponents != static_cast<G4int>(values.size())) {
         G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
@@ -189,6 +214,44 @@ void G4DNAEmfietzoglou_iceProtonDcsTable::Load(
                 "protondcs006", FatalException,
                 "Empty or malformed proton ice table.");
   }
+  if (fTotalRows.size() != fDiffGrids.size()) {
+    G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                "protondcs009", FatalException, "TCS/DCS incident grids differ; regenerate tables.");
+  }
+  for (std::size_t i = 0; i < fDiffGrids.size(); ++i) {
+    auto& grid = fDiffGrids[i];
+    if (!std::isfinite(grid.energy) || grid.energy <= 0.
+        || grid.energy != fTotalRows[i].energy || grid.transfer.size() < 2
+        || (i > 0 && grid.energy <= fDiffGrids[i-1].energy)) {
+      G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                  "protondcs010", FatalException, "Invalid or mismatched DCS/TCS grid.");
+    }
+    fEnergies.push_back(grid.energy);
+    grid.cumulative.assign(fNComponents, std::vector<G4double>(grid.transfer.size(), 0.));
+    for (std::size_t j = 0; j < grid.transfer.size(); ++j) {
+      if (!std::isfinite(grid.transfer[j]) || grid.transfer[j] <= 0.
+          || (j > 0 && grid.transfer[j] <= grid.transfer[j-1])) {
+        G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                    "protondcs011", FatalException, "Invalid transfer-energy grid.");
+      }
+      if (j == 0) continue;
+      for (G4int c = 0; c < fNComponents; ++c) {
+        grid.cumulative[c][j] = grid.cumulative[c][j-1]
+            + 0.5 * (grid.dcs[j-1][c] + grid.dcs[j][c])
+            * ((grid.transfer[j] - grid.transfer[j-1]) / eV);
+      }
+    }
+    for (G4int c = 0; c < fNComponents; ++c) {
+      const G4double integrated = grid.cumulative[c].back() * CrossSectionScale();
+      const G4double stored = fTotalRows[i].xs[c];
+      if (!std::isfinite(integrated) || !std::isfinite(stored) || stored < 0.
+          || std::abs(stored - integrated) > 1.e-7 * std::max(stored, integrated)) {
+        G4Exception("G4DNAEmfietzoglou_iceProtonDcsTable::Load",
+                    "protondcs012", FatalException,
+                    "TCS is not the piecewise-linear DCS integral; regenerate tables.");
+      }
+    }
+  }
 }
 
 G4int G4DNAEmfietzoglou_iceProtonDcsTable::LowerIndex(
@@ -201,50 +264,70 @@ G4int G4DNAEmfietzoglou_iceProtonDcsTable::LowerIndex(
   return static_cast<G4int>(std::distance(values.begin(), upper)) - 1;
 }
 
-G4double G4DNAEmfietzoglou_iceProtonDcsTable::Interpolate(
-    G4double x1,
-    G4double x2,
-    G4double x,
-    G4double y1,
-    G4double y2)
+G4double G4DNAEmfietzoglou_iceProtonDcsTable::MaximumTransfer(G4double kineticEnergy) const
 {
-  if (x2 == x1) return y1;
-  if (y1 > 0. && y2 > 0. && x1 > 0. && x2 > 0. && x > 0.) {
-    const G4double f =
-        (std::log(x) - std::log(x1)) / (std::log(x2) - std::log(x1));
-    return std::exp(std::log(y1) + f * (std::log(y2) - std::log(y1)));
-  }
-  return std::max(0., y1 + (x - x1) * (y2 - y1) / (x2 - x1));
+  // Same high-mass cutoff as the generator; no recoil-denominator change.
+  const G4double tau = kineticEnergy / fProjectileMassEnergy;
+  return std::min(kineticEnergy, 2. * (510998.95 * eV) * tau * (tau + 2.));
+}
+
+G4double G4DNAEmfietzoglou_iceProtonDcsTable::UpperWeight(
+    G4int index, G4double kineticEnergy) const
+{
+  if (fEnergies.size() == 1) return 0.;
+  return std::clamp(std::log(kineticEnergy / fEnergies[index])
+                    / std::log(fEnergies[index+1] / fEnergies[index]), 0., 1.);
+}
+
+G4double G4DNAEmfietzoglou_iceProtonDcsTable::AreaBelow(
+    const DiffGrid& grid, G4int component, G4double upper)
+{
+  if (upper <= grid.transfer.front()) return 0.;
+  if (upper >= grid.transfer.back()) return grid.cumulative[component].back();
+  const G4int i = LowerIndex(grid.transfer, upper);
+  const G4double fraction = (upper - grid.transfer[i])
+                           / (grid.transfer[i+1] - grid.transfer[i]);
+  const G4double y0 = grid.dcs[i][component];
+  const G4double y = y0 + fraction * (grid.dcs[i+1][component] - y0);
+  return grid.cumulative[component][i]
+      + 0.5 * (y0 + y) * ((upper - grid.transfer[i]) / eV);
+}
+
+G4double G4DNAEmfietzoglou_iceProtonDcsTable::SampleArea(
+    const DiffGrid& grid, G4int component, G4double area)
+{
+  const auto& cumulative = grid.cumulative[component];
+  const auto end = std::upper_bound(cumulative.begin(), cumulative.end(), area);
+  if (end == cumulative.end()) return grid.transfer.back();
+  const std::size_t i = std::distance(cumulative.begin(), end) - 1;
+  const G4double dx = grid.transfer[i+1] - grid.transfer[i];
+  const G4double y0 = grid.dcs[i][component];
+  const G4double delta = grid.dcs[i+1][component] - y0;
+  const G4double a = std::max(0., area - cumulative[i]) / (dx / eV);
+  // Invert y0*u + (y1-y0)*u^2/2 = a, without subtractive cancellation.
+  const G4double denominator = y0 + std::sqrt(std::max(0., y0*y0 + 2.*delta*a));
+  const G4double u = denominator > 0. ? 2.*a / denominator : 0.;
+  return grid.transfer[i] + std::clamp(u, 0., 1.) * dx;
 }
 
 G4double G4DNAEmfietzoglou_iceProtonDcsTable::TotalCrossSection(
-    G4double kineticEnergy,
-    G4int component) const
+    G4double kineticEnergy, G4int component) const
 {
-  if (fTotalRows.empty() ||
-      kineticEnergy < fTotalRows.front().energy ||
-      kineticEnergy > fTotalRows.back().energy) {
-    return 0.;
-  }
-  if (component >= fNComponents) return 0.;
-
-  std::vector<G4double> energies;
-  energies.reserve(fTotalRows.size());
-  for (const auto& row : fTotalRows) energies.push_back(row.energy);
-  const G4int index = LowerIndex(energies, kineticEnergy);
-  const auto& lo = fTotalRows[index];
-  const auto& hi = fTotalRows[index + 1];
-
-  auto componentValue = [&](G4int c) {
-    return Interpolate(lo.energy, hi.energy, kineticEnergy, lo.xs[c], hi.xs[c]);
-  };
-
-  if (component >= 0) return componentValue(component);
-
+  if (fEnergies.empty() || kineticEnergy < fEnergies.front()
+      || kineticEnergy > fEnergies.back() || component >= fNComponents) return 0.;
+  const G4int lo = LowerIndex(fEnergies, kineticEnergy);
+  const G4int hi = fEnergies.size() == 1 ? lo : lo + 1;
+  const G4double weight = UpperWeight(lo, kineticEnergy);
+  const G4double upper = MaximumTransfer(kineticEnergy);
   G4double total = 0.;
-  for (G4int c = 0; c < fNComponents; ++c) total += componentValue(c);
-  return total;
+  for (G4int c = (component < 0 ? 0 : component);
+       c < (component < 0 ? fNComponents : component + 1); ++c) {
+    total += (1. - weight) * AreaBelow(fDiffGrids[lo], c, upper)
+            + weight * AreaBelow(fDiffGrids[hi], c, upper);
+  }
+  return total * CrossSectionScale();
 }
+
 
 G4int G4DNAEmfietzoglou_iceProtonDcsTable::SelectComponent(
     G4double kineticEnergy) const
@@ -265,96 +348,23 @@ G4int G4DNAEmfietzoglou_iceProtonDcsTable::SelectComponent(
   return fNComponents - 1;
 }
 
-std::vector<G4double> G4DNAEmfietzoglou_iceProtonDcsTable::InterpolatedDcs(
-    G4double kineticEnergy,
-    G4int component) const
-{
-  if (fDiffGrids.empty() || component < 0 || component >= fNComponents) {
-    return {};
-  }
-
-  std::vector<G4double> energies;
-  energies.reserve(fDiffGrids.size());
-  for (const auto& grid : fDiffGrids) energies.push_back(grid.energy);
-  const G4int index = LowerIndex(energies, kineticEnergy);
-  const auto& lo = fDiffGrids[index];
-  const auto& hi = fDiffGrids[index + 1];
-
-  if (lo.transfer.size() != hi.transfer.size()) {
-    const auto& nearest =
-        std::abs(kineticEnergy - lo.energy) <= std::abs(hi.energy - kineticEnergy)
-            ? lo
-            : hi;
-    std::vector<G4double> values;
-    values.reserve(nearest.dcs.size());
-    for (const auto& row : nearest.dcs) values.push_back(row[component]);
-    return values;
-  }
-
-  std::vector<G4double> values;
-  values.reserve(lo.dcs.size());
-  for (std::size_t i = 0; i < lo.dcs.size(); ++i) {
-    if (std::abs(lo.transfer[i] - hi.transfer[i]) >
-        1.e-9 * std::max(lo.transfer[i], hi.transfer[i])) {
-      const auto& nearest =
-          std::abs(kineticEnergy - lo.energy) <= std::abs(hi.energy - kineticEnergy)
-              ? lo
-              : hi;
-      values.clear();
-      values.reserve(nearest.dcs.size());
-      for (const auto& row : nearest.dcs) values.push_back(row[component]);
-      return values;
-    }
-    values.push_back(Interpolate(lo.energy,
-                                 hi.energy,
-                                 kineticEnergy,
-                                 lo.dcs[i][component],
-                                 hi.dcs[i][component]));
-  }
-  return values;
-}
-
 G4double G4DNAEmfietzoglou_iceProtonDcsTable::SampleTransferEnergy(
-    G4double kineticEnergy,
-    G4int component) const
+    G4double kineticEnergy, G4int component) const
 {
-  if (fDiffGrids.empty() || component < 0 || component >= fNComponents) {
-    return 0.;
-  }
-
-  std::vector<G4double> energies;
-  energies.reserve(fDiffGrids.size());
-  for (const auto& grid : fDiffGrids) energies.push_back(grid.energy);
-  const G4int index = LowerIndex(energies, kineticEnergy);
-  const auto& baseGrid = fDiffGrids[index];
-  const auto dcs = InterpolatedDcs(kineticEnergy, component);
-  if (baseGrid.transfer.size() < 2 || dcs.size() != baseGrid.transfer.size()) {
-    return 0.;
-  }
-
-  G4double area = 0.;
-  for (std::size_t i = 1; i < baseGrid.transfer.size(); ++i) {
-    const G4double y0 = std::max(0., dcs[i - 1]);
-    const G4double y1 = std::max(0., dcs[i]);
-    const G4double dx = baseGrid.transfer[i] - baseGrid.transfer[i - 1];
-    if (dx > 0.) area += 0.5 * (y0 + y1) * dx;
-  }
-  if (area <= 0.) return 0.;
-
-  G4double pick = G4UniformRand() * area;
-  for (std::size_t i = 1; i < baseGrid.transfer.size(); ++i) {
-    const G4double y0 = std::max(0., dcs[i - 1]);
-    const G4double y1 = std::max(0., dcs[i]);
-    const G4double x0 = baseGrid.transfer[i - 1];
-    const G4double x1 = baseGrid.transfer[i];
-    const G4double dx = x1 - x0;
-    if (dx <= 0.) continue;
-    const G4double segment = 0.5 * (y0 + y1) * dx;
-    if (pick <= segment) {
-      const G4double fraction = segment > 0. ? pick / segment : 0.;
-      return x0 + fraction * dx;
-    }
-    pick -= segment;
-  }
-  return baseGrid.transfer.back();
+  if (fEnergies.empty() || component < 0 || component >= fNComponents
+      || kineticEnergy < fEnergies.front() || kineticEnergy > fEnergies.back()) return 0.;
+  const G4int lo = LowerIndex(fEnergies, kineticEnergy);
+  const G4int hi = fEnergies.size() == 1 ? lo : lo + 1;
+  const G4double weight = UpperWeight(lo, kineticEnergy);
+  const G4double upper = MaximumTransfer(kineticEnergy);
+  const G4double loArea = (1. - weight) * AreaBelow(fDiffGrids[lo], component, upper);
+  const G4double hiArea = weight * AreaBelow(fDiffGrids[hi], component, upper);
+  if (loArea + hiArea <= 0.) return 0.;
+  const G4double pick = G4UniformRand() * (loArea + hiArea);
+  // Convex interpolation of DCS at fixed W, linear in log(T). A mixture
+  // samples this exactly even when the neighbouring W grids differ.
+  const G4double sampled = pick < loArea
+      ? SampleArea(fDiffGrids[lo], component, pick / (1. - weight))
+      : SampleArea(fDiffGrids[hi], component, (pick - loArea) / weight);
+  return std::min(sampled, upper);
 }

@@ -224,6 +224,14 @@ overrides.
 
 ## Required Geant4-DNA data
 
+The ion table sampler requires matching DCS/TCS incident grids and validates
+TCS as the integral of a piecewise-linear transfer-energy density. It
+interpolates DCS linearly in log incident energy and samples that same
+distribution, with the current Wmax cutoff. Regenerate legacy tables and
+rebuild the executable after the requested-grid/linear-W numerical repair.
+See the [electronic validation record](../python_scripts/physics_ice/process_evidence/electronic_excitation_ionisation/validation/README.md)
+for formula provenance, metadata versions, and regression commands.
+
 This package expects the custom proton ice cross-section `.dat` files to be present under:
 
 `$G4LEDATA/dna/`

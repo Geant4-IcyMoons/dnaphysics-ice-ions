@@ -236,13 +236,14 @@ def test_component_strength_and_first_energy_moment_converge():
 
 
 def test_proton_dcs_stopping_moment_converges():
-    coarse = sum_rule_audit.dcs_stopping_moment("amorphous", 1.e7, 30, 30)
-    fine = sum_rule_audit.dcs_stopping_moment("amorphous", 1.e7, 60, 60)
+    # Exact threshold endpoints require more than the former 30/60 nodes.
+    coarse = sum_rule_audit.dcs_stopping_moment("amorphous", 1.e7, 60, 60)
+    fine = sum_rule_audit.dcs_stopping_moment("amorphous", 1.e7, 120, 120)
     assert np.isfinite(fine["stopping_cross_section_eV_m2"])
     assert fine["stopping_cross_section_eV_m2"] > 0.
     assert sum_rule_audit.relative_change(
         coarse, fine, "stopping_cross_section_eV_m2"
-    ) < 0.011
+    ) < 0.002
 
 
 def test_cache_provenance_rejects_old_gos(monkeypatch, tmp_path):

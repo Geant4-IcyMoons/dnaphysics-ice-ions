@@ -5,7 +5,9 @@
 The optional relativistic projectile kernel implements the finite-Q RPWBA
 DDCS of Dominguez-Munoz et al., Radiat. Phys. Chem. 199 (2022) 110363,
 doi:10.1016/j.radphyschem.2022.110363, Eqs. (1)-(4), with the condensed-medium
-Fermi density correction of Eqs. (7)-(9). Their liquid-water GOS is replaced
+Fermi density term as given in the author's 2025 thesis, Eq. (2.287).
+The source and dilute-limit check are documented in _rpwba_transverse_ratio.
+Their liquid-water GOS is replaced
 by this repository's phase-specific finite-q ice dielectric response. The
 paper validates protons from 100 to 300 MeV; use for other bare ions is an
 explicit first-Born extrapolation at the same projectile velocity.
@@ -528,6 +530,8 @@ ICE_LABEL = f"{ICE_TYPE}_ice"
 # One material density per phase. Normalize the ELF-derived GOS to its
 # physical electron density (10 electrons/H2O), then divide by N_H2O.
 ION_NORMALIZATION_VERSION = "optical-fsum-per-H2O-v2"
+DCS_NUMERICS_VERSION = "requested-grid-linear-W-v1"
+RPWBA_DENSITY_KERNEL = "dominguez-munoz-thesis-eq2.287"
 OPTICAL_SUM_POINTS = 240001
 OPTICAL_SUM_MAX_EV = 1.0e9
 # integral W*ELF dW = OPTICAL_SUM_UNIT_EV2_M3 * electron density.
@@ -536,10 +540,6 @@ OPTICAL_SUM_UNIT_EV2_M3 = (
     0.5 * np.pi * (hbar / elementary_charge)**2
     * elementary_charge**2 / (electron_mass * epsilon_0)
 )
-
-# Extend DCS grid beyond Born table using a linear T grid.
-DCS_T_MAX_EEV = 1.0e7
-DCS_T_STEP_EEV = 2.0e5
 
 # Geant4 Emfietzoglou DCS table scale: file values * scale -> m^2
 EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
@@ -698,6 +698,8 @@ def _ion_normalization_metadata(ice_type, s=None):
     )
     return {
         "ion_normalization_version": ION_NORMALIZATION_VERSION,
+        "dcs_numerics_version": DCS_NUMERICS_VERSION,
+        "rpwba_density_kernel": RPWBA_DENSITY_KERNEL,
         "ice_type": phase,
         "optical_fit_Ep_eV": float(s.Ep),
         "physical_plasma_energy_eV": float(np.sqrt(
@@ -809,7 +811,11 @@ def _energy_grid(Emin, Emax, N, use_log=True):
     log_max = np.log(Emax)
     if (not np.isfinite(log_min)) or (not np.isfinite(log_max)) or (log_max <= log_min):
         return np.linspace(Emin, Emax, N)
-    return np.exp(np.linspace(log_min, log_max, N))
+    grid = np.exp(np.linspace(log_min, log_max, N))
+    grid[0] = Emin
+    if grid.size > 1:
+        grid[-1] = Emax
+    return grid
 
 def _regime_flags(Tj):
     # Electron exchange/Mott corrections remain excluded. This optional path is
@@ -975,15 +981,18 @@ def _rpwba_transverse_ratio(
 
         rho * (beta^2 - rho) / (1 - rho)^2.
 
-    When requested, Eq. (8) replaces that vacuum transverse term with the
-    condensed-medium result
+    For the medium use Dominguez-Munoz's thesis Eq. (2.287), with the
+    stated approximation epsilon_T = epsilon_L and transverse GOS = GOS:
 
-        W/(2 m_e c^2) * |epsilon|^2 * (beta^2 - rho)
+        rho * |epsilon|^2 * (beta^2 - rho)
         / [(1 - rho epsilon_1)^2 + (rho epsilon_2)^2].
 
-    The latter is the algebraic sum of the Eq. (3) transverse term and the
-    Eq. (8) Fermi correction. No optical-q=0 or Sternheimer approximation is
-    used here.
+    This follows by dividing its transverse coefficient by 2*m_e*c^2/(W*R).
+    It recovers the vacuum expression as epsilon -> 1. The earlier
+    W/(2*m_e*c^2) implementation did not. We do not identify this with the
+    literal printed Eq. (8) of the 2022 paper, whose normalization differs.
+    Thesis source (pp. 71-72, Eqs. 2.282-2.289):
+    https://idus.us.es/bitstreams/d1adf440-b21e-41dd-bc17-d44c484bc576/download
     """
     q_au = np.asarray(q_au, dtype=float)
     W_eV = float(W_eV)
@@ -1006,7 +1015,7 @@ def _rpwba_transverse_ratio(
         denominator = (1.0 - rho * epsilon1) ** 2 + (rho * epsilon2) ** 2
         denominator = np.maximum(denominator, np.finfo(float).tiny)
         ratio = (
-            (W_eV / (2.0 * MC2_eV))
+            rho
             * (epsilon1 * epsilon1 + epsilon2 * epsilon2)
             * beta_minus_rho
             / denominator
@@ -1099,7 +1108,8 @@ def _integrate_channel_single_E_rpwba_components(
     The integration is Eq. (4) of Dominguez-Munoz et al. (2022), evaluated
     on logarithmic q after applying Eqs. (2), (3), and (9). Both terms use
     the same channel-resolved finite-q GOS/ELF. The density option applies
-    their Eqs. (7)-(9) directly through the complex ice dielectric function.
+    thesis Eq. (2.287) through the complex ice dielectric function; see
+    _rpwba_transverse_ratio for the source and approximations.
     """
     if Ei > _projectile_energy_loss_upper_eV(Tj):
         return 0.0, 0.0
@@ -1410,7 +1420,7 @@ def _integrate_kshell_single_E_rpwba_components(
     """Return longitudinal and transverse RPWBA O K-shell DCS components.
 
     The hydrogenic K-shell GOS is additive and has no corresponding complex
-    K-shell epsilon in the current ice model. The Eq. (8) screening factor is
+    K-shell epsilon in the current ice model. The medium screening factor is
     therefore evaluated with the finite-q valence epsilon. This approximation
     is recorded in output metadata and is relevant only when the density
     correction is enabled.
@@ -3071,100 +3081,38 @@ def load_cross_section_corrections_npz(
         return None
     return T_loaded, sigma_list, dcs_data
 
-def _geant4_dna_dir():
-    for root in (CUSTOM_DATA_ROOT_GEANT4, CUSTOM_DATA_ROOT_PROJECT):
-        if root is None:
-            continue
-        if not root.exists():
-            continue
-        dna_dir = root / "G4EMLOW8.6.1" / "dna"
-        if dna_dir.exists():
-            return dna_dir
-    return None
+def _ion_dcs_grid(T_list, s, NE, include_kshell):
+    """Requested total-ion T nodes and log-W nodes bounded by the existing Wmax.
 
-def _default_dcs_template_paths(ice_label):
-    labels = []
-    for label in (ice_label, ICE_LABEL):
-        if label and label not in labels:
-            labels.append(label)
-
-    for label in labels:
-        path = (
-            CROSS_SECTIONS_DIR
-            / f"sigmadiff_ionisation_e_{label}_emfietzoglou_kyriakou.dat"
-        )
-        if path.exists():
-            return path, None
-
-    dna_dir = _geant4_dna_dir()
-    if dna_dir is None:
-        return None, None
-    return (
-        dna_dir / "sigmadiff_ionisation_e_emfietzoglou.dat",
-        dna_dir / "sigmadiff_ionisation_e_born.dat",
-    )
-
-def _load_dcs_template_grid(path, t_min=None, t_max=None, include_min=True, include_max=True):
-    from collections import OrderedDict
-
-    grid = OrderedDict()
-    with open(path, "r") as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            try:
-                T = float(parts[0])
-                E = float(parts[1])
-            except ValueError:
-                continue
-            if t_min is not None:
-                if T < t_min or (not include_min and T == t_min):
-                    continue
-            if t_max is not None:
-                if T > t_max or (not include_max and T == t_max):
-                    continue
-            grid.setdefault(T, []).append(E)
+    NE is the base transfer-grid size. Thresholds and one-sided onset nodes
+    supplement it, so interpolation does not smear an edge across a wide bin.
+    """
+    energies = np.asarray(T_list, dtype=float)
+    if (energies.ndim != 1 or energies.size == 0
+            or np.any(~np.isfinite(energies)) or np.any(energies <= 0.0)
+            or np.any(np.diff(energies) <= 0.0)):
+        raise ValueError("T_list must be finite, positive, and strictly increasing.")
+    if int(NE) != NE or NE < 2:
+        raise ValueError("DCS transfer grid requires NE >= 2.")
+    thresholds = [float(s.Bmin)] + [float(o.Bth) for o in s.ionizations]
+    if include_kshell and s.kshell is not None and KSHELL_MODEL != "none":
+        thresholds.append(_kshell_threshold_eV(s))
+        if KSHELL_MODEL == "hydrogenic-gos":
+            thresholds.append(model.OXYGEN_K_ZEFF**2 * model.RYD_ELECTRON_VOLT)
+    grid = {}
+    for T in energies:
+        upper = _projectile_energy_loss_upper_eV(T)
+        lower = min(float(s.Bmin), upper * 0.5)
+        W = np.geomspace(lower, upper, int(NE))
+        edges = [x * factor for x in thresholds for factor in (1-1e-8, 1, 1+1e-8)
+                 if lower <= x * factor <= upper]
+        W = np.unique(np.concatenate((W, edges, [lower, upper])))
+        grid[float(T)] = W
     return grid
 
-def _merge_dcs_template_grids(*grids):
-    from collections import OrderedDict
-
-    merged = OrderedDict()
-    for grid in grids:
-        for T, E_list in grid.items():
-            if T in merged:
-                continue
-            merged[T] = E_list
-    return merged
-
-def _extend_dcs_grid(grid, t_max, t_step):
-    from collections import OrderedDict
-
-    if not grid:
-        return grid
-    t_max = float(t_max)
-    t_step = float(t_step)
-    if t_step <= 0.0:
-        return grid
-
-    grid_sorted = OrderedDict(sorted(grid.items(), key=lambda kv: kv[0]))
-    last_T = max(grid_sorted.keys())
-    if t_max <= last_T:
-        return grid_sorted
-
-    template_E = list(grid_sorted[last_T])
-    t = last_T + t_step
-    while t <= t_max + 0.5 * t_step:
-        grid_sorted[float(t)] = list(template_E)
-        t += t_step
-    return grid_sorted
-
 def _format_dcs_row(T, E, vals):
-    fields = [f"{T:.9E}", f"{E:.9E}"]
-    fields.extend(f"{val:.9E}" for val in vals)
+    fields = [f"{T:.16E}", f"{E:.16E}"]
+    fields.extend(f"{val:.16E}" for val in vals)
     return " ".join(fields) + "\n"
 
 def _write_dcs_tables_from_data(
@@ -3192,8 +3140,13 @@ def _write_dcs_tables_from_data(
     if exc_vals.shape[0] != T_line.size or ion_vals.shape[0] != T_line.size:
         raise ValueError("DCS value arrays must align with T/E lines.")
 
-    exc_mask = np.ones(T_line.size, dtype=bool)
-    ion_mask = np.ones(T_line.size, dtype=bool)
+    if any(np.any(~np.isfinite(a)) for a in (T_line, E_line, exc_vals, ion_vals)):
+        raise ValueError("Non-finite DCS table data.")
+    if np.any(exc_vals < 0.0) or np.any(ion_vals < 0.0):
+        raise ValueError("Negative DCS table data.")
+    physical = E_line <= np.array([_projectile_energy_loss_upper_eV(T) for T in T_line])
+    exc_mask = physical.copy()
+    ion_mask = physical.copy()
     if exc_t_min is not None:
         exc_mask &= T_line >= float(exc_t_min)
     if ion_t_min is not None:
@@ -3388,7 +3341,11 @@ def _integrate_dcs_to_totals(T_line, E_line, vals):
             order = np.argsort(E_seg)
             E_sorted = E_seg[order]
             V_sorted = V_seg[order]
-            row = [_simpson_integrate(V_sorted[:, j], E_sorted) for j in range(V_sorted.shape[1])]
+            if np.any(~np.isfinite(V_sorted)) or np.any(V_sorted < 0.0):
+                raise ValueError("Non-finite or negative DCS cannot be integrated/exported.")
+            if np.any(np.diff(E_sorted) <= 0.0):
+                raise ValueError("DCS transfer nodes must be strictly increasing.")
+            row = np.trapezoid(V_sorted, E_sorted, axis=0)
             unique_T.append(Tval)
             totals.append(row)
             start = i
@@ -3496,8 +3453,8 @@ def _write_total_table(T_vals, totals, out_path, table_metadata=None):
     with open(out_path, "w") as handle:
         _write_table_metadata(handle, table_metadata)
         for Tval, row in zip(T_vals, totals):
-            fields = [f"{Tval:.9E}"]
-            fields.extend(f"{val:.9E}" for val in row)
+            fields = [f"{Tval:.16E}"]
+            fields.extend(f"{val:.16E}" for val in row)
             handle.write(" ".join(fields) + "\n")
 
 def _filter_dcs_lines(T_line, E_line, vals, t_min=None, t_max=None):
@@ -3551,28 +3508,23 @@ def _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data):
     T_exc, exc_totals = _integrate_dcs_to_totals(T_line, E_line, exc_vals * EMFI_DCS_SCALE_M2)
     T_ion, ion_totals = _integrate_dcs_to_totals(T_line, E_line, ion_vals * EMFI_DCS_SCALE_M2)
 
+    if not (np.array_equal(T_exc, T_list) and np.array_equal(T_ion, T_list)):
+        raise ValueError("Final DCS energies must match the requested TCS grid exactly.")
     out = []
-    for T, sigma in zip(T_list, sigma_list):
+    for i, sigma in enumerate(sigma_list):
         sigma_new = dict(sigma)
-        i_exc = int(np.argmin(np.abs(T_exc - float(T)))) if T_exc.size else None
-        i_ion = int(np.argmin(np.abs(T_ion - float(T)))) if T_ion.size else None
-        if i_exc is not None and np.isclose(T_exc[i_exc], float(T)):
-            exc = [float(v) for v in np.asarray(exc_totals[i_exc], float)]
-            sigma_new["excitation_sigma_pwba"] = exc
-            sigma_new["excitation_sigma"] = exc
-        else:
-            exc = sigma_new.get("excitation_sigma", sigma_new.get("excitation_sigma_pwba", [])) or []
-        if i_ion is not None and np.isclose(T_ion[i_ion], float(T)):
-            ion = [float(v) for v in np.asarray(ion_totals[i_ion], float)]
-            sigma_new["ionization_sigma_pwba"] = ion
-            sigma_new["ionization_sigma"] = ion
-        else:
-            ion = sigma_new.get("ionization_sigma", sigma_new.get("ionization_sigma_pwba", [])) or []
-        total = float(np.sum(exc) + np.sum(ion))
-        sigma_new["valence_sigma_pwba"] = total
-        sigma_new["total_sigma_pwba"] = total
-        sigma_new["valence_sigma"] = total
-        sigma_new["total_sigma"] = total
+        # Preserve separately integrated PWBA/RPWBA diagnostic terms. Only
+        # selected totals are replaced by the exported DCS measure.
+        n_outer = len(sigma["ionization_sigma_pwba"])
+        exc = exc_totals[i].tolist()
+        ion = ion_totals[i, :n_outer].tolist()
+        core = float(np.sum(ion_totals[i, n_outer:]))
+        valence = float(np.sum(exc) + np.sum(ion))
+        sigma_new.update(
+            excitation_sigma=exc, ionization_sigma=ion,
+            kshell_sigma=core if ion_totals.shape[1] > n_outer else None,
+            valence_sigma=valence, total_sigma=valence + core,
+        )
         out.append(sigma_new)
     return out
 
@@ -3651,7 +3603,9 @@ def _compute_dcs_channel_values(
             raise ValueError(f"Unknown channel type: {channel_type}")
 
         if (not np.isfinite(val)) or (val < 0.0):
-            val = 0.0
+            raise FloatingPointError(
+                f"Invalid {channel_type}[{idx}] DCS at T={Tj}, W={Ei}: {val}"
+            )
         vals[i] = val / EMFI_DCS_SCALE_M2
 
     return vals
@@ -3781,7 +3735,6 @@ def write_emfietzoglou_dcs_tables(
     C,
     Nq=200,
     out_dir=None,
-    template_path=None,
     dcs_data=None,
     return_data=False,
     parallel_channels=True,
@@ -3795,8 +3748,8 @@ def write_emfietzoglou_dcs_tables(
     apply_regime_ii=None,
     apply_regime_iii=None,
     apply_regime_iv=None,
-    reuse_existing_tables=False,
     T_list=None,
+    NE=DEFAULT_DE_POINTS,
     include_kshell=True,
     merge_energy_patches=True,
     charge_mode=None,
@@ -3809,8 +3762,10 @@ def write_emfietzoglou_dcs_tables(
         out_dir = CROSS_SECTIONS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    if ice_type is None:
+        ice_type = s.material
     if ice_label is None:
-        ice_label = ICE_LABEL
+        ice_label = f"{ice_type}_ice"
     if charge_mode is None:
         charge_mode = CHARGE_MODE
     if include_barkas_dcs is None:
@@ -3852,75 +3807,18 @@ def write_emfietzoglou_dcs_tables(
     if merge_energy_patches:
         _check_energy_patch_normalization(exc_out, ion_out, table_metadata)
 
-    if reuse_existing_tables and dcs_data is None and exc_out.exists() and ion_out.exists():
-        print("Ignoring existing DCS tables; heavy-projectile Emax metadata is not available in DAT files.")
-
     exc_B = [float(s.Bmin) for _ in s.excitations]
     ion_B = [float(osc.Bth) for osc in s.ionizations]
-    t_list_min = None
-    t_list_max = None
-    if T_list is not None:
-        T_arr_for_dcs = np.asarray(T_list, float)
-        T_arr_for_dcs = T_arr_for_dcs[np.isfinite(T_arr_for_dcs) & (T_arr_for_dcs > 0.0)]
-        if T_arr_for_dcs.size:
-            t_list_min = float(np.min(T_arr_for_dcs))
-            t_list_max = float(np.max(T_arr_for_dcs))
-    exc_write_t_min = float(min(exc_B)) if exc_B else None
-    ion_write_t_min = float(min(ion_B)) if ion_B else None
-    exc_t_min = exc_write_t_min
-    ion_t_min = ion_write_t_min
-    if t_list_min is not None:
-        if exc_t_min is not None:
-            exc_t_min = max(exc_t_min, t_list_min)
-        if ion_t_min is not None:
-            ion_t_min = max(ion_t_min, t_list_min)
-    grid_t_min = min(v for v in (exc_t_min, ion_t_min) if v is not None)
-    grid_t_max = t_list_max if t_list_max is not None else DCS_T_MAX_EEV
+    if T_list is None:
+        if dcs_data is None:
+            raise ValueError("DCS generation requires the requested T_list.")
+        T_list = np.unique(dcs_data["T_line"])
+    grid = _ion_dcs_grid(T_list, s, NE, include_kshell)
+    grid_t_min, grid_t_max = min(grid), max(grid)
+    exc_write_t_min = ion_write_t_min = grid_t_min
+    exc_t_min = ion_t_min = grid_t_min
 
     if dcs_data is None:
-        if template_path is None:
-            emfi_path, born_path = _default_dcs_template_paths(ice_label)
-            if emfi_path is None:
-                raise FileNotFoundError(
-                    "Could not locate a DCS template. Expected a local file such as "
-                    f"{CROSS_SECTIONS_DIR / f'sigmadiff_ionisation_e_{ice_label}_emfietzoglou_kyriakou.dat'} "
-                    "or a Geant4 DNA data directory."
-                )
-            if not os.path.exists(emfi_path):
-                raise FileNotFoundError(f"Missing DCS template file: {emfi_path}")
-            print(f"Using DCS template grid: {emfi_path}")
-            grid_low = _load_dcs_template_grid(
-                emfi_path, t_min=grid_t_min, t_max=grid_t_max
-            )
-
-            grid = grid_low
-            if born_path is not None and os.path.exists(born_path):
-                t_switch = max(grid_low.keys()) if grid_low else grid_t_min
-                grid_high = _load_dcs_template_grid(
-                    born_path,
-                    t_min=t_switch,
-                    t_max=grid_t_max,
-                    include_min=not bool(grid_low),
-                )
-                if grid_high:
-                    grid = _merge_dcs_template_grids(grid_low, grid_high)
-            if not grid:
-                raise ValueError(
-                    f"No template DCS incident-energy grid at or above {grid_t_min:.6g} eV."
-                )
-            if grid_t_max > max(grid.keys()):
-                grid = _extend_dcs_grid(grid, grid_t_max, DCS_T_STEP_EEV)
-        else:
-            if not os.path.exists(template_path):
-                raise FileNotFoundError(f"Missing DCS template file: {template_path}")
-            grid = _load_dcs_template_grid(
-                template_path, t_min=grid_t_min, t_max=grid_t_max
-            )
-            if not grid:
-                raise ValueError(
-                    f"No template DCS incident-energy grid at or above {grid_t_min:.6g} eV."
-                )
-
         T_line = []
         E_line = []
         for T, E_list in grid.items():
@@ -3953,9 +3851,6 @@ def write_emfietzoglou_dcs_tables(
             apply_regime_iii = APPLY_CORRECTIONS_REGIME_III
         if apply_regime_iv is None:
             apply_regime_iv = APPLY_CORRECTIONS_REGIME_IV
-        if ice_type is None:
-            ice_type = ICE_TYPE
-
         tasks = [("excitation", k) for k in range(n_exc)]
         tasks.extend(("ionization", j) for j in range(n_ion))
         if kshell_B is not None:
@@ -4306,7 +4201,8 @@ def main():
         print(
             "RPWBA reference: Dominguez-Munoz et al., Radiat. Phys. Chem. "
             f"199 (2022) 110363, doi:{RPWBA_REFERENCE_DOI}; finite-Q Eqs. "
-            "(1)-(4) and dielectric density correction Eqs. (7)-(9)."
+            "(1)-(4); medium transverse term from the author's 2025 thesis, "
+            "Eq. (2.287), with epsilon_T approximated by epsilon_L."
         )
         if PROJECTILE_KEY != "proton":
             print(
@@ -4441,6 +4337,7 @@ def main():
             s,
             C,
             Nq=Nq,
+            NE=NE,
             return_data=True,
             ice_label=ICE_LABEL,
             ice_type=ICE_TYPE,
@@ -4460,8 +4357,7 @@ def main():
             born_reference_charge=born_reference_charge,
             born_reference_explicit_charge=born_reference_explicit_charge,
         )
-        if charge_mode != "bare" or include_barkas_dcs:
-            sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
+        sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
         dcs_written = True
         save_cross_section_corrections_npz(
             T_list,
@@ -4487,6 +4383,7 @@ def main():
                 s,
                 C,
                 Nq=Nq,
+                NE=NE,
                 return_data=True,
                 ice_label=ICE_LABEL,
                 ice_type=ICE_TYPE,
@@ -4506,8 +4403,7 @@ def main():
                 born_reference_charge=born_reference_charge,
                 born_reference_explicit_charge=born_reference_explicit_charge,
             )
-            if charge_mode != "bare" or include_barkas_dcs:
-                sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
+            sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
             dcs_written = True
             save_cross_section_corrections_npz(
                 T_list,
@@ -4531,6 +4427,7 @@ def main():
                 s,
                 C,
                 Nq=Nq,
+                NE=NE,
                 dcs_data=dcs_data,
                 ice_label=ICE_LABEL,
                 ice_type=ICE_TYPE,
@@ -4543,8 +4440,7 @@ def main():
                 born_reference_charge=born_reference_charge,
                 born_reference_explicit_charge=born_reference_explicit_charge,
             )
-            if charge_mode != "bare" or include_barkas_dcs:
-                sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
+            sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
             dcs_written = True
 
     if charge_mode == "bare" and not include_barkas_dcs:

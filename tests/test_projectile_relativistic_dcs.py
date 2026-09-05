@@ -110,7 +110,7 @@ def test_finite_q_transverse_ratio_matches_dominguez_munoz_eq3() -> None:
     assert actual == pytest.approx(expected, rel=3.0e-15)
 
 
-def test_density_corrected_ratio_matches_dominguez_munoz_eq8() -> None:
+def test_density_corrected_ratio_matches_thesis_eq_2_287() -> None:
     W_eV = 100.0
     beta2 = 0.2
     q_au = np.array([0.2, 0.5, 1.0, 2.0])
@@ -119,8 +119,8 @@ def test_density_corrected_ratio_matches_dominguez_munoz_eq8() -> None:
     recoil_product = (MODULE.C_AU * MODULE.EH * q_au) ** 2
     epsilon = epsilon1 + 1j * epsilon2
     medium_transverse_factor = (
-        np.imag(epsilon / (recoil_product - W_eV**2 * epsilon))
-        * (np.abs(epsilon) ** 2 / epsilon2)
+        2.0 * MODULE.MC2_eV * W_eV * np.abs(epsilon)**2
+        / np.abs(recoil_product - W_eV**2 * epsilon)**2
         * (beta2 - W_eV**2 / recoil_product)
     )
     longitudinal_factor = 2.0 * MODULE.MC2_eV / (W_eV * recoil_product)
@@ -134,6 +134,18 @@ def test_density_corrected_ratio_matches_dominguez_munoz_eq8() -> None:
         use_density_effect=True,
     )
     assert actual == pytest.approx(expected, rel=3.0e-14)
+
+
+@pytest.mark.parametrize("W", [10.0, 100.0, 1000.0])
+@pytest.mark.parametrize("beta2", [0.001, 0.2, 0.9])
+def test_density_ratio_recovers_dilute_limit(W, beta2):
+    qmin = W / (MODULE.C_AU * MODULE.EH * np.sqrt(beta2))
+    q = qmin * np.geomspace(1.0, 1000.0, 100)
+    vacuum = MODULE._rpwba_transverse_ratio(W, q, beta2)
+    dilute = MODULE._rpwba_transverse_ratio(
+        W, q, beta2, epsilon1=1.0, epsilon2=0.0, use_density_effect=True,
+    )
+    np.testing.assert_allclose(dilute, vacuum, rtol=2e-15, atol=0.0)
 
 
 def test_relativistic_lower_q_bound_is_stable_for_heaviest_supported_ion() -> None:
