@@ -132,8 +132,8 @@ N = 3.34e28
 mass = 1.0
 
 # Projectile masses in electron-mass atomic units and bare-ion charges.
-# For neutral/partially stripped projectiles, replace charge with an effective
-# charge appropriate to the projectile velocity.
+# Bound-electron screening is supplied separately by projectile_form_factors.
+# The charge below is always nuclear Z, not an ionic charge or fitted Zeff.
 PROTON_MASS_AU = 1836.152673
 ALPHA_MASS_AU = 7294.299536
 # Bare Li-7 nuclear mass in electron-mass atomic units. Derived from the NIST
@@ -154,7 +154,8 @@ OXYGEN_16_BARE_MASS_AU = 29148.9497
 SULFUR_32_BARE_MASS_AU = 58265.5417
 PROJECTILE_LIBRARY = {
     "proton": {
-        "aliases": ("p", "h+", "proton"),
+        "aliases": ("p", "h+", "proton", "h", "hydrogen"),
+        "element": "H",
         "mass_au": PROTON_MASS_AU,
         "mass_number": 1.0,
         "charge": 1.0,
@@ -162,7 +163,8 @@ PROJECTILE_LIBRARY = {
         "label": "Proton",
     },
     "alpha": {
-        "aliases": ("alpha", "he2+", "helium"),
+        "aliases": ("alpha", "he2+", "helium", "he"),
+        "element": "He",
         "mass_au": ALPHA_MASS_AU,
         "mass_number": 4.0,
         "charge": 2.0,
@@ -170,6 +172,7 @@ PROJECTILE_LIBRARY = {
         "label": "Alpha particle He2+",
     },
     "carbon": {
+        "element": "C",
         "aliases": ("carbon", "c6+", "carbon6+", "c"),
         "mass_au": CARBON_12_BARE_MASS_AU,
         "mass_number": 12.0,
@@ -178,6 +181,7 @@ PROJECTILE_LIBRARY = {
         "label": "Carbon ion C6+",
     },
     "oxygen": {
+        "element": "O",
         "aliases": ("oxygen", "o", "o8+", "oxygen8+"),
         "mass_au": OXYGEN_16_BARE_MASS_AU,
         "mass_number": 16.0,
@@ -186,6 +190,7 @@ PROJECTILE_LIBRARY = {
         "label": "Oxygen ion O8+ constant-charge approximation",
     },
     "sulfur": {
+        "element": "S",
         "aliases": ("sulfur", "s", "s16+", "sulfur16+"),
         "mass_au": SULFUR_32_BARE_MASS_AU,
         "mass_number": 32.0,

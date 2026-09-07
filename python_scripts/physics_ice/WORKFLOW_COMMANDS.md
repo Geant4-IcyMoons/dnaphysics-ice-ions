@@ -7,6 +7,11 @@ the corresponding provenance and acceptance documentation.
 
 ## Environment check
 
+Fixed-charge PWBA/RPWBA generation for H, He, C, O, and S, including neutrals,
+is documented in [PROJECTILE_FORM_FACTORS.md](PROJECTILE_FORM_FACTORS.md).
+Use `--charge-state Q`; this selects a momentum-dependent frozen density,
+not scalar effective charge or an automatic charge-exchange calculation.
+
 ```bash
 cd /gpfs01/work/yoffegid/dnaphysics-ice-ions
 source /apps01/apps/anaconda3-2022.10/etc/profile.d/conda.sh

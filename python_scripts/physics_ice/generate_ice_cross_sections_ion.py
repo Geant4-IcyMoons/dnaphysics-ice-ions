@@ -58,6 +58,7 @@ from constants import (
 )
 import emfietzoglou_model_finite_q as model
 import barkas_dcs
+import projectile_form_factors as projectile_ff
 
 PROJECTILE_KEY = "proton"
 PROJECTILE_MASS_AU = PROTON_MASS_AU
@@ -65,6 +66,8 @@ PROJECTILE_CHARGE = 1.0
 PROJECTILE_MASS_NUMBER = 1.0
 PROJECTILE_FILE_TOKEN = "proton"
 PROJECTILE_LABEL = "Proton"
+PROJECTILE_CHARGE_STATE = None
+PROJECTILE_DENSITY = None
 CHARGE_MODE = "bare"
 EXPLICIT_PROJECTILE_CHARGE = None
 INCLUDE_BARKAS_DCS = False
@@ -96,6 +99,7 @@ def _projectile_config(key):
 def set_projectile(key):
     global PROJECTILE_KEY, PROJECTILE_MASS_AU, PROJECTILE_CHARGE
     global PROJECTILE_MASS_NUMBER, PROJECTILE_FILE_TOKEN, PROJECTILE_LABEL
+    global PROJECTILE_CHARGE_STATE, PROJECTILE_DENSITY
     name, cfg = _projectile_config(key)
     PROJECTILE_KEY = name
     PROJECTILE_MASS_AU = float(cfg["mass_au"])
@@ -103,6 +107,66 @@ def set_projectile(key):
     PROJECTILE_CHARGE = float(cfg["charge"])
     PROJECTILE_FILE_TOKEN = str(cfg["file_token"])
     PROJECTILE_LABEL = str(cfg["label"])
+    PROJECTILE_CHARGE_STATE = None
+    PROJECTILE_DENSITY = None
+
+
+def _set_projectile_charge_state(charge):
+    """Select a fixed electronic state, leaving the historical bare default intact."""
+    global PROJECTILE_CHARGE_STATE, PROJECTILE_DENSITY, PROJECTILE_MASS_AU, PROJECTILE_LABEL
+    cfg = PROJECTILE_LIBRARY[PROJECTILE_KEY]
+    PROJECTILE_MASS_AU = float(cfg["mass_au"])
+    PROJECTILE_LABEL = str(cfg["label"])
+    PROJECTILE_CHARGE_STATE = None
+    PROJECTILE_DENSITY = None
+    if charge is None:
+        return
+    density = projectile_ff.load_density(PROJECTILE_KEY, charge)
+    PROJECTILE_DENSITY = density
+    PROJECTILE_CHARGE_STATE = density.charge
+    # Nuclear mass + bound-electron rest masses - electronic binding energy.
+    # This affects only explicitly selected charge-state runs, never old runs.
+    PROJECTILE_MASS_AU += density.electrons + density.record["energy_hartree"]/MC2_HA
+    PROJECTILE_LABEL = f"{density.element}(Q={density.charge})"
+
+
+def _projectile_state_metadata():
+    if PROJECTILE_DENSITY is None:
+        return {}
+    return projectile_ff.density_metadata(
+        PROJECTILE_DENSITY, relativistic=PROJECTILE_RELATIVISTIC_DCS
+    )
+
+
+def _projectile_state_from_npz(npz_data):
+    if "projectile_form_factor_model" not in npz_data and "projectile_state_metadata_json" not in npz_data:
+        return {}
+    if "projectile_form_factor_model" not in npz_data or "projectile_state_metadata_json" not in npz_data:
+        raise ValueError("Incomplete projectile-state cache provenance.")
+    metadata = json.loads(str(np.asarray(npz_data["projectile_state_metadata_json"]).item()))
+    if not isinstance(metadata, dict) or "projectile_form_factor_model" not in metadata:
+        raise ValueError("Invalid projectile-state cache provenance.")
+    if any(key not in npz_data or np.asarray(npz_data[key]).item() != value for key, value in metadata.items()):
+        raise ValueError("Inconsistent projectile-state cache provenance.")
+    return metadata
+
+
+def _validate_projectile_state_options(charge_mode, include_barkas, born_reference="bare_Z"):
+    if PROJECTILE_DENSITY is None:
+        return
+    if charge_mode != "bare" or born_reference != "bare_Z":
+        raise ValueError("--charge-state supplies screening inside the q integral; do not combine it with scalar Zeff/explicit-charge/reference-charge rescaling.")
+    if PROJECTILE_DENSITY.electrons and include_barkas:
+        raise ValueError("Barkas DCS for a structured projectile has not been derived. Disable --include-barkas-dcs for electron-bearing charge states.")
+
+
+def _projectile_screening_ratio(qvals, loss_eV, *, relativistic=False):
+    if PROJECTILE_DENSITY is None or PROJECTILE_DENSITY.electrons == 0:
+        return 1.0
+    k = projectile_ff.screening_momentum(qvals, loss_eV, relativistic=relativistic)
+    # The existing prefactor contains nuclear Z^2. Replace it under the
+    # integral by |Z-F_Q(k)|^2, including interference with the bound cloud.
+    return PROJECTILE_DENSITY.squared_charge(k)/PROJECTILE_CHARGE**2
 
 def _projectile_from_argv(default="proton"):
     for idx, arg in enumerate(sys.argv[1:]):
@@ -418,6 +482,8 @@ def _charge_mode_tag(
     born_reference_explicit_charge=None,
 ):
     tag = ""
+    if PROJECTILE_CHARGE_STATE is not None:
+        tag += f"_q{PROJECTILE_CHARGE_STATE}_frozen_hf"
     if str(charge_mode) != "bare":
         tag += f"_charge_{charge_mode}"
     if str(charge_mode) == "explicit":
@@ -445,6 +511,8 @@ def _print_cli_help_and_exit():
         "\n"
         "Options:\n"
         f"  --projectile NAME              projectile: {supported} (default: proton)\n"
+        "  --charge-state Q              fixed ground-state charge, integer 0..Z (includes neutral);\n"
+        "                                 uses a q-dependent projectile form factor in PWBA/RPWBA\n"
         "  --include-kshell               include O K-shell (default)\n"
         "  --no-kshell                    omit O K-shell\n"
         "  --kshell-model MODEL           hydrogenic-gos, old-optical, or none\n"
@@ -459,7 +527,7 @@ def _print_cli_help_and_exit():
         "  --dq N                         q-integration points (default: 1000)\n"
         "  --charge-mode bare|zeff|explicit\n"
         "                                 interaction charge for Born/Barkas terms (default: bare)\n"
-        "  --explicit-charge Q            charge state for --charge-mode explicit\n"
+        "  --explicit-charge Q            point-charge approximation, NOT bound-electron screening\n"
         "  --born-reference-charge bare_Z|unit_charge|explicit_q\n"
         "                                 charge convention already present in input Born DCS (default: bare_Z)\n"
         "  --born-reference-explicit-charge Q\n"
@@ -1083,6 +1151,7 @@ def _integrate_channel_single_E(
         raise ValueError("channel_type must be 'excitation' or 'ionization'")
 
     vals = vals * _elf_rolloff_factor(Ei)
+    vals = vals * _projectile_screening_ratio(qvals, Ei)
     accum = float(_simpson_integrate(vals, xi))
 
     T_scaled = Tj / PROJECTILE_MASS_AU
@@ -1135,6 +1204,7 @@ def _integrate_channel_single_E_rpwba_components(
     else:
         raise ValueError("channel_type must be 'excitation' or 'ionization'")
     vals = vals * _elf_rolloff_factor(Ei)
+    vals = vals * _projectile_screening_ratio(qvals, Ei, relativistic=True)
     beta2 = projectile_beta2(Tj)
     transverse_ratio = _rpwba_transverse_ratio(
         Ei,
@@ -1399,6 +1469,7 @@ def _integrate_kshell_single_E(
     else:
         return 0.0
 
+    vals = vals * _projectile_screening_ratio(qvals, Ei)
     accum = float(_simpson_integrate(vals, xi))
 
     T_scaled = Tj / PROJECTILE_MASS_AU
@@ -1443,6 +1514,7 @@ def _integrate_kshell_single_E_rpwba_components(
     else:
         return 0.0, 0.0
 
+    vals = vals * _projectile_screening_ratio(qvals, Ei, relativistic=True)
     E_arr = np.array([Ei], float)
     e1 = _ion_epsilon1_valence(E_arr, qvals, s, C, include_kshell=True)
     e2 = _ion_epsilon2_valence(E_arr, qvals, s, C, include_kshell=True)
@@ -2507,11 +2579,17 @@ def save_cross_section_corrections_npz(
     Save PWBA, per-stage correction terms, corrected totals, and per-channel
     cross sections for each energy to an NPZ file.
     """
+    _validate_projectile_state_options(charge_mode, include_barkas_dcs, born_reference_charge)
+    if dcs_data is not None and dcs_data.get("projectile_state_metadata", {}) != _projectile_state_metadata():
+        raise ValueError("Cannot save DCS with incompatible projectile-state provenance.")
     if out_path is None:
         if ice_label is None:
             ice_label = ICE_LABEL
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUTPUT_DIR / f"cross_section_corrections_{ice_label}.npz"
+        cache_label = ice_label
+        if PROJECTILE_CHARGE_STATE is not None:
+            cache_label = f"{PROJECTILE_FILE_TOKEN}_{ice_label}{_projectile_kernel_tag()}{_charge_mode_tag(charge_mode, include_barkas_dcs)}"
+        out_path = OUTPUT_DIR / f"cross_section_corrections_{cache_label}.npz"
 
     T_arr = np.asarray(T_list, dtype=float)
     nT = len(T_arr)
@@ -2720,6 +2798,9 @@ def save_cross_section_corrections_npz(
 
     phase = _infer_ice_type_from_path(ice_label) if ice_label else ICE_TYPE
     np_save_args.update(_ion_normalization_metadata(phase))
+    np_save_args.update(_projectile_state_metadata())
+    if _projectile_state_metadata():
+        np_save_args["projectile_state_metadata_json"] = json.dumps(_projectile_state_metadata(), sort_keys=True)
 
     if NE is not None:
         np_save_args["NE"] = int(NE)
@@ -2816,6 +2897,11 @@ def _npz_matches_params(
     born_reference_charge="bare_Z",
     born_reference_explicit_charge=None,
 ):
+    try:
+        if _projectile_state_from_npz(npz_data) != _projectile_state_metadata():
+            return False
+    except (ValueError, TypeError):
+        return False
     try:
         _require_current_normalization(npz_data, ICE_TYPE)
     except ValueError:
@@ -2960,6 +3046,7 @@ def _dcs_data_from_npz(npz_data):
         "barkas_charge_applied": bool(str(charge_mode) != "bare" or include_barkas_dcs),
         "barkas_charge_mode": str(charge_mode),
         "born_reference_charge": str(born_reference_charge),
+        "projectile_state_metadata": _projectile_state_from_npz(npz_data),
     }
 
 def _sigma_list_from_npz(npz_data):
@@ -3627,6 +3714,7 @@ def _init_dcs_worker(
     projectile_relativistic_dcs,
     include_transverse_dcs,
     rpwba_density_effect,
+    projectile_charge_state=None,
 ):
     global _DCS_WORKER_S, _DCS_WORKER_C
     global _DCS_WORKER_T_LINE, _DCS_WORKER_E_LINE, _DCS_WORKER_NQ
@@ -3639,6 +3727,7 @@ def _init_dcs_worker(
     )
     _set_mc_correction(apply_mc=apply_mc)
     set_projectile(projectile_key)
+    _set_projectile_charge_state(projectile_charge_state)
     _set_kshell_model(kshell_model)
     _set_projectile_relativistic_dcs(
         projectile_relativistic_dcs,
@@ -3776,6 +3865,10 @@ def write_emfietzoglou_dcs_tables(
         born_reference_charge = BORN_REFERENCE_CHARGE
     if born_reference_explicit_charge is None:
         born_reference_explicit_charge = BORN_REFERENCE_EXPLICIT_CHARGE
+    _validate_projectile_state_options(charge_mode, include_barkas_dcs, born_reference_charge)
+    state_metadata = _projectile_state_metadata()
+    if dcs_data is not None and dcs_data.get("projectile_state_metadata", {}) != state_metadata:
+        raise ValueError("Input DCS has missing or incompatible projectile-state provenance; regenerate it for the selected charge state.")
     mode_suffix = _projectile_kernel_tag() + _charge_mode_tag(
         charge_mode,
         include_barkas_dcs,
@@ -3804,6 +3897,7 @@ def write_emfietzoglou_dcs_tables(
         "kshell_model": KSHELL_MODEL,
     })
     table_metadata.update(_kshell_generation_metadata())
+    table_metadata.update(state_metadata)
     if merge_energy_patches:
         _check_energy_patch_normalization(exc_out, ion_out, table_metadata)
 
@@ -3888,6 +3982,7 @@ def write_emfietzoglou_dcs_tables(
                     PROJECTILE_RELATIVISTIC_DCS,
                     INCLUDE_TRANSVERSE_DCS,
                     RPWBA_DENSITY_EFFECT,
+                    PROJECTILE_CHARGE_STATE,
                 ),
             ) as ex:
                 futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
@@ -3918,6 +4013,7 @@ def write_emfietzoglou_dcs_tables(
             "E_line": E_line,
             "exc_vals": exc_vals,
             "ion_vals": ion_vals,
+            "projectile_state_metadata": state_metadata,
         }
 
     needs_charge_kernel = (str(charge_mode) != "bare") or bool(include_barkas_dcs)
@@ -4068,6 +4164,7 @@ def _init_worker(
     projectile_relativistic_dcs,
     include_transverse_dcs,
     rpwba_density_effect,
+    projectile_charge_state=None,
 ):
     """
     Runs once inside each worker process. Builds s and C once to avoid repeated pickling.
@@ -4082,6 +4179,7 @@ def _init_worker(
     )
     _set_mc_correction(apply_mc=apply_mc)
     set_projectile(projectile_key)
+    _set_projectile_charge_state(projectile_charge_state)
     _set_kshell_model(kshell_model)
     _set_projectile_relativistic_dcs(
         projectile_relativistic_dcs,
@@ -4140,6 +4238,8 @@ def main():
     )
     born_reference_charge = _born_reference_charge_from_argv(default="bare_Z")
     born_reference_explicit_charge = _born_reference_explicit_charge_from_argv(default=None)
+    _set_projectile_charge_state(_argv_value(("--charge-state",), default=None))
+    _validate_projectile_state_options(charge_mode, include_barkas_dcs, born_reference_charge)
     if charge_mode == "explicit" and explicit_charge is None:
         raise ValueError("--charge-mode explicit requires --explicit-charge.")
     if born_reference_charge == "explicit_q" and born_reference_explicit_charge is None:
@@ -4168,9 +4268,12 @@ def main():
     )
     print(
         f"Projectile: {PROJECTILE_LABEL} "
-        f"(key={PROJECTILE_KEY}, mass={PROJECTILE_MASS_AU:.6g} m_e, charge={PROJECTILE_CHARGE:.6g} e)"
+        f"(key={PROJECTILE_KEY}, mass={PROJECTILE_MASS_AU:.6g} m_e, nuclear Z={PROJECTILE_CHARGE:.6g})"
     )
     print(f"Include K-shell: {include_kshell}")
+    if PROJECTILE_DENSITY is not None:
+        print("Projectile screening: " + json.dumps(_projectile_state_metadata(), sort_keys=True))
+        print("WARNING: fixed spherical projectile density only; projectile excitation, stripping, capture, exchange, and dynamic polarization are not included. This is not a complete neutral-atom transport model.")
     print(f"K-shell model: {KSHELL_MODEL}")
     print(
         "Incident-energy grid: "
@@ -4204,11 +4307,12 @@ def main():
             "(1)-(4); medium transverse term from the author's 2025 thesis, "
             "Eq. (2.287), with epsilon_T approximated by epsilon_L."
         )
-        if PROJECTILE_KEY != "proton":
+        if PROJECTILE_KEY != "proton" or (PROJECTILE_DENSITY is not None and PROJECTILE_DENSITY.electrons):
             print(
                 "WARNING: Dominguez-Munoz et al. validated protons at "
-                "100-300 MeV; this projectile is a bare-ion first-Born "
-                "extrapolation at the calculated beta."
+                "100-300 MeV; this projectile is a first-Born extrapolation "
+                "at the calculated beta. Electron-bearing states additionally "
+                "use the Breit/static electric form-factor approximation."
             )
     print(f"Integration resolution: dE={NE}, dq={Nq}")
     print(f"Merge energy patches into DAT tables: {merge_energy_patches}")
@@ -4322,6 +4426,7 @@ def main():
                     PROJECTILE_RELATIVISTIC_DCS,
                     INCLUDE_TRANSVERSE_DCS,
                     RPWBA_DENSITY_EFFECT,
+                    PROJECTILE_CHARGE_STATE,
                 ),
         ) as ex:
             futures = [ex.submit(_compute_for_T, T) for T in T_list]
