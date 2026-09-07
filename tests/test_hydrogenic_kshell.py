@@ -6,11 +6,9 @@ import numpy as np
 import pytest
 from scipy.integrate import quad
 
-PHYSICS_DIR = Path(__file__).resolve().parents[1] / "python_scripts" / "physics_ice"
-sys.path.insert(0, str(PHYSICS_DIR))
-import emfietzoglou_model_finite_q as model
-import generate_ice_cross_sections_ion as generator
-import audit_finite_q_sum_rule as sum_rule_audit
+from physics.inelastic_dielectric.finite_q import emfietzoglou_model_finite_q as model
+from physics.inelastic_dielectric import generate_cross_sections as generator
+from physics.inelastic_dielectric.k_shell.benchmarking import audit_finite_q_sum_rule as sum_rule_audit
 
 H = model.OXYGEN_K_ZEFF**2 * model.RYD_ELECTRON_VOLT
 
@@ -148,10 +146,11 @@ def test_generator_uses_unscaled_gos_and_no_rolloff(monkeypatch, phase):
         1.736914215348305/10., rel=3e-6,
     )
 
-    def forbidden_rolloff(_):
+    def forbidden_rolloff(*_):
         raise AssertionError("Hydrogenic GOS must not use ELF rolloff")
 
-    monkeypatch.setattr(generator, "_elf_rolloff_factor", forbidden_rolloff)
+    from physics.inelastic_dielectric.pwba.kernels import PWBAKernel
+    monkeypatch.setattr(PWBAKernel, "_elf_rolloff_factor", forbidden_rolloff)
     assert generator._integrate_kshell_single_E(600., 1e7, s, Nq=80) > 0.
     C = model.default_dispersion_coefficients()
     assert generator._integrate_kshell_single_E_rel(600., 1e7, s, C, Nq=80) > 0.

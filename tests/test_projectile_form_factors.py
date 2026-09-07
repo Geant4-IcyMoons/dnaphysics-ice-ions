@@ -145,8 +145,8 @@ def test_screening_is_inside_integral_and_forbids_double_scaling(monkeypatch):
     for mode in ("zeff", "explicit"):
         with pytest.raises(ValueError, match="scalar"):
             gen._validate_projectile_state_options(mode, False)
-    with pytest.raises(ValueError, match="not been derived"):
-        gen._validate_projectile_state_options("bare", True)
+    gen._validate_projectile_state_options("bare", True)
+    assert gen._barkas_generation_metadata(True)["barkas_charge_state"] == 3
 
 
 @pytest.mark.parametrize("relativistic", [False, True])
@@ -231,7 +231,7 @@ def test_incomplete_cache_provenance_fails():
 def test_spawn_workers_preserve_multielectron_state(tmp_path, monkeypatch):
     import importlib
     # Use an importable module name for multiprocessing's spawn protocol.
-    worker_gen = importlib.import_module("generate_ice_cross_sections_ion")
+    worker_gen = importlib.import_module("physics.inelastic_dielectric.generate_cross_sections")
     worker_gen.set_projectile("C")
     worker_gen._set_projectile_charge_state(3)
     worker_gen._set_projectile_relativistic_dcs(True)

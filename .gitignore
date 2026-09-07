@@ -1,96 +1,27 @@
-# Build artifacts
-build/
-proton-pipeline/build/
-proton-pipeline/build-*/
-*.o
-*.o.d
-*.o[0-9]*
-*.e[0-9]*
-*.pyc
 __pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store
+*.o
 *.root
 
-# OS files
-.DS_Store
+# Generated figures, reports, tables, external builds, and scheduler logs
+physics/**/plots/
+physics/**/runs/
+physics/**/output/
+physics/**/logs/
+*.o[0-9]*
+*.e[0-9]*
 
-# Generated plots and diagnostics
-plots/
-python_scripts/physics_ice/output/*.png
-python_scripts/physics_ice/output/*.pdf
-python_scripts/physics_ice/output/cross_section_corrections_*.npz
-python_scripts/physics_ice/output/stopping_power_imfp_*.json
-python_scripts/physics_ice/cross-sections/
-python_scripts/physics_ice/*.png
-examples/**/outputs/*.png
-examples/**/outputs/*.pdf
-comparison_*.png
-rel_cross_sections_*.png
-total_cross_section_*.png
-cross_section_*.png
-corrected_*.png
-channel_cross_section_*.png
-stopping_power_*.png
-
-# CTMC scheduler logs and restart/debug artifacts
-*_ctmc.o*
-*_ctmc.e*
-pbs/logs/
-cross_sections/*_charge_exchange/*_ctmc_checkpoint*.npz
-cross_sections/*_charge_exchange/*_ctmc_failure*.json
-cross_sections/*_charge_exchange/.*.tmp*
-
-# Retain the final NLH production tables; exclude restart shards and test products.
-python_scripts/physics_ice/nep_mbpol/collision_kernels*/
-!python_scripts/physics_ice/nep_mbpol/collision_kernels/
-python_scripts/physics_ice/nep_mbpol/collision_kernels/*
-!python_scripts/physics_ice/nep_mbpol/collision_kernels/README.md
-!python_scripts/physics_ice/nep_mbpol/collision_kernels/nlh_collision_kernels.csv
-!python_scripts/physics_ice/nep_mbpol/collision_kernels/nlh_collision_kernels.manifest.json
-!python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/
-python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/*
-!python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/nlh_hard_elastic_C.dat
-!python_scripts/physics_ice/nep_mbpol/collision_kernels/geant4/nlh_hard_elastic_C.manifest.json
-
-# Restartable NLH trajectory products and scheduler logs.
-python_scripts/physics_ice/nep_mbpol/hard_collision_runs/
-nlh_hard.o*
-nlh_hard.e*
-nlh_adaptive.o*
-nlh_adaptive.e*
-nlh_H.o*
-nlh_H.e*
-nlh_He.o*
-nlh_He.e*
-nlh_C.o*
-nlh_C.e*
-nlh_O.o*
-nlh_O.e*
-nlh_S.o*
-nlh_S.e*
-
-# Restartable constrained-DFT tasks and scheduler logs. Compact, validated
-# potential tables may be promoted explicitly after the documented gates pass.
-python_scripts/physics_ice/nep_mbpol/soft_collision_dft_runs/
-python_scripts/physics_ice/process_evidence/**/benchmarking/runs/
-python_scripts/physics_ice/process_evidence/**/validation/runs/
-ion_cdft.o*
-ion_cdft.e*
-ion_cdft_adaptive.o*
-ion_cdft_adaptive.e*
-soft_*.o*
-soft_*.e*
-cp2k_install.o*
-cp2k_install.e*
-cp2k_scaling.o*
-cp2k_scaling.e*
-
-# Reproducibly installed external runtime image; never vendor the binary.
-software/cp2k/*.sif
-software/gpaw/env-*/
-software/gpaw/install-receipt/
-software/openmolcas/v*/
-openmolcas_*.o*
-openmolcas_*.e*
-
-# Signed workflow plans and their scheduler/local execution receipts.
-ion_ice_runs/
+# Local products retained from ion; these are not ion_modular branch content
+/python_scripts/
+/proton-pipeline/
+/cross_sections/
+/plots/
+/build/
+/software/
+/pbs/
+/tabular/
+/literature/
+/examples/

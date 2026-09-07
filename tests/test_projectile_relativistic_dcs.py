@@ -5,13 +5,14 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from physics.constants import C_AU, EH
 
 
 SCRIPT = (
     Path(__file__).resolve().parents[1]
-    / "python_scripts"
-    / "physics_ice"
-    / "generate_ice_cross_sections_ion.py"
+    / "physics"
+    / "inelastic_dielectric"
+    / "generate_cross_sections.py"
 )
 SPEC = importlib.util.spec_from_file_location(
     "generate_ice_cross_sections_ion_rel_test", SCRIPT
@@ -96,7 +97,7 @@ def test_finite_q_transverse_ratio_matches_dominguez_munoz_eq3() -> None:
     W_eV = 100.0
     beta2 = 0.2
     q_au = np.array([0.2, 0.5, 1.0, 2.0])
-    recoil_product = (MODULE.C_AU * MODULE.EH * q_au) ** 2
+    recoil_product = (C_AU * EH * q_au) ** 2
     longitudinal_factor = 2.0 * MODULE.MC2_eV / (W_eV * recoil_product)
     transverse_factor = (
         2.0
@@ -116,7 +117,7 @@ def test_density_corrected_ratio_matches_thesis_eq_2_287() -> None:
     q_au = np.array([0.2, 0.5, 1.0, 2.0])
     epsilon1 = np.array([1.8, 1.4, 1.1, 1.02])
     epsilon2 = np.array([0.8, 0.4, 0.15, 0.03])
-    recoil_product = (MODULE.C_AU * MODULE.EH * q_au) ** 2
+    recoil_product = (C_AU * EH * q_au) ** 2
     epsilon = epsilon1 + 1j * epsilon2
     medium_transverse_factor = (
         2.0 * MODULE.MC2_eV * W_eV * np.abs(epsilon)**2
@@ -139,7 +140,7 @@ def test_density_corrected_ratio_matches_thesis_eq_2_287() -> None:
 @pytest.mark.parametrize("W", [10.0, 100.0, 1000.0])
 @pytest.mark.parametrize("beta2", [0.001, 0.2, 0.9])
 def test_density_ratio_recovers_dilute_limit(W, beta2):
-    qmin = W / (MODULE.C_AU * MODULE.EH * np.sqrt(beta2))
+    qmin = W / (C_AU * EH * np.sqrt(beta2))
     q = qmin * np.geomspace(1.0, 1000.0, 100)
     vacuum = MODULE._rpwba_transverse_ratio(W, q, beta2)
     dilute = MODULE._rpwba_transverse_ratio(

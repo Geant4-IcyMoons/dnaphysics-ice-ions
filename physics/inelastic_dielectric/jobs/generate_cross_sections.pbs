@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#PBS -N dielectric_xs
+#PBS -l select=1:ncpus=10:mem=20gb
+#PBS -j oe
+
+# Submit from the repository root in the desired Python environment:
+# qsub -V -v ICE_TYPE=hexagonal,PROJECTILE=proton,RPWBA=true,POLARIZATION=true \
+#   physics/inelastic_dielectric/jobs/generate_cross_sections.pbs
+# Override resources with qsub -l. This script does not submit other jobs.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-${PBS_O_WORKDIR:-${SCRIPT_DIR}/../../..}}"
+cd "${REPO_ROOT}"
+export ICE_TYPE="${ICE_TYPE:-hexagonal}"
+export ICE_MAX_WORKERS="${ICE_MAX_WORKERS:-${PBS_NCPUS:-10}}"
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+cmd=("${PYTHON_BIN:-python}" -u -m physics.inelastic_dielectric.generate_cross_sections
+     --projectile "${PROJECTILE:-proton}"
+     --energy-min-MeV "${EMIN_MEV:-0.1}" --energy-max-MeV "${EMAX_MEV:-100}"
+     --energy-unit "${ENERGY_UNIT:-total}" --energy-points "${ENERGY_POINTS:-1000}"
+     --dE "${DE:-1000}" --dq "${DQ:-1000}"
+     --relativistic-projectile-dcs="${RPWBA:-false}"
+     --include-barkas-dcs="${POLARIZATION:-false}"
+     --kshell-model "${KSHELL_MODEL:-hydrogenic-gos}")
+if [[ -n "${CHARGE_STATE:-}" ]]; then
+    cmd+=(--charge-state "${CHARGE_STATE}")
+fi
+printf 'Command:'
+printf ' %q' "${cmd[@]}"
+printf '\n'
+exec "${cmd[@]}"

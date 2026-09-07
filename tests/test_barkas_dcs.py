@@ -6,13 +6,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-PHYSICS_ICE_DIR = Path(__file__).resolve().parents[1] / "python_scripts" / "physics_ice"
-if str(PHYSICS_ICE_DIR) not in sys.path:
-    sys.path.insert(0, str(PHYSICS_ICE_DIR))
 
-import barkas_dcs
-import emfietzoglou_model_finite_q as model
-import generate_ice_cross_sections_ion as ion_generator
+from physics.inelastic_dielectric.polarization import barkas_dcs as barkas_dcs
+from physics.inelastic_dielectric.finite_q import emfietzoglou_model_finite_q as model
+from physics.inelastic_dielectric import generate_cross_sections as ion_generator
 
 
 def test_barkas_constants():
