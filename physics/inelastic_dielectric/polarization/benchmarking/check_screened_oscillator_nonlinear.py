@@ -41,7 +41,7 @@ from scipy.integrate import cumulative_simpson, quad, solve_ivp
 from scipy.interpolate import CubicSpline
 
 PHYSICS_ROOT = Path(__file__).resolve().parents[3]
-from physics.constants import (AASTEX_FULL_WIDTH_IN, CROSS_SECTION_PLOTS_DIR, FONT_COURIER,
+from physics.constants import (AASTEX_FULL_WIDTH_IN, FONT_COURIER,
                        PAPER_FONTSIZE, RC_BASE_ELASTIC, THREE_PANEL_ROW_HEIGHT_IN,
                        rcparams_with_fontsize)
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import DATA_PATH, DEFAULT_WORKERS, ELEMENTS, load_density

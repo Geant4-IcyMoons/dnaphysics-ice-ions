@@ -36,8 +36,10 @@ or arbitrary projectile energies is claimed.
 
 The screened-oscillator precedent is [Schinner and Sigmund (2000),
 NIMB 164-165, 220-229](https://doi.org/10.1016/S0168-583X(99)01181-7).
-The accessible abstract and section excerpts establish the approach, but
-its full derivation was not available for a literal implementation.
+The original implementation used the accessible abstract and section excerpts.
+The full paper has since been supplied and read. Its close-collision treatment
+is now examined separately in [CLOSE_COLLISIONS.md](CLOSE_COLLISIONS.md);
+this does not retroactively validate the original screened extension.
 The equations below are an explicit generalization of the accessible
 [Salvat (2022), PRA 106, 032809, Eqs. (91)-(100)](https://doi.org/10.1103/PhysRevA.106.032809).
 Do not describe this code as a verified port of Schinner and Sigmund.
@@ -201,7 +203,7 @@ Reports, code hashes, settings and the plot are stored in
 `physics/inelastic_dielectric/polarization/benchmarking/plots/nonlinear_oscillator/`.
 
 This is an independent numerical verification of the screened oscillator
-kernel across the requested states. It does not reproduce the unavailable
+kernel across the requested states. It does not reproduce the
 Schinner-Sigmund curves, validate screened relativity, or establish the conversion
 from oscillator stopping integrand to finite-q ice DCS. The production
 generator and its rejection rules are unchanged.

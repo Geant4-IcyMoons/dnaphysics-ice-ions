@@ -24,7 +24,7 @@ import numpy as np
 
 from physics.inelastic_dielectric.polarization import barkas_dcs
 from physics.inelastic_dielectric.finite_q import emfietzoglou_model_finite_q as model
-from physics.constants import CROSS_SECTION_PLOTS_DIR, PROJECTILE_LIBRARY, RC_BASE_ELASTIC, rcparams_with_fontsize
+from physics.constants import PROJECTILE_LIBRARY, RC_BASE_ELASTIC, rcparams_with_fontsize
 
 
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "plots/dcs_diagnostics"

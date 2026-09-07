@@ -27,7 +27,7 @@ v=5 atomic units have |cubic/leading| >= 1. Successful derivative extraction
 does not establish that a perturbative truncation is accurate there.
 
 This checks the screened oscillator calculation, not its ice-DCS
-interpretation, screened relativistic extension, or unavailable
+interpretation, screened relativistic extension, or the
 Schinner-Sigmund reference curves. No ICRU or Matias comparison is performed.
 Outputs, settings and source/data checksums are under
 `physics/inelastic_dielectric/polarization/benchmarking/plots/nonlinear_oscillator/`.
@@ -79,6 +79,12 @@ keeps formula parity separate from differences in the target optical data.
 
 Primary reference: Salvat and Quesada, SBETHE v2 dataset,
 <https://data.mendeley.com/datasets/7zw25f428t/2>.
+
+`compare_close_collisions.py` compares the existing cutoff with an explicitly
+adapted Section 4 close/distant matching prescription. It retains the same
+screened forces and ice OOS in both, at common nonrelativistic kinematics.
+See [derivation and limitations](../CLOSE_COLLISIONS.md). The generator is
+unchanged; numerical PASS is not acceptance of the matched approximation.
 
 Run from the repository root:
 
