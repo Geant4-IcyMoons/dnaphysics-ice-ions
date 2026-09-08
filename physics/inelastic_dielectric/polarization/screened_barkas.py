@@ -14,18 +14,16 @@ SCREENED_BARKAS.md for equations, relativistic prescription and limitations.
 """
 
 from concurrent.futures import ProcessPoolExecutor
-from functools import lru_cache
 from multiprocessing import get_context
 
 import numpy as np
-from numpy.polynomial.legendre import leggauss
-from scipy.integrate import cumulative_simpson, simpson
 
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import DEFAULT_WORKERS, load_density
+from physics.inelastic_dielectric.polarization import oscillator_quadrature
 
 MODEL = "frozen-screened-optical-oscillator-v1"
 REFERENCE_DOI = "10.1016/S0168-583X(99)01181-7"
-QUADRATURE_RTOL = 0.01
+QUADRATURE_RTOL = oscillator_quadrature.RELATIVE_TOLERANCE
 
 
 def metadata(density):
@@ -41,113 +39,38 @@ def metadata(density):
         "barkas_charge_state": density.charge,
         "barkas_CB": 1.0,
         "barkas_quadrature_rtol": QUADRATURE_RTOL,
+        "barkas_quadrature_method": oscillator_quadrature.VERSION,
         "barkas_experimental_validation": False,
         "barkas_status": "experimental-optical-spectral-mapping",
         "barkas_finite_q_target_matching_validated": False,
     }
 
 
-def _impulse_products(x, b_bohr, density, n_time, tail_cycles):
-    """Return Px*Dx and Pz*Dz for an oscillator, without charge rescaling.
-
-    tau=gamma*v*t/b; h=sqrt(1+tau^2); f=(g/h^3,tau*g/h^3).
-    Y''+x^2 Y=f, with retarded initial conditions. Parity selects Yx-even
-    and Yz-odd in the final energy. Integrating these parts directly avoids
-    subtracting large causal homogeneous oscillations at small x.
-    """
-    x, b = np.broadcast_arrays(np.atleast_1d(x), np.atleast_1d(b_bohr))
-    u = np.linspace(0., 1., n_time)
-    end = np.maximum(256., tail_cycles/x)
-    logend = np.log1p(end)[:, None]
-    t = np.expm1(logend*u)
-    jac = logend*(1+t)
-    h = np.hypot(1., t)
-    g, rgprime = density.radial_charge(b[:, None]*h)
-    fx, fz = g/h**3, t*g/h**3
-    # rgprime is r*g'(r). Every derivative of the screening charge is kept.
-    a = ((2-t*t)*g-rgprime)/h**5
-    c = ((2*t*t-1)*g-t*t*rgprime)/h**5
-    d = t*(3*g-rgprime)/h**5
-    phase = x[:, None]*t
-    sn, cs = np.sin(phase), np.cos(phase)
-
-    def cumulative(v):
-        return cumulative_simpson(v*jac, x=u, axis=1, initial=0.)
-
-    def tail(v):
-        return cumulative_simpson((v*jac)[:, ::-1], x=-u[::-1],
-                                  axis=1, initial=0.)[:, ::-1]
-
-    yx = (sn*cumulative(fx*cs)+cs*tail(fx*sn))/x[:, None]
-    yz = (-sn*tail(fz*cs)-cs*cumulative(fz*sn))/x[:, None]
-    px = 2*simpson(fx*cs*jac, x=u, axis=1)
-    pz = 2*simpson(fz*sn*jac, x=u, axis=1)
-    dx = 2*simpson(cs*(a*yx+d*yz)*jac, x=u, axis=1)
-    dz = 2*simpson(sn*(d*yx+c*yz)*jac, x=u, axis=1)
-    return px*dx, pz*dz
-
-
-@lru_cache(maxsize=8)
-def _legendre(n):
-    return leggauss(n)
-
-
-def oscillator_kernel(W_eV, beta, gamma, density, *, n_impact=64,
-                      n_time=2049, tail_cycles=32.):
-    """Dimensionless screened replacement for Z^3 [I1+I2/gamma^2].
-
-    Atomic units use Eh=alpha^2*mec^2, a0=r_e/alpha^2, consistently with
-    the Salvat constants, without changing the Born generator constants.
-    a=0.5616*C_B/v, C_B=1; x=W*b/(gamma*v*Eh). The x integral is
-    (1/2) integral (Px*Dx+Pz*Dz/gamma^2)/x^2 dx from xi to infinity.
-    x=50 is the existing SBETHE numerical exponential-tail boundary.
-    """
+def converged_kernel(W_eV, beta, gamma, density, *, return_diagnostics=False):
+    """Adaptive impact integration with independent time and tail checks."""
     from physics.inelastic_dielectric.polarization import barkas_dcs as bd
-    w = np.atleast_1d(np.asarray(W_eV, float))
+    w = np.asarray(W_eV, float)
     if np.any(~np.isfinite(w)) or np.any(w <= 0):
         raise ValueError("Oscillator losses must be finite and positive, in eV.")
-    if not (np.isfinite(beta) and 0 < beta < 1 and np.isfinite(gamma) and gamma >= 1):
-        raise ValueError("Invalid projectile beta/gamma.")
-    if not np.isclose(gamma, 1/np.sqrt(1-beta*beta), rtol=1e-12):
-        raise ValueError("Inconsistent projectile beta/gamma.")
-    if n_time < 5 or n_time % 2 != 1 or n_impact < 4 or tail_cycles <= 0:
-        raise ValueError("Invalid oscillator quadrature settings.")
+    if not (np.isfinite(beta) and 0 < beta < 1 and np.isfinite(gamma) and gamma >= 1
+            and np.isclose(gamma, 1/np.sqrt(1-beta*beta), rtol=1e-12)):
+        raise ValueError("Invalid or inconsistent projectile beta/gamma.")
     v = beta/bd.ALPHA_FINE
     omega = w/(bd.ALPHA_FINE**2*bd.MEC2_EV)
-    xi = 0.5616*bd.H2O_CB*omega/(gamma*v*v)
-    out = np.zeros_like(w)
-    nodes, weights = _legendre(n_impact)
-    for j in np.flatnonzero(xi < 50.):
-        span = np.log(50./xi[j])
-        x = xi[j]*np.exp((nodes+1)*span/2)
-        b = x*gamma*v/omega[j]
-        px, pz = _impulse_products(x, b, density, n_time, tail_cycles)
-        out[j] = span/4*np.sum(weights*(px+pz/gamma**2)/x)
-    if np.any(~np.isfinite(out)):
-        raise FloatingPointError("Nonfinite screened oscillator correction.")
-    return out
-
-
-def converged_kernel(W_eV, beta, gamma, density):
-    """Refine the correction itself; never use the larger Born term as a floor."""
-    w = np.asarray(W_eV, float)
-    low = oscillator_kernel(w, beta, gamma, density)
-    high = oscillator_kernel(w, beta, gamma, density, n_impact=96, n_time=4097,
-                             tail_cycles=64.)
-    error = np.abs(high-low)
-    tolerance = QUADRATURE_RTOL*np.abs(high)+1e-10*density.z**3
-    bad = error > tolerance
-    if np.any(bad):
-        refined = oscillator_kernel(w[bad], beta, gamma, density, n_impact=144,
-                                    n_time=8193, tail_cycles=128.)
-        error[bad] = np.abs(refined-high[bad])
-        high[bad] = refined
-        tolerance = QUADRATURE_RTOL*np.abs(high)+1e-10*density.z**3
-    bad = error > tolerance
-    if np.any(bad):
-        raise RuntimeError("Screened Barkas quadrature did not converge at W/eV="
-                           + repr(w[bad].tolist())+"; no tables were exported.")
-    return high, error
+    xi = .5616*bd.H2O_CB*omega/(gamma*v*v)
+    result, error, diagnostics = np.empty_like(w), np.empty_like(w), []
+    for idx in np.ndindex(w.shape):
+        try:
+            result[idx], error[idx], row = oscillator_quadrature.integrate_kernel(
+                float(xi[idx]), float(gamma*v/omega[idx]), float(gamma), density,
+                rtol=QUADRATURE_RTOL)
+        except RuntimeError as exc:
+            raise RuntimeError(f"Screened Barkas quadrature did not converge at "
+                               f"W/eV={w[idx]:g}, beta={beta:g}: {exc}") from exc
+        diagnostics.append(dict(W_eV=float(w[idx]), **row))
+    if return_diagnostics:
+        return result, error, diagnostics
+    return result, error
 
 
 def _energy_row(task):

@@ -45,8 +45,7 @@ def test_independent_point_field_recovers_salvat_integral(beta):
     gamma = 1/np.sqrt(1-beta*beta)
     xi = np.array([1e-5, .001, .1, 1.])
     w = xi*gamma*beta*beta*bd.MEC2_EV/.5616
-    actual = sb.oscillator_kernel(w, beta, gamma, load_density("H", 1),
-                                 n_impact=144, n_time=8193, tail_cycles=128.)
+    actual, _ = sb.converged_kernel(w, beta, gamma, load_density("H", 1))
     expected = bd.arbi1(xi)+bd.arbi2(xi)/gamma**2
     # SBETHE itself is a piecewise fit with a quoted 0.1% tolerance.
     np.testing.assert_allclose(actual, expected, rtol=.001)
@@ -60,9 +59,9 @@ def test_force_gradient_is_cubic_not_effective_charge_squared():
         def radial_charge(self, r):
             return tuple(self.scale*v for v in density.radial_charge(r))
     args = (np.array([.001, .1, 1.]), np.array([.02, .2, 2.]))
-    baseline = sb._impulse_products(*args, density, 2049, 32.)
+    baseline = sb.oscillator_quadrature.impulse_products(*args, density)
     for scale in (-1., 2.):
-        actual = sb._impulse_products(*args, ScaledField(scale), 2049, 32.)
+        actual = sb.oscillator_quadrature.impulse_products(*args, ScaledField(scale))
         np.testing.assert_allclose(actual, np.asarray(baseline)*scale**3, rtol=1e-10, atol=1e-13)
 
 
@@ -180,13 +179,11 @@ def test_generator_exports_corrected_totals_and_metadata(tmp_path, monkeypatch, 
 
 
 def test_unconverged_kernel_and_uncontrolled_correction_fail(monkeypatch):
-    count = [0]
-    def inconsistent(w, *args, **kwargs):
-        count[0] += 1
-        return np.full_like(w, float(count[0]))
-    monkeypatch.setattr(sb, "oscillator_kernel", inconsistent)
+    def inconsistent(*args, **kwargs):
+        raise RuntimeError("independent quadrature error exceeds tolerance")
+    monkeypatch.setattr(sb.oscillator_quadrature, "integrate_kernel", inconsistent)
     with pytest.raises(RuntimeError, match="did not converge"):
-        sb.converged_kernel(np.array([10.]), .1, 1.01, load_density("H", 0))
+        sb.converged_kernel(np.array([10.]), .1, 1/np.sqrt(.99), load_density("H", 0))
     monkeypatch.setattr(sb, "dcs_m2_per_eV", lambda *a, **k: (np.ones(2), np.zeros(2)))
     data = dict(T_line=np.array([1e6]*2), E_line=np.array([10., 20.]),
                 exc_vals=np.full((2, 1), 1e-20), ion_vals=np.full((2, 1), 1e-20))

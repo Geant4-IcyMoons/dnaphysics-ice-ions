@@ -184,8 +184,8 @@ The test uses eta=(0.04, 0.02, 0.01)/Z with both signs and two overlapping
 Richardson extrapolations in eta^2. Z sets only the numerical derivative
 step; it is not an effective-charge adjustment. DOP853 uses nominal/tight
 relative tolerances 2e-11/2e-12; the incoming/outgoing time bounds are doubled
-for every test case. The implemented impulse kernel is evaluated on 8193
-and 16385 time nodes, with tail settings 128 and 256. The zero-coupling
+for every test case. The implemented impulse kernel uses phase-panel
+orders 12 and 16, with window parameters 128 and 256. The zero-coupling
 energy is also checked against independent Fourier-force quadrature to
 infinite time.
 
@@ -193,7 +193,8 @@ For each state, b/r_rms=(0.2, 1, 2) and x=(0.1, 0.3, 1), where r_rms is the
 RMS electron radius. Bare states use an arbitrary geometric scale of 1 bohr.
 These 342 encounters resolve the interior and exterior of the frozen cloud;
 they are not a scan of physical projectile energies or an ice target spectrum.
-All pass the preassigned 0.1% relative tolerance for every check. Maximum
+In the original stored audit, all passed the preassigned 0.1% relative
+tolerance for every check. Its maximum
 difference between the extrapolated nonlinear coefficient and the refined
 implemented kernel is 0.00240%; the largest refinement change is 0.00824%.
 Independent field normalization and bare Salvat tests also pass for all
@@ -201,6 +202,9 @@ states. The maximum bare-kernel discrepancy is 0.06442%, within the 0.1%
 SBETHE representation tolerance, at beta=0.01 and 0.4.
 Reports, code hashes, settings and the plot are stored in
 `physics/inelastic_dielectric/polarization/benchmarking/plots/nonlinear_oscillator/`.
+Those stored results predate removal of the fixed-grid integrator; their
+provenance is retained rather than relabelled. A fresh run checks the
+current phase-panel implementation against the same independent ODE.
 
 This is an independent numerical verification of the screened oscillator
 kernel across the requested states. It does not reproduce the
@@ -224,15 +228,53 @@ The tests distinguish mathematical checks, successful limited table exports,
 and the named physical rejections above. Passing the rejection tests must not
 be reported as successful physical validation for those states.
 
-The numerical calculation uses deterministic Gauss-Legendre impact quadrature
-and parity-resolved retarded time integrals. It compares 64/96 impact nodes,
-2049/4097 time nodes and 32/64 tail lengths, refining failing entries to
-144/8193/128. The acceptance tolerance is 1% of the correction plus an
-absolute dimensionless roundoff floor 1e-10*Z^3, not a fraction of Born.
-This is an estimated refinement error, not a rigorous bound. The maximum
-x=50 follows the exponentially small SBETHE tail. Full bare states use
-the existing analytic SBETHE path exactly. Distinct incident energies use
-up to the requested worker count, default 10, with deterministic ordering.
+The production integrator is `oscillator_quadrature.py`. Adaptive
+Gauss-Kronrod quadrature resolves the impact integral in log(x). Time panels
+are split both logarithmically around the encounter and by oscillator phase,
+with at most pi phase advance per panel. Gauss-Legendre polynomial
+antiderivatives evaluate the parity-resolved displacements at quadrature
+nodes. Prefix and tail sums are accumulated in their respective directions;
+there is no subtraction of two large global prefix sums.
+
+Each impact evaluation compares polynomial orders at a fixed time window,
+then doubles the window at fixed order. Windows end at complete oscillator
+cycles to reduce phase-dependent truncation error. Absolute local time and
+tail differences are integrated separately, so opposite signed errors cannot
+cancel. Their sum plus the adaptive impact error must be below 0.01% of the
+correction plus the existing dimensionless floor 1e-10*Z^3. The Born DCS is
+not used as an error floor. These are numerical error estimates, not rigorous
+bounds or estimates of physical model uncertainty. Unresolved integrals
+still fail rather than falling back to the older method.
+
+There is one oscillator integrator for generation and benchmarks. The
+obsolete fixed-grid implementation has been removed. Independent checks
+remain the nonlinear ODE solver and the Salvat point-charge formulas.
+The existing maximum x=50,
+Salvat lower impact cutoff, physical velocity restriction, and correction
+versus Born guard are unchanged. Full bare states use the existing analytic
+SBETHE path exactly. Distinct incident energies use the requested worker
+count, default 10, with deterministic ordering.
+
+`barkas_quadrature_method` and `barkas_quadrature_rtol` identify the upgraded
+numerics in screened-table metadata. Old screened-correction caches must be
+regenerated before combining energy patches. No existing products are
+rewritten, and correction-off or bare Salvat tables are not invalidated by
+this numerical upgrade.
+
+Retest the representative H/He campaign using the production adaptive
+calculation and evaluating both phases and both PWBA/RPWBA baselines:
+
+```bash
+python -m physics.inelastic_dielectric.polarization.benchmarking.check_integration_failures --workers 10 --dq 1000
+python -m pytest -q tests/test_oscillator_quadrature.py tests/test_screened_barkas.py
+```
+
+The report in `benchmarking/runs/integration/integration_report.json` retains
+individual loss nodes, all three numerical error estimates, the computed
+kernels, physical acceptance failures, timings, and source/data hashes.
+It samples 0.1, 0.3, 1, 3, 10, 30, 40, and 100 MeV **total** energy. It is
+not a complete production-grid or experimental validation, and no DCS/TCS
+tables are exported by this benchmark.
 
 Experimental generation retains the existing CLI:
 

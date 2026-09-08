@@ -16,7 +16,7 @@ from scipy.optimize import brentq
 from scipy.special import gamma
 
 from . import barkas_dcs as bd
-from . import screened_barkas as screened
+from . import oscillator_quadrature as quadrature_module
 
 MODEL = "oscillator-induced-potential-matching-nonrel-v1"
 HARTREE_EV = bd.ALPHA_FINE**2 * bd.MEC2_EV
@@ -25,9 +25,10 @@ BOHR_CM = bd.RE_CLASSICAL_CM / bd.ALPHA_FINE**2
 
 @dataclass(frozen=True)
 class Quadrature:
-    impact: int = 64
-    time: int = 2049
-    tail: float = 32.0
+    potential: int = 128
+    time_order: int = 12
+    extent: float = 64.0
+    rtol: float = 1e-3
     search: int = 49
 
 
@@ -57,7 +58,7 @@ def induced_shift(kappa, density, *, order=192):
         return 0.0
     if density.electrons == 0:
         return np.pi * density.z * kappa / 2
-    nodes, weights = screened._legendre(order)
+    nodes, weights = quadrature_module.legendre_rule(order)
     # Neutral shifts can be dominated by a narrow t~kappa*r_cloud region.
     # Logarithmic panels resolve it without subtracting a bare Z*kappa term.
     edges = np.r_[0., np.geomspace(1e-10, 1., 11)]
@@ -89,8 +90,9 @@ def close_transfer(b, velocity, z, shift):
 
 def _products(b, omega, velocity, density, quadrature):
     b = np.atleast_1d(np.asarray(b, float))
-    px, pz = screened._impulse_products(omega*b/velocity, b, density,
-                                      quadrature.time, quadrature.tail)
+    px, pz = quadrature_module.impulse_products(
+        omega*b/velocity, b, density, order=quadrature.time_order,
+        extent=quadrature.extent)
     return px + pz
 
 
@@ -104,16 +106,14 @@ def _distant_integral(lower_x, omega, velocity, density, quadrature):
     """Dimensionless K=(1/2) integral products/x^2 dx above lower_x."""
     if lower_x >= 50:
         raise ValueError("Matching radius lies outside the resolved oscillator domain.")
-    nodes, weights = screened._legendre(quadrature.impact)
-    span = np.log(50/lower_x)
-    x = lower_x * np.exp((nodes + 1)*span/2)
-    products = _products(x*velocity/omega, omega, velocity, density, quadrature)
-    return float(span/4 * np.dot(weights, products/x))
+    value, _, _ = quadrature_module.integrate_kernel(
+        lower_x, velocity/omega, 1., density, rtol=quadrature.rtol)
+    return value
 
 
 def _evaluate(loss_eV, velocity, density, quadrature):
     omega = loss_eV/HARTREE_EV
-    shift = induced_shift(omega/velocity, density, order=2*quadrature.impact)
+    shift = induced_shift(omega/velocity, density, order=quadrature.potential)
     b90 = density.z/velocity**2
     # Enclose the small-p and adiabatic limits; do not prescribe a crossover.
     lower = min(1e-5, omega*b90/velocity*1e-3)
@@ -169,7 +169,8 @@ def compare_kernels(loss_eV, velocity_au, density, *, rtol=0.005):
         raise ValueError("Require positive loss and velocity above one Bohr velocity.")
     if not np.isfinite(rtol) or rtol <= 0:
         raise ValueError("rtol must be positive.")
-    settings = (Quadrature(), Quadrature(96, 4097, 64, 65), Quadrature(144, 8193, 128, 81))
+    settings = (Quadrature(), Quadrature(192, 16, 128., 5e-4, 65),
+                Quadrature(288, 20, 256., 1e-4, 81))
     previous = _evaluate(loss_eV, velocity_au, density, settings[0])
     keys = ("K_cutoff", "K_matched", "K_close", "K_distant", "induced_shift_Ha", "b_match_a0")
     for level, setting in enumerate(settings[1:], start=1):
@@ -177,7 +178,8 @@ def compare_kernels(loss_eV, velocity_au, density, *, rtol=0.005):
         errors = {key: abs(current[key]-previous[key])/max(abs(current[key]), 1e-100) for key in keys}
         if max(errors.values()) <= rtol:
             current.update(refinement_level=level, relative_refinement=errors,
-                           quadrature_rtol=rtol, numerical_convergence=True)
+                           quadrature_rtol=rtol, numerical_convergence=True,
+                           quadrature_method=quadrature_module.VERSION)
             fraction = 2*(current["static_core_offset_Ha"]+current["induced_shift_Ha"])/velocity_au**2
             current["shift_over_incident_electron_energy"] = fraction
             current["positive_effective_close_energy"] = bool(fraction < 1)

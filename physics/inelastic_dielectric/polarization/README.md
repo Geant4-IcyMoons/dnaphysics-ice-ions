@@ -6,6 +6,8 @@ Production generation uses two implementations:
   OOS normalization, charge scaling, final-DCS assembly, and diagnostics.
 - `screened_barkas.py`: the frozen-projectile nonlinear-oscillator
   approximation for electron-bearing states. See [equations and limits](SCREENED_BARKAS.md).
+- `oscillator_quadrature.py`: phase-resolved time integration, adaptive
+  impact quadrature, and separate numerical error estimates for that model.
 
 The umbrella name is **polarization**, not a claim that the screened formula
 is an established Barkas correction for every ion or neutral atom. Bare
@@ -32,6 +34,7 @@ python -m physics.inelastic_dielectric.polarization.benchmarking.check_screened_
 python -m physics.inelastic_dielectric.polarization.benchmarking.compare_screened_barkas_point_projectiles --projectile proton --workers 10
 python -m physics.inelastic_dielectric.polarization.benchmarking.compare_screened_barkas_point_projectiles --projectile alpha --workers 10
 python -m physics.inelastic_dielectric.polarization.benchmarking.compare_close_collisions --workers 10
+python -m physics.inelastic_dielectric.polarization.benchmarking.check_integration_failures --workers 10 --dq 1000
 python -m physics.inelastic_dielectric.polarization.benchmarking.benchmark_barkas_sbethe
 ```
 
@@ -41,6 +44,8 @@ use `benchmarking/plots/point_proton/` and `point_alpha/`. SBETHE output uses
 `benchmarking/plots/sbethe_v2/`; its downloaded Fortran/build work is separate
 under `benchmarking/runs/`. The experimental matching comparison uses
 `benchmarking/plots/close_collisions/`. Plots and generated reports are Git-ignored.
+The integration-failure audit writes its numerical-only report under
+`benchmarking/runs/integration/`; it creates no plots or production tables.
 
 `--plot-only` requires an existing report and does not run a numerical
 benchmark or rewrite its original provenance. A fresh clone must first run

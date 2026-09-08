@@ -9,7 +9,7 @@ Gauss-law fields are independently integrated from the same frozen densities.
 Solve for y=u/eta to retain accuracy at small eta. The final scaled energy
 H(eta)=(|y'|^2+x^2*|y|^2)/2 gives E=eta^2*H. Hence
 [H(eta)-H(-eta)]/(2*eta) tends to the cubic energy coefficient, which
-must equal Px*Dx+Pz*Dz from screened_barkas._impulse_products at gamma=1.
+must equal Px*Dx+Pz*Dz from oscillator_quadrature.impulse_products at gamma=1.
 No derivative of the projectile field enters this independent ODE solver.
 
 The oscillator is the same approximation as in SCREENED_BARKAS.md. This
@@ -47,6 +47,7 @@ from physics.constants import (AASTEX_FULL_WIDTH_IN, FONT_COURIER,
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import DATA_PATH, DEFAULT_WORKERS, ELEMENTS, load_density
 from physics.inelastic_dielectric.polarization import barkas_dcs as bd
 from physics.inelastic_dielectric.polarization import screened_barkas as sb
+from physics.inelastic_dielectric.polarization import oscillator_quadrature as oq
 
 IMPACT_RADIUS_RATIOS = (.2, 1., 2.)
 FREQUENCIES_X = (.1, .3, 1.)
@@ -190,8 +191,8 @@ def check_case(case):
     tight = extracted_cubic(x, b, field, rtol=2e-12)
     extended = extracted_cubic(x, b, field, rtol=2e-12, tail=128.)
     field_check = extracted_cubic(x, b, field_refined, rtol=2e-12, tail=128.)
-    products = sb._impulse_products(np.array([x]), np.array([b]), density, 8193, 128.)
-    refined = sb._impulse_products(np.array([x]), np.array([b]), density, 16385, 256.)
+    products = oq.impulse_products([x], [b], density, order=12, extent=128.)
+    refined = oq.impulse_products([x], [b], density, order=16, extent=256.)
     kernel = float(refined[0][0]+refined[1][0])
     kernel_coarse = float(products[0][0]+products[1][0])
     linear = nonlinear_energy(x, b, 0., field_refined, rtol=2e-12, tail=128.)
@@ -248,8 +249,7 @@ def check_state(state):
             gamma = 1/np.sqrt(1-beta*beta)
             xi = np.array([1e-5, .001, .1, 1.])
             w = xi*gamma*beta*beta*bd.MEC2_EV/.5616
-            actual = sb.oscillator_kernel(w, beta, gamma, d,
-                n_impact=144, n_time=8193, tail_cycles=128.)
+            actual, _ = sb.converged_kernel(w, beta, gamma, d)
             expected = d.z**3*(bd.arbi1(xi)+bd.arbi2(xi)/gamma**2)
             bare_checks.append(dict(beta=beta, xi=xi.tolist(),
                 max_relative_error=float(np.max(np.abs(actual/expected-1)))))
@@ -415,6 +415,7 @@ def main():
             print(f"{row['element']}:{row['charge']}, b/r={row['b_over_radius']:g}, "
                   f"x={row['x']:g}: {row['status']}, {message}", flush=True)
     sources = [Path(__file__), PHYSICS_ROOT/"inelastic_dielectric/polarization/screened_barkas.py",
+               Path(oq.__file__),
                PHYSICS_ROOT/"inelastic_dielectric/projectile_potentials/projectile_form_factors.py", PHYSICS_ROOT/"constants.py",
                PHYSICS_ROOT/"inelastic_dielectric/polarization/barkas_dcs.py",
                PHYSICS_ROOT/"inelastic_dielectric/k_shell/hydrogenic.py", DATA_PATH]
@@ -437,7 +438,8 @@ def main():
                   ode_method="scipy.integrate.solve_ivp DOP853", ode_max_step_asinh_tau=.1,
                   ode_nominal_rtol=2e-11, ode_tight_rtol=2e-12, ode_atol_over_rtol=.01,
                   ode_extent="tail*max(4,1/x)", ode_tail_parameters=[64., 128.],
-                  kernel_comparison_settings=[[8193, 128.], [16385, 256.]],
+                  kernel_quadrature_method=oq.VERSION,
+                  kernel_comparison_settings=[dict(order=12, extent=128.), dict(order=16, extent=256.)],
                   workers=min(args.workers, len(cases)),
                   software_versions=dict(python=platform.python_version(), numpy=np.__version__, scipy=scipy.__version__),
                   physical_ratio_speed_au=RATIO_DIAGNOSTIC_SPEED_AU,

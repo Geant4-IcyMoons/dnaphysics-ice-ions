@@ -5,6 +5,11 @@ cutoff are unchanged. The alternative reuses our atomic densities, screened
 force-gradient kernel, and phase-specific ice optical oscillator strengths.
 It is not a newly validated ice DCS model.
 
+The force-gradient and distant-impact integrals use the shared
+`oscillator_quadrature.py` backend. Crossover searches refine phase-panel
+order and time extent; distant integrals use adaptive Gauss-Kronrod error
+control. There is no retained fixed-grid oscillator backend.
+
 ## Published source and adaptation
 
 Schinner and Sigmund, NIMB 164-165 (2000), 220-229, Section 4,

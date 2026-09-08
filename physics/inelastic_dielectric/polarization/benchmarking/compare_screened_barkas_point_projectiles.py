@@ -25,13 +25,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 import numpy as np
-from numpy.polynomial.legendre import leggauss
 from scipy.interpolate import PchipInterpolator
 from tqdm import tqdm
 
 PHYSICS_ROOT = Path(__file__).resolve().parents[3]
 from physics.inelastic_dielectric.polarization import barkas_dcs as bd
-from physics.inelastic_dielectric.polarization import screened_barkas as sb
+from physics.inelastic_dielectric.polarization import oscillator_quadrature as oq
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import DEFAULT_WORKERS, load_density
 from physics.constants import (AVOGADRO, H2O_MOLAR_MASS_G_MOL, PROJECTILE_LIBRARY,
                        AASTEX_FULL_WIDTH_IN, PAPER_FONTSIZE, FONT_COURIER,
@@ -41,21 +40,13 @@ ENERGIES_MEV = np.array([.1, .3, 1., 3., 10., 30., 100.])
 PHASES = ("amorphous", "hexagonal")
 
 
-def _components(xi, n_impact, n_time, tail, projectile):
-    nodes, weights = leggauss(n_impact)
-    span = np.log(50./xi)
-    x = xi*np.exp((nodes+1)*span/2)
-    # b is immaterial for a point charge, but no analytic ARBI is called.
+def _components(xi, projectile):
+    # b_per_x is immaterial for a point charge; no analytic ARBI is called.
     config = PROJECTILE_LIBRARY[projectile]
     density = load_density(config["element"], int(config["charge"]))
-    px, pz = sb._impulse_products(x, np.ones_like(x), density, n_time, tail)
-    return span/4*np.array([np.sum(weights*px/x), np.sum(weights*pz/x)])
-
-
-def _node(xi, projectile):
-    low = _components(xi, 96, 4097, 64., projectile)
-    high = _components(xi, 144, 8193, 128., projectile)
-    return high, np.abs(high-low)
+    evaluated = [oq.integrate_kernel(xi, 1., 1., density, component=j)
+                 for j in range(2)]
+    return np.array([r[0] for r in evaluated]), np.array([r[1] for r in evaluated])
 
 
 def _row(energy, phase, interpolators, points, projectile):
@@ -175,7 +166,7 @@ def main():
     hi = float(np.max(bd.barkas_xi(bd.wmax_eV(energies, mass), energies, mass)))
     xi = np.geomspace(lo*(1-1e-12), hi*(1+1e-12), 385)
     with ProcessPoolExecutor(max_workers=args.workers, mp_context=get_context("spawn")) as pool:
-        calculated = list(tqdm(pool.map(partial(_node, projectile=args.projectile), xi),
+        calculated = list(tqdm(pool.map(partial(_components, projectile=args.projectile), xi),
                                total=len(xi), desc="Independent oscillator integrals"))
     values = np.array([r[0] for r in calculated])
     error = np.array([r[1] for r in calculated])
@@ -200,8 +191,8 @@ def main():
     cubic_error = 0.
     if args.projectile == "alpha":
         for argument in (.001, .1, 1.):
-            proton = _components(argument, 96, 4097, 64., "proton")
-            alpha = _components(argument, 96, 4097, 64., "alpha")
+            proton, _ = _components(argument, "proton")
+            alpha, _ = _components(argument, "alpha")
             cubic_error = max(cubic_error, float(np.max(np.abs(alpha/(8*proton)-1))))
     passed = (quad_error < .001 and interp_error < .001
               and cubic_error < 1e-10
@@ -213,16 +204,17 @@ def main():
                   projectile_mass_me=mass, energy_convention="total kinetic energy per ion",
                   comparison="independent numerical oscillator vs existing Salvat ARBI kernel",
                   analytic_bare_shortcut_used=False, ice_physics_validation=False,
+                  quadrature_method=oq.VERSION,
                   screened_state_validation=False, charge_mode="bare", z=charge,
                   xi_nodes=xi.tolist(), charge_cubed_I1_numerical=values[:, 0].tolist(),
                   charge_cubed_I2_numerical=values[:, 1].tolist(),
                   alpha_proton_cubic_check_relative_error=(cubic_error if args.projectile == "alpha" else None),
-                  max_quadrature_relative_change=quad_error,
+                  max_quadrature_relative_error=quad_error,
                   max_interpolation_relative_change=interp_error,
                   units="eV m^2 per molecule; multiply by 1e-2*N_A/M_H2O for MeV cm^2/g",
                   criteria="stopping moment <0.1%; DCS <0.15%; each numerical check <0.1%; alpha/proton cubic scaling error <1e-10",
                   code_sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                      for p in [Path(__file__), PHYSICS_ROOT/"inelastic_dielectric/polarization/screened_barkas.py",
+                      for p in [Path(__file__), Path(oq.__file__),
                                 PHYSICS_ROOT/"inelastic_dielectric/polarization/barkas_dcs.py", PHYSICS_ROOT/"constants.py",
                                 PHYSICS_ROOT/"inelastic_dielectric/finite_q/emfietzoglou_model_finite_q.py",
                                 PHYSICS_ROOT/"inelastic_dielectric/k_shell/hydrogenic.py",
