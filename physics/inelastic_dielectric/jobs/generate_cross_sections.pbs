@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #PBS -N dielectric_xs
-#PBS -l select=1:ncpus=10:mem=20gb
+#PBS -q idle
+#PBS -l select=1:ncpus=256:mem=512gb
+#PBS -l walltime=72:00:00
 #PBS -j oe
 
 # Submit from the repository root in the desired Python environment:
@@ -12,20 +14,50 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-${PBS_O_WORKDIR:-${SCRIPT_DIR}/../../..}}"
 cd "${REPO_ROOT}"
 export ICE_TYPE="${ICE_TYPE:-hexagonal}"
-export ICE_MAX_WORKERS="${ICE_MAX_WORKERS:-${PBS_NCPUS:-10}}"
+export ICE_MAX_WORKERS="${ICE_MAX_WORKERS:-${PBS_NCPUS:-${NCPUS:-256}}}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+if [[ -n "${EXPECTED_SOURCE_SHA256:-}" ]]; then
+    actual_source="$("${PYTHON_BIN:-python}" -c 'from physics.inelastic_dielectric.checkpoints import source_digest; print(source_digest())')"
+    if [[ "${actual_source}" != "${EXPECTED_SOURCE_SHA256}" ]]; then
+        echo "Source fingerprint differs from submission; refusing to run." >&2
+        exit 2
+    fi
+fi
+if [[ -n "${CACHE_DIR:-}" ]]; then
+    mkdir -p "${CACHE_DIR}"
+    exec 9>"${CACHE_DIR}/.generation.lock"
+    flock -n 9 || { echo "Another generator is writing this cache directory." >&2; exit 2; }
+fi
 cmd=("${PYTHON_BIN:-python}" -u -m physics.inelastic_dielectric.generate_cross_sections
      --projectile "${PROJECTILE:-proton}"
      --energy-min-MeV "${EMIN_MEV:-0.1}" --energy-max-MeV "${EMAX_MEV:-100}"
      --energy-unit "${ENERGY_UNIT:-total}" --energy-points "${ENERGY_POINTS:-1000}"
      --dE "${DE:-1000}" --dq "${DQ:-1000}"
      --relativistic-projectile-dcs="${RPWBA:-false}"
+     --include-transverse-dcs="${RPWBA:-false}"
+     --rpwba-density-effect="${RPWBA:-false}"
      --include-barkas-dcs="${POLARIZATION:-false}"
-     --kshell-model "${KSHELL_MODEL:-hydrogenic-gos}")
+     --include-bloch-dcs=false --charge-mode=bare --born-reference-charge=bare_Z
+     --include-kshell --kshell-model "${KSHELL_MODEL:-hydrogenic-gos}"
+     --no-merge-energy-patches)
 if [[ -n "${CHARGE_STATE:-}" ]]; then
     cmd+=(--charge-state "${CHARGE_STATE}")
+fi
+if [[ "${DIAGNOSTIC_ONLY:-false}" == "true" ]]; then
+    cmd+=(--diagnostic-only)
+fi
+if [[ -n "${OUTPUT_TABLE_DIR:-}" ]]; then
+    cmd+=(--output-dir "${OUTPUT_TABLE_DIR}")
+fi
+if [[ -n "${CACHE_DIR:-}" ]]; then
+    cmd+=(--cache-dir "${CACHE_DIR}")
 fi
 printf 'Command:'
 printf ' %q' "${cmd[@]}"
 printf '\n'
-exec "${cmd[@]}"
+if [[ -n "${LIVE_LOG_PATH:-}" ]]; then
+    mkdir -p "$(dirname "${LIVE_LOG_PATH}")"
+    "${cmd[@]}" 2>&1 | tee -a "${LIVE_LOG_PATH}"
+else
+    exec "${cmd[@]}"
+fi

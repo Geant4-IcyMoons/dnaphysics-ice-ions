@@ -15,6 +15,28 @@ def _optical_and_dispersion():
     return gen.model.epsilon_optical("amorphous"), gen.model.default_dispersion_coefficients()
 
 
+@pytest.mark.parametrize("element,charge", STATES)
+@pytest.mark.parametrize("inline", [False, True])
+def test_charge_state_cli_is_not_scalar_charge(monkeypatch, element, charge, inline):
+    option = [f"--charge-state={charge}"] if inline else ["--charge-state", str(charge)]
+    monkeypatch.setattr(gen.sys, "argv", ["generator", *option])
+    monkeypatch.delenv("ICE_EXPLICIT_CHARGE", raising=False)
+    assert gen._explicit_charge_from_argv() is None
+    gen.set_projectile(element)
+    gen._set_projectile_charge_state(gen._argv_value(("--charge-state",)))
+    assert gen.PROJECTILE_CHARGE_STATE == charge
+
+
+@pytest.mark.parametrize("option", ["--explicit-charge", "--q-charge"])
+def test_scalar_charge_cli_remains_positive_only(monkeypatch, option):
+    monkeypatch.delenv("ICE_EXPLICIT_CHARGE", raising=False)
+    monkeypatch.setattr(gen.sys, "argv", ["generator", option, "0"])
+    with pytest.raises(ValueError, match="finite and positive"):
+        gen._explicit_charge_from_argv()
+    monkeypatch.setattr(gen.sys, "argv", ["generator", option, "1"])
+    assert gen._explicit_charge_from_argv() == 1
+
+
 @pytest.fixture(autouse=True)
 def reset_state(monkeypatch):
     monkeypatch.setattr(gen, "ICE_TYPE", "amorphous")

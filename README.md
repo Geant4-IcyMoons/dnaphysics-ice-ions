@@ -25,6 +25,9 @@ tests/
 ```
 
 Start with the [generation guide](physics/inelastic_dielectric/README.md).
+The [cluster transition notes](physics/inelastic_dielectric/validation/CLUSTER_SETUP.md)
+record the preserved legacy work, local environment, CLI repair, and
+restart-safe production scheduling.
 Each component documents its code, references, benchmarks, and validity
 limits. Benchmark figures are PDF, stored under `benchmarking/plots/` with
 their routines. Generated plots, reports, caches, and production tables are

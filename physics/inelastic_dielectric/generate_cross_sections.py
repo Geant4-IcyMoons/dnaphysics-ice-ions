@@ -32,6 +32,7 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 from physics.inelastic_dielectric.rpwba.kernels import RPWBAKernel
 from physics.inelastic_dielectric.numerics import _simpson_integrate
+from physics.inelastic_dielectric import checkpoints
 import numpy as np
 from scipy.constants import elementary_charge, electron_mass, epsilon_0, hbar
 from tqdm import tqdm
@@ -293,7 +294,7 @@ def _charge_mode_from_argv(default="bare"):
     return mode
 
 def _explicit_charge_from_argv(default=None):
-    raw = _argv_value(("--explicit-charge", "--charge-state", "--q-charge"), default=os.environ.get("ICE_EXPLICIT_CHARGE", default))
+    raw = _argv_value(("--explicit-charge", "--q-charge"), default=os.environ.get("ICE_EXPLICIT_CHARGE", default))
     if raw is None or str(raw).strip() == "":
         return None
     val = float(raw)
@@ -546,6 +547,7 @@ def _print_cli_help_and_exit():
         "  --no-merge-energy-patches      write only this energy patch to DAT tables\n"
         "  --output-dir PATH             table directory (default: output/tables in this package)\n"
         "  --cache-dir PATH              NPZ directory (default: output/caches in this package)\n"
+        "  --diagnostic-only             retain rejected screened estimates in flagged DAT/CSV/NPZ\n"
         "  --geant4-data-dir PATH        explicitly copy finished tables to this existing directory\n"
     )
     sys.exit(0)
@@ -1815,7 +1817,7 @@ def save_cross_section_corrections_npz(
             np_save_args["barkas_born_reference_q"] = float(diag.born_reference_q)
             np_save_args["barkas_channel_distribution"] = str(diag.barkas_channel_distribution)
 
-    np.savez(
+    checkpoints.atomic_savez(
         out_path,
         **np_save_args,
     )
@@ -2221,10 +2223,10 @@ def _write_dcs_tables_from_data(
         exc_mask &= T_line <= tmax
         ion_mask &= T_line <= tmax
 
-    with open(exc_out, "w") as exc_handle, open(ion_out, "w") as ion_handle:
+    with checkpoints.atomic_text(exc_out) as exc_handle, checkpoints.atomic_text(ion_out) as ion_handle:
         _write_table_metadata(exc_handle, table_metadata)
         _write_table_metadata(ion_handle, table_metadata)
-        for i in range(T_line.size):
+        for i in tqdm(range(T_line.size), desc="Writing DCS tables", unit="row"):
             if exc_mask[i]:
                 exc_handle.write(_format_dcs_row(T_line[i], E_line[i], exc_vals[i]))
             if ion_mask[i]:
@@ -2515,7 +2517,7 @@ def _run_projectile_pwba_sanity_checks(s, C, dcs_data=None, Nq=80, include_kshel
         raise RuntimeError("DCS-integrated totals differ from direct same-grid totals.")
 
 def _write_total_table(T_vals, totals, out_path, table_metadata=None):
-    with open(out_path, "w") as handle:
+    with checkpoints.atomic_text(out_path) as handle:
         _write_table_metadata(handle, table_metadata)
         for Tval, row in zip(T_vals, totals):
             fields = [f"{Tval:.16E}"]
@@ -2720,15 +2722,15 @@ def _init_dcs_worker(
     )
 
 def _compute_dcs_channel_worker(args):
-    channel_type, idx = args
+    channel_type, idx, start, stop = args
     vals = _compute_dcs_channel_values(
         channel_type,
         idx,
         _DCS_WORKER_S,
         _DCS_WORKER_C,
         _DCS_WORKER_NQ,
-        _DCS_WORKER_T_LINE,
-        _DCS_WORKER_E_LINE,
+        _DCS_WORKER_T_LINE[start:stop],
+        _DCS_WORKER_E_LINE[start:stop],
         _DCS_WORKER_EXC_B,
         _DCS_WORKER_ION_B,
         _DCS_WORKER_KSHELL_B,
@@ -2817,6 +2819,8 @@ def write_emfietzoglou_dcs_tables(
     explicit_charge=None,
     born_reference_charge=None,
     born_reference_explicit_charge=None,
+    checkpoint_dir=None,
+    diagnostic_only=False,
 ):
     if out_dir is None:
         out_dir = CROSS_SECTIONS_DIR
@@ -2920,14 +2924,49 @@ def write_emfietzoglou_dcs_tables(
             apply_regime_iii = APPLY_CORRECTIONS_REGIME_III
         if apply_regime_iv is None:
             apply_regime_iv = APPLY_CORRECTIONS_REGIME_IV
-        tasks = [("excitation", k) for k in range(n_exc)]
-        tasks.extend(("ionization", j) for j in range(n_ion))
+        channels = [("excitation", k) for k in range(n_exc)]
+        channels.extend(("ionization", j) for j in range(n_ion))
         if kshell_B is not None:
-            tasks.append(("kshell", 0))
+            channels.append(("kshell", 0))
+        boundaries = np.r_[0, np.flatnonzero(np.diff(T_line)) + 1, len(T_line)]
+        tasks = [(channel, idx, int(start), int(stop))
+                 for start, stop in zip(boundaries[:-1], boundaries[1:])
+                 for channel, idx in channels]
+        signature = json.dumps(dict(
+            metadata=table_metadata, NE=int(NE), Nq=int(Nq),
+            a=np.asarray(C.a_fj).tolist(), b=np.asarray(C.b_fj).tolist(),
+            c=np.asarray(C.c_fj).tolist(), apply_mc=bool(apply_mc),
+            regime_ii=bool(apply_regime_ii), regime_iii=bool(apply_regime_iii),
+            regime_iv=bool(apply_regime_iv), source=checkpoints.source_digest(),
+        ), sort_keys=True)
+
+        def accept(task, values):
+            channel, idx, start, stop = task
+            target = exc_vals if channel == "excitation" else ion_vals
+            target[start:stop, -1 if channel == "kshell" else idx] = values
+
+        pending = []
+        for task in tqdm(tasks, desc="Checking DCS checkpoints", unit="task",
+                         disable=checkpoint_dir is None):
+            _, _, start, stop = task
+            values = checkpoints.load_task(
+                checkpoint_dir, task, signature, T_line[start:stop], E_line[start:stop])
+            if values is None:
+                pending.append(task)
+            else:
+                accept(task, values)
+
+        def save_and_accept(task, values):
+            _, _, start, stop = task
+            checkpoints.save_task(checkpoint_dir, task, signature,
+                                  T_line[start:stop], E_line[start:stop], values)
+            accept(task, values)
+
+        print(f"DCS export: {len(tasks)-len(pending)}/{len(tasks)} tasks resumed")
 
         do_parallel = (
             parallel_channels
-            and len(tasks) > 1
+            and len(pending) > 1
             and a_vec is not None
             and b_vec is not None
             and c_vec is not None
@@ -2936,7 +2975,8 @@ def write_emfietzoglou_dcs_tables(
         if do_parallel:
             if max_workers is None:
                 max_workers = _max_workers_from_environment()
-            max_workers = max(1, min(int(max_workers), len(tasks)))
+            max_workers = max(1, min(int(max_workers), len(pending)))
+            print(f"DCS export using {max_workers} workers")
             with ProcessPoolExecutor(
                 max_workers=max_workers,
                 initializer=_init_dcs_worker,
@@ -2960,28 +3000,20 @@ def write_emfietzoglou_dcs_tables(
                     PROJECTILE_CHARGE_STATE,
                 ),
             ) as ex:
-                futures = [ex.submit(_compute_dcs_channel_worker, task) for task in tasks]
-                for fut in tqdm(as_completed(futures), total=len(futures), desc="DCS channels"):
-                    channel_type, idx, vals = fut.result()
-                    if channel_type == "excitation":
-                        exc_vals[:, idx] = vals
-                    elif channel_type == "ionization":
-                        ion_vals[:, idx] = vals
-                    elif channel_type == "kshell":
-                        ion_vals[:, -1] = vals
+                futures = {ex.submit(_compute_dcs_channel_worker, task): task for task in pending}
+                for fut in tqdm(as_completed(futures), total=len(tasks),
+                                initial=len(tasks)-len(pending),
+                                desc="DCS energy-channel tasks", unit="task"):
+                    _, _, vals = fut.result()
+                    save_and_accept(futures[fut], vals)
         else:
-            for k in tqdm(range(n_exc), desc="DCS excitation"):
-                exc_vals[:, k] = _compute_dcs_channel_values(
-                    "excitation", k, s, C, Nq, T_line, E_line, exc_B, ion_B, kshell_B
-                )
-            for j in tqdm(range(n_ion), desc="DCS ionization"):
-                ion_vals[:, j] = _compute_dcs_channel_values(
-                    "ionization", j, s, C, Nq, T_line, E_line, exc_B, ion_B, kshell_B
-                )
-            if kshell_B is not None:
-                ion_vals[:, -1] = _compute_dcs_channel_values(
-                    "kshell", 0, s, C, Nq, T_line, E_line, exc_B, ion_B, kshell_B
-                )
+            for task in tqdm(pending, total=len(tasks), initial=len(tasks)-len(pending),
+                             desc="DCS energy-channel tasks", unit="task"):
+                channel, idx, start, stop = task
+                values = _compute_dcs_channel_values(
+                    channel, idx, s, C, Nq, T_line[start:stop], E_line[start:stop],
+                    exc_B, ion_B, kshell_B)
+                save_and_accept(task, values)
 
         dcs_data = {
             "T_line": T_line,
@@ -2991,8 +3023,18 @@ def write_emfietzoglou_dcs_tables(
             "projectile_state_metadata": state_metadata,
         }
 
+    if diagnostic_only:
+        from physics.inelastic_dielectric.polarization.diagnostic_tables import write_diagnostic_tables
+        diagnostic_path = out_dir / f"diagnostic_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}"
+        write_diagnostic_tables(dcs_data, s, PROJECTILE_DENSITY, PROJECTILE_MASS_AU,
+            diagnostic_path, checkpoint_dir / "diagnostic_polarization", _max_workers_from_environment(),
+            table_metadata, EMFI_DCS_SCALE_M2,
+            dat_names=(exc_out.name, ion_out.name, exc_total_out.name, ion_total_out.name))
+        return dcs_data
+
     needs_charge_kernel = (str(charge_mode) != "bare") or bool(include_barkas_dcs)
     if needs_charge_kernel and not bool(dcs_data.get("barkas_charge_applied", False)):
+        print("Assembling vectorized Barkas correction and diagnostics from checkpointed Born DCS...")
         dcs_data, barkas_diag = barkas_dcs.apply_barkas_correction_to_dcs_data(
             dcs_data,
             s,
@@ -3008,6 +3050,7 @@ def write_emfietzoglou_dcs_tables(
             born_reference_q=born_reference_explicit_charge,
             projectile_density=PROJECTILE_DENSITY,
             workers=max_workers,
+            checkpoint_dir=checkpoint_dir / "polarization" if checkpoint_dir is not None else None,
         )
         dcs_data["barkas_charge_applied"] = True
         dcs_data["barkas_charge_mode"] = str(charge_mode)
@@ -3134,6 +3177,9 @@ def _compute_for_T(T):
 
 def main():
     global CROSS_SECTIONS_DIR, OUTPUT_DIR
+    diagnostic_only = "--diagnostic-only" in sys.argv[1:]
+    if diagnostic_only and _argv_value(("--geant4-data-dir",), default=None) is not None:
+        raise ValueError("Diagnostic-only tables cannot be exported to Geant4")
     CROSS_SECTIONS_DIR = Path(_argv_value(("--output-dir",), default=str(CROSS_SECTIONS_DIR))).expanduser().resolve()
     OUTPUT_DIR = Path(_argv_value(("--cache-dir",), default=str(OUTPUT_DIR))).expanduser().resolve()
     if ICE_TYPE not in ("amorphous", "hexagonal"):
@@ -3172,6 +3218,8 @@ def main():
     born_reference_explicit_charge = _born_reference_explicit_charge_from_argv(default=None)
     _set_projectile_charge_state(_argv_value(("--charge-state",), default=None))
     _validate_projectile_state_options(charge_mode, include_barkas_dcs, born_reference_charge)
+    if diagnostic_only and (not include_barkas_dcs or PROJECTILE_DENSITY is None or PROJECTILE_DENSITY.electrons == 0):
+        raise ValueError("--diagnostic-only requires screened polarization enabled for an electron-bearing projectile")
     if charge_mode == "explicit" and explicit_charge is None:
         raise ValueError("--charge-mode explicit requires --explicit-charge.")
     if born_reference_charge == "explicit_q" and born_reference_explicit_charge is None:
@@ -3306,7 +3354,26 @@ def main():
     )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    if diagnostic_only:
+        run_label += "_DIAGNOSTIC_ONLY"
     cache_path = OUTPUT_DIR / f"cross_section_corrections_pwba_{run_label}.npz"
+    checkpoint_dir = OUTPUT_DIR / "checkpoints" / f"{run_label}_dE{NE}_dq{Nq}"
+    checkpoint_signature = checkpoints.require_manifest(checkpoint_dir, dict(
+        source_sha256=checkpoints.source_digest(), argv=sys.argv[1:],
+        ice_environment={key: value for key, value in os.environ.items()
+                         if key.startswith("ICE_") and key != "ICE_MAX_WORKERS"},
+        normalization=normalization, T_eV=T_list.tolist(), NE=NE, Nq=Nq,
+        a=a_vec.tolist(), b=b_vec.tolist(), c=c_vec.tolist(),
+    ))
+    print(f"Partial checkpoints: {checkpoint_dir}")
+    if diagnostic_only:
+        write_emfietzoglou_dcs_tables(s, C, Nq=Nq, NE=NE, T_list=T_list,
+            a_vec=a_vec, b_vec=b_vec, c_vec=c_vec, ice_label=ICE_LABEL, ice_type=ICE_TYPE,
+            include_kshell=include_kshell, charge_mode=charge_mode, include_barkas_dcs=True,
+            explicit_charge=explicit_charge, born_reference_charge=born_reference_charge,
+            born_reference_explicit_charge=born_reference_explicit_charge,
+            merge_energy_patches=False, checkpoint_dir=checkpoint_dir / "dcs", diagnostic_only=True)
+        return
     cached = load_cross_section_corrections_npz(
         cache_path,
         NE=NE,
@@ -3336,6 +3403,11 @@ def main():
         print("Using %i workers" % (max_workers))
 
         results_by_T = {}
+        for index, T in enumerate(tqdm(T_list, desc="Checking integrated energies", unit="energy")):
+            sigma = checkpoints.load_energy(checkpoint_dir, index, T, checkpoint_signature)
+            if sigma is not None:
+                results_by_T[float(T)] = sigma
+        print(f"Integrated energies: {len(results_by_T)}/{len(T_list)} resumed")
 
         with ProcessPoolExecutor(
                 max_workers=max_workers,
@@ -3361,10 +3433,13 @@ def main():
                     PROJECTILE_CHARGE_STATE,
                 ),
         ) as ex:
-            futures = [ex.submit(_compute_for_T, T) for T in T_list]
+            futures = {ex.submit(_compute_for_T, T): index
+                       for index, T in enumerate(T_list) if float(T) not in results_by_T}
 
-            for fut in tqdm(as_completed(futures), total=len(futures)):
+            for fut in tqdm(as_completed(futures), total=len(T_list), initial=len(results_by_T),
+                            desc="Integrated incident energies", unit="energy"):
                 T_val, sigma = fut.result()
+                checkpoints.save_energy(checkpoint_dir, futures[fut], T_val, sigma, checkpoint_signature)
                 results_by_T[T_val] = sigma
 
         # Restore original T order
@@ -3373,6 +3448,7 @@ def main():
         dcs_data = write_emfietzoglou_dcs_tables(
             s,
             C,
+            checkpoint_dir=checkpoint_dir / "dcs",
             Nq=Nq,
             NE=NE,
             return_data=True,
@@ -3419,6 +3495,7 @@ def main():
             dcs_data = write_emfietzoglou_dcs_tables(
                 s,
                 C,
+                checkpoint_dir=checkpoint_dir / "dcs",
                 Nq=Nq,
                 NE=NE,
                 return_data=True,

@@ -197,6 +197,7 @@ def test_ten_worker_generation_matches_serial(phase):
     C = dispersion()
     tasks = [("excitation", j) for j in range(5)]
     tasks += [("ionization", j) for j in range(4)] + [("kshell", 0)]
+    tasks = [(channel, index, 0, len(serial["T_line"])) for channel, index in tasks]
     with ProcessPoolExecutor(
         max_workers=10, initializer=gen._init_dcs_worker,
         initargs=(C.a_fj, C.b_fj, C.c_fj, serial["T_line"], serial["E_line"],

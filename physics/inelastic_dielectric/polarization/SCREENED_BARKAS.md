@@ -2,6 +2,12 @@
 
 ## Status and limits
 
+The local cluster runner checkpoints each completed loss integral within an
+incident-energy row, with values, numerical errors and a completion mask.
+Progress bars count losses and completed incident energies. Failed workers
+signal the other workers to stop between loss integrals; saved work remains.
+These execution changes do not alter the physical or convergence guards below.
+
 **Experimental. Not a validated all-charge-state ice DCS replacement.**
 The force/force-gradient calculation covers all 38 frozen states of H, He,
 C, O and S, including neutrals, using existing atomic densities and the

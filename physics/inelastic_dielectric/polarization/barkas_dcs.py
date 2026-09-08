@@ -434,6 +434,7 @@ def apply_barkas_correction_to_dcs_data(
     born_reference_q=None,
     projectile_density=None,
     workers=None,
+    checkpoint_dir=None,
 ):
     T_line = np.asarray(dcs_data["T_line"], dtype=float)
     W_line = np.asarray(dcs_data["E_line"], dtype=float)
@@ -480,7 +481,8 @@ def apply_barkas_correction_to_dcs_data(
         from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import DEFAULT_WORKERS
         barkas_m2, quadrature_error = screened_barkas.dcs_m2_per_eV(
             T_line, W_line, projectile_mass_me, oos.df_dW_total, projectile_density,
-            workers=DEFAULT_WORKERS if workers is None else workers)
+            workers=DEFAULT_WORKERS if workers is None else workers,
+            **({"checkpoint_dir": checkpoint_dir} if checkpoint_dir is not None else {}))
         model_metadata = screened_barkas.metadata(projectile_density)
         uncontrolled = (born_total_m2 > 0) & (np.abs(barkas_m2) >= born_total_m2)
         if np.any(uncontrolled):

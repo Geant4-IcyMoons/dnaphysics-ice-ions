@@ -13,8 +13,12 @@ It is not a microscopic, channel-resolved second-Born DCS. See
 SCREENED_BARKAS.md for equations, relativistic prescription and limitations.
 """
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing import get_context
+from pathlib import Path
+import json
+from tqdm import tqdm
+from physics.inelastic_dielectric import checkpoints
 
 import numpy as np
 
@@ -24,6 +28,12 @@ from physics.inelastic_dielectric.polarization import oscillator_quadrature
 MODEL = "frozen-screened-optical-oscillator-v1"
 REFERENCE_DOI = "10.1016/S0168-583X(99)01181-7"
 QUADRATURE_RTOL = oscillator_quadrature.RELATIVE_TOLERANCE
+_STOP_EVENT = None
+
+
+def _init_polarization_worker(stop_event):
+    global _STOP_EVENT
+    _STOP_EVENT = stop_event
 
 
 def metadata(density):
@@ -46,7 +56,7 @@ def metadata(density):
     }
 
 
-def converged_kernel(W_eV, beta, gamma, density, *, return_diagnostics=False):
+def converged_kernel(W_eV, beta, gamma, density, *, return_diagnostics=False, checkpoint_path=None, diagnostic_only=False):
     """Adaptive impact integration with independent time and tail checks."""
     from physics.inelastic_dielectric.polarization import barkas_dcs as bd
     w = np.asarray(W_eV, float)
@@ -58,35 +68,77 @@ def converged_kernel(W_eV, beta, gamma, density, *, return_diagnostics=False):
     v = beta/bd.ALPHA_FINE
     omega = w/(bd.ALPHA_FINE**2*bd.MEC2_EV)
     xi = .5616*bd.H2O_CB*omega/(gamma*v*v)
-    result, error, diagnostics = np.empty_like(w), np.empty_like(w), []
-    for idx in np.ndindex(w.shape):
+    result, error, diagnostics = np.zeros_like(w), np.zeros_like(w), []
+    done = np.zeros(w.shape, dtype=bool)
+    signature = json.dumps(dict(beta=float(beta), gamma=float(gamma), model=metadata(density)), sort_keys=True)
+    if checkpoint_path is not None:
+        if diagnostic_only:
+            raise ValueError("Diagnostic rows use their separate diagnostic checkpoint store")
+        if return_diagnostics:
+            raise ValueError("Partial checkpoints store values/errors, not benchmark diagnostics")
+        checkpoint_path = Path(checkpoint_path)
+        if checkpoint_path.exists():
+            with np.load(checkpoint_path, allow_pickle=False) as saved:
+                if str(saved["signature"]) != signature or not np.array_equal(saved["W"], w):
+                    raise ValueError("Incompatible polarization row checkpoint")
+                result, error, done = saved["value"].copy(), saved["error"].copy(), saved["done"].copy()
+                if (result.shape != w.shape or error.shape != w.shape or done.shape != w.shape
+                        or done.dtype != np.dtype(bool) or np.any(~np.isfinite(result[done]))
+                        or np.any(~np.isfinite(error[done])) or np.any(error[done] < 0)):
+                    raise ValueError("Invalid polarization row checkpoint")
+    pending = [idx for idx in np.ndindex(w.shape) if not done[idx]]
+    for idx in tqdm(pending, total=w.size, initial=int(done.sum()), unit="loss",
+                    desc=f"Polarization {Path(checkpoint_path).stem if checkpoint_path else ''}",
+                    mininterval=60, disable=checkpoint_path is None):
+        if _STOP_EVENT is not None and _STOP_EVENT.is_set():
+            raise RuntimeError("Polarization stopped after another worker failed; completed losses are preserved")
         try:
             result[idx], error[idx], row = oscillator_quadrature.integrate_kernel(
                 float(xi[idx]), float(gamma*v/omega[idx]), float(gamma), density,
-                rtol=QUADRATURE_RTOL)
+                rtol=QUADRATURE_RTOL,
+                **({"allow_unconverged": True} if diagnostic_only else {}))
+        except FloatingPointError as exc:
+            if not diagnostic_only:
+                raise
+            result[idx], error[idx] = np.nan, np.nan
+            row = dict(converged=False, failure=str(exc))
         except RuntimeError as exc:
             raise RuntimeError(f"Screened Barkas quadrature did not converge at "
                                f"W/eV={w[idx]:g}, beta={beta:g}: {exc}") from exc
         diagnostics.append(dict(W_eV=float(w[idx]), **row))
+        done[idx] = True
+        if checkpoint_path is not None:
+            checkpoints.atomic_savez(checkpoint_path, signature=signature, W=w,
+                                     value=result, error=error, done=done)
     if return_diagnostics:
         return result, error, diagnostics
     return result, error
 
 
-def _energy_row(task):
+def _energy_row(task, *, diagnostic_only=False):
     from physics.inelastic_dielectric.polarization import barkas_dcs as bd
-    energy, w, mass, element, charge = task
+    energy, w, mass, element, charge = task[:5]
+    checkpoint_path = task[5] if len(task) > 5 else None
     density = load_density(element, charge)
     beta, gamma = bd.projectile_beta_gamma(energy, mass)
     if beta/bd.ALPHA_FINE <= 1.:
+        if diagnostic_only:
+            return np.full_like(w, np.nan), np.full_like(w, np.nan), np.full(w.shape, 4, dtype=np.uint8)
         raise ValueError("Screened oscillator Barkas requires v > the Bohr velocity; "
                          f"T={energy:g} eV total is outside this model's domain.")
-    value, error = converged_kernel(w, float(beta), float(gamma), density)
+    calculated = converged_kernel(w, float(beta), float(gamma), density,
+        **({"checkpoint_path": checkpoint_path} if checkpoint_path else {}),
+        **({"diagnostic_only": True, "return_diagnostics": True} if diagnostic_only else {}))
+    value, error = calculated[:2]
     pref = 4*np.pi*bd.RE_CLASSICAL_CM**2*bd.ALPHA_FINE/(gamma**2*beta**5)
+    if diagnostic_only:
+        flags = np.array([0 if row.get("converged", False) else 1 for row in calculated[2]], dtype=np.uint8).reshape(w.shape)
+        flags[~np.isfinite(value) | ~np.isfinite(error)] |= 2
+        return bd.CM2_TO_M2*pref*value, bd.CM2_TO_M2*pref*error, flags
     return bd.CM2_TO_M2*pref*value, bd.CM2_TO_M2*pref*error
 
 
-def dcs_m2_per_eV(T_eV, W_eV, mass_me, df_dW, density, *, workers=DEFAULT_WORKERS):
+def dcs_m2_per_eV(T_eV, W_eV, mass_me, df_dW, density, *, workers=DEFAULT_WORKERS, checkpoint_dir=None):
     """Additive, OOS-equivalent Barkas-like correction for one frozen state.
 
     Returned arrays are DCS and estimated absolute quadrature error, both
@@ -107,18 +159,38 @@ def dcs_m2_per_eV(T_eV, W_eV, mass_me, df_dW, density, *, workers=DEFAULT_WORKER
     if density.electrons == 0:
         out[mask] = bd.barkas_dcs_m2_per_eV(t[mask], w[mask], density.z, mass_me, oos[mask])
     else:
+        if checkpoint_dir is not None:
+            checkpoint_dir = Path(checkpoint_dir)
+            checkpoints.require_manifest(checkpoint_dir, dict(source=checkpoints.source_digest(),
+                mass=float(mass_me), model=metadata(density)))
         indices, tasks = [], []
         for energy in np.unique(t[mask]):
             idx = np.flatnonzero(mask & (t == energy))
             unique_w, inverse = np.unique(w[idx], return_inverse=True)
             indices.append((idx, inverse))
-            tasks.append((float(energy), unique_w, mass_me, density.element, density.charge))
+            task = (float(energy), unique_w, mass_me, density.element, density.charge)
+            if checkpoint_dir is not None:
+                task += (checkpoint_dir / f"energy_{float(energy).hex()}.npz",)
+            tasks.append(task)
+        rows = [None] * len(tasks)
         if tasks and workers > 1 and len(tasks) > 1:
+            context = get_context("spawn")
+            stop_event = context.Event()
             with ProcessPoolExecutor(max_workers=min(workers, len(tasks)),
-                                     mp_context=get_context("spawn")) as pool:
-                rows = list(pool.map(_energy_row, tasks))
+                                     mp_context=context, initializer=_init_polarization_worker,
+                                     initargs=(stop_event,)) as pool:
+                futures = {pool.submit(_energy_row, task): i for i, task in enumerate(tasks)}
+                try:
+                    for future in tqdm(as_completed(futures), total=len(tasks), desc="Polarization energies", unit="energy"):
+                        rows[futures[future]] = future.result()
+                except BaseException:
+                    stop_event.set()
+                    for future in futures:
+                        future.cancel()
+                    raise
         else:
-            rows = list(map(_energy_row, tasks))
+            for i, task in enumerate(tqdm(tasks, desc="Polarization energies", unit="energy")):
+                rows[i] = _energy_row(task)
         for (idx, inverse), (value, err) in zip(indices, rows):
             out[idx], error[idx] = oos[idx]*value[inverse], oos[idx]*err[inverse]
     return out.reshape(shape), error.reshape(shape)

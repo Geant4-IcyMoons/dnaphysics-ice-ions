@@ -99,7 +99,7 @@ def impulse_products(x, b_bohr, density, *, order=12, extent=64.,
 
 
 def integrate_kernel(xi, b_per_x, gamma, density, *, rtol=RELATIVE_TOLERANCE,
-                     atol=None, component=None):
+                     atol=None, component=None, allow_unconverged=False):
     """Integrate in log(x), with separate impact, time, and tail errors.
 
     Positive local time/tail differences are integrated, so cancellations
@@ -116,7 +116,7 @@ def integrate_kernel(xi, b_per_x, gamma, density, *, rtol=RELATIVE_TOLERANCE,
             or not np.isfinite(atol) or atol <= 0 or component not in (None, 0, 1)):
         raise ValueError("Invalid adaptive oscillator integral input.")
     empty = dict(impact_error=0., time_error=0., tail_error=0.,
-                 evaluations=0, refinement=0)
+                 evaluations=0, refinement=0, converged=True)
     if xi >= 50.:
         return 0., 0., empty
     points = [np.log(p) for p in (.001, .01, .1, 1., 10.) if xi < p < 50.]
@@ -154,7 +154,11 @@ def integrate_kernel(xi, b_per_x, gamma, density, *, rtol=RELATIVE_TOLERANCE,
                            refinement=level)
         if (info.success and np.isfinite(error) and np.isfinite(value)
                 and error <= atol+rtol*abs(value)):
+            diagnostics["converged"] = True
             return float(value), error, diagnostics
+    if allow_unconverged:
+        diagnostics["converged"] = False
+        return float(value), error, diagnostics
     raise RuntimeError(
         "Screened Barkas quadrature did not converge: "
         f"xi={xi:g}, value={value:g}, errors={diagnostics}; no tables were exported.")
