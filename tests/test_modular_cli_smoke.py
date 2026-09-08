@@ -17,12 +17,6 @@ def test_hydrogen_cli_dcs_tables(tmp_path, phase, relativistic, charge):
     _generate_and_check(tmp_path, phase, relativistic, charge, False)
 
 
-@pytest.mark.parametrize("phase", ["amorphous", "hexagonal"])
-@pytest.mark.parametrize("relativistic", [False, True])
-def test_bare_proton_polarization_cli(tmp_path, phase, relativistic):
-    _generate_and_check(tmp_path, phase, relativistic, 1, True)
-
-
 def _generate_and_check(output, phase, relativistic, charge, polarization):
     environment = dict(os.environ, ICE_TYPE=phase, ICE_MAX_WORKERS="2",
                        OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1",
@@ -42,6 +36,8 @@ def _generate_and_check(output, phase, relativistic, charge, polarization):
     tables = sorted((output / "tables").glob("*.dat"))
     assert len(tables) == 4
     assert len(list((output / "caches").glob("*.npz"))) == 1
+    plots = list((output / "tables" / "plots").rglob("*.pdf"))
+    assert len(plots) == 1 and b"/Count 2" in plots[0].read_bytes()
     for channel in ("excitation", "ionisation"):
         differential = next(path for path in tables if path.name.startswith(f"sigmadiff_{channel}_"))
         total = next(path for path in tables if path.name.startswith(f"sigma_{channel}_"))

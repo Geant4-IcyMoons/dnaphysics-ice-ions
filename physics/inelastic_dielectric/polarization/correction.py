@@ -1,17 +1,7 @@
-"""Barkas single-differential cross-section helpers for ion projectiles.
+"""Shared optical normalization, charge handling and nonlinear DCS assembly.
 
-The Ashley-Ritchie-Brandt functions ARBI1/ARBI2 are ported from the
-official SBETHE Fortran source distribution:
-
-    Francesc Salvat and Pedro Andreo,
-    "SBETHE: Stopping powers of materials for swift charged particles from
-    the corrected Bethe formula (new version announcement)",
-    Mendeley Data, version 2, DOI: 10.17632/7zw25f428t.2.
-
-Source file: sbethe/sbethe.f, SHA-256 of sbethe.zip:
-    d5d4879c2073ada3bd799fe0727054549cd6ec65cc699acbd0ff25fd5c3c4144
-
-Dataset licence: CC BY-NC 3.0. Keep this provenance with the ported code.
+Legacy Barkas field names remain readable by existing table consumers.
+There is no cubic/Salvat production correction in this module.
 """
 
 from __future__ import annotations
@@ -32,7 +22,6 @@ H2O_CB = max(1.0, H2O_ZBAR / 10.0)
 BARKAS_ZEFF_COEFF = 125.0
 CM2_TO_M2 = 1.0e-4
 U_TO_ELECTRON_MASS = 1822.888486217313
-ARBI_SOURCE_SHA256 = "d5d4879c2073ada3bd799fe0727054549cd6ec65cc699acbd0ff25fd5c3c4144"
 BORN_REFERENCE_CHOICES = ("bare_Z", "unit_charge", "explicit_q")
 
 
@@ -102,138 +91,6 @@ def mass_number_to_electron_mass(mass_number):
     return mass_u_to_electron_mass(float(mass_number))
 
 
-def _maybe_scalar(x, y):
-    arr = np.asarray(y, dtype=float)
-    if np.ndim(x) == 0:
-        return float(arr)
-    return arr
-
-
-def arbi1(x):
-    """SBETHE ARBI1(X), Ashley-Ritchie-Brandt I1(X)."""
-    x_in = x
-    x = np.asarray(x, dtype=float)
-    out = np.zeros_like(x, dtype=float)
-
-    m = x < 1.0e-10
-    with np.errstate(divide="ignore", invalid="ignore"):
-        out[m] = 1.5 * np.pi * np.log(0.375 / x[m])
-
-    m = (x >= 1.0e-10) & (x < 0.25)
-    if np.any(m):
-        P1 = 1.796676e1
-        P2 = 4.825194e1
-        P3 = 4.661380e1
-        P4 = 2.269807e1
-        P5 = 5.409180e0
-        P6 = 5.116173e-1
-        XL = np.log(x[m])
-        out[m] = (
-            1.5 * np.pi * np.log(0.375 / x[m])
-            - 2.0 * np.pi * x[m] ** 2 * (P1 + XL * (P2 + XL * (P3 + XL * (P4 + XL * (P5 + XL * P6)))))
-        )
-
-    m = (x >= 0.25) & (x < 2.0)
-    if np.any(m):
-        P1 = -3.062544e0
-        P2 = 1.787672e1
-        P3 = -4.100572e1
-        P4 = 4.652797e1
-        P5 = -2.728692e1
-        P6 = 8.070905e0
-        P7 = -9.587701e-1
-        XR = np.sqrt(1.0 / x[m])
-        out[m] = (
-            P1 + XR * (P2 + XR * (P3 + XR * (P4 + XR * (P5 + XR * (P6 + XR * P7)))))
-        ) * XR**1.25
-
-    m = (x >= 2.0) & (x < 15.01)
-    if np.any(m):
-        P1 = -1.018033e-3
-        P2 = 1.080448e-1
-        P3 = 1.568923e0
-        P4 = -2.779110e0
-        P5 = 8.079930e0
-        P6 = -7.244712e0
-        XR = 1.0 / x[m]
-        out[m] = (
-            P1 + XR * (P2 + XR * (P3 + XR * (P4 + XR * (P5 + XR * P6))))
-        ) * np.exp(-2.0 * x[m])
-
-    m = (x >= 15.01) & (x < 50.01)
-    if np.any(m):
-        P1 = -2.798361e1
-        P2 = 3.964525e0
-        P3 = -5.706711e-1
-        P4 = 2.652851e-2
-        P5 = -6.442942e-4
-        P6 = 8.003948e-6
-        P7 = -4.016094e-8
-        out[m] = np.exp(P1 + x[m] * (P2 + x[m] * (P3 + x[m] * (P4 + x[m] * (P5 + x[m] * (P6 + x[m] * P7))))))
-
-    return _maybe_scalar(x_in, out)
-
-
-def arbi2(x):
-    """SBETHE ARBI2(X), Ashley-Ritchie-Brandt I2(X)."""
-    x_in = x
-    x = np.asarray(x, dtype=float)
-    out = np.zeros_like(x, dtype=float)
-
-    m = x < 1.0e-9
-    out[m] = 2.17759
-
-    m = (x >= 1.0e-9) & (x < 0.25)
-    if np.any(m):
-        P1 = 2.177590e0
-        P2 = 5.689823e-1
-        P3 = 1.038828e0
-        P4 = 2.877808e-4
-        XL = np.log(x[m]) ** 2
-        out[m] = P1 - 2.0 * np.pi * x[m] ** 2 * (P2 + XL * (P3 + XL * P4))
-
-    m = (x >= 0.25) & (x < 2.0)
-    if np.any(m):
-        P1 = 3.768512e0
-        P2 = -2.135702e1
-        P3 = 4.601060e1
-        P4 = -4.714780e1
-        P5 = 2.551946e1
-        P6 = -7.102352e0
-        P7 = 8.042960e-1
-        XR = np.sqrt(1.0 / x[m])
-        out[m] = (
-            P1 + XR * (P2 + XR * (P3 + XR * (P4 + XR * (P5 + XR * (P6 + XR * P7)))))
-        ) * XR**2 * np.exp(-1.5 * x[m])
-
-    m = (x >= 2.0) & (x < 15.01)
-    if np.any(m):
-        P1 = 7.431717e-5
-        P2 = 6.662051e-2
-        P3 = 2.142710e0
-        P4 = -7.407167e0
-        P5 = 2.327532e1
-        P6 = -3.497742e1
-        P7 = 1.950319e1
-        XR = 1.0 / x[m]
-        out[m] = (
-            P1 + XR * (P2 + XR * (P3 + XR * (P4 + XR * (P5 + XR * (P6 + XR * P7)))))
-        ) * np.exp(-2.0 * x[m])
-
-    m = (x >= 15.01) & (x < 50.01)
-    if np.any(m):
-        P1 = -2.808307e1
-        P2 = 3.977364e0
-        P3 = -5.714987e-1
-        P4 = 2.655846e-2
-        P5 = -6.449171e-4
-        P6 = 8.010890e-6
-        P7 = -4.019306e-8
-        out[m] = np.exp(P1 + x[m] * (P2 + x[m] * (P3 + x[m] * (P4 + x[m] * (P5 + x[m] * (P6 + x[m] * P7))))))
-
-    return _maybe_scalar(x_in, out)
-
-
 def projectile_beta_gamma(T_total_eV, projectile_mass_me):
     T = np.asarray(T_total_eV, dtype=float)
     gamma = 1.0 + np.maximum(T, 0.0) / (float(projectile_mass_me) * MEC2_EV)
@@ -271,13 +128,6 @@ def interaction_charge(T_total_eV, nuclear_charge, projectile_mass_me, charge_mo
     raise ValueError("charge_mode must be bare, zeff, or explicit.")
 
 
-def barkas_xi(W_eV, T_total_eV, projectile_mass_me, C_B=H2O_CB):
-    W = np.asarray(W_eV, dtype=float)
-    beta, gamma = projectile_beta_gamma(T_total_eV, projectile_mass_me)
-    beta2 = np.maximum(beta * beta, np.finfo(float).tiny)
-    return 0.5616 * float(C_B) * W / (gamma * beta2 * MEC2_EV)
-
-
 def _valence_oos_raw(W_eV, s):
     W = np.asarray(W_eV, dtype=float)
     e1 = model.epsilon1_valence_E0(W, s)["total"]
@@ -301,7 +151,7 @@ def _oos_norms(material, Ep_eV, include_kshell):
     raw_val = _valence_oos_raw(W, s)
     val_int = float(np.trapezoid(raw_val, W))
     if not np.isfinite(val_int) or val_int <= 0.0:
-        raise RuntimeError("Cannot normalize Barkas valence OOS density.")
+        raise RuntimeError("Cannot normalize polarization valence OOS density.")
     val_norm = 8.0 / val_int
 
     ok_int = 0.0
@@ -310,7 +160,7 @@ def _oos_norms(material, Ep_eV, include_kshell):
         raw_ok = _ok_oos_raw(W)
         ok_int = float(np.trapezoid(raw_ok, W))
         if not np.isfinite(ok_int) or ok_int <= 0.0:
-            raise RuntimeError("Cannot normalize Barkas O K-shell OOS density.")
+            raise RuntimeError("Cannot normalize polarization O K-shell OOS density.")
         ok_norm = 2.0 / ok_int
     total_norm_grid = float(np.trapezoid(val_norm * raw_val + ok_norm * _ok_oos_raw(W), W))
     return val_int, ok_int, val_norm, ok_norm, total_norm_grid
@@ -319,12 +169,12 @@ def _oos_norms(material, Ep_eV, include_kshell):
 def oos_density(W_eV, s, material, include_kshell=True, fail_if_missing_k=True):
     W = np.asarray(W_eV, dtype=float)
     if W.size == 0:
-        raise ValueError("Barkas OOS requires a nonempty W grid.")
+        raise ValueError("Polarization OOS requires a nonempty W grid.")
     if np.any(~np.isfinite(W)) or np.any(W <= 0.0):
-        raise ValueError("Barkas OOS requires finite positive W values.")
+        raise ValueError("Polarization OOS requires finite positive W values.")
     if fail_if_missing_k and (not include_kshell) and np.nanmax(W) >= model.OXYGEN_K_B_EV:
         raise RuntimeError(
-            "Barkas OOS normalization requires O K-shell strength when W reaches the O K edge."
+            "Polarization OOS normalization requires O K-shell strength when W reaches the O K edge."
         )
     val_int, ok_int, val_norm, ok_norm, total_norm_grid = _oos_norms(material, float(s.Ep), bool(include_kshell))
     val = val_norm * _valence_oos_raw(W, s)
@@ -350,31 +200,6 @@ def oos_density(W_eV, s, material, include_kshell=True, fail_if_missing_k=True):
         total_integral_unique_grid=total_unique_int,
         valence_norm=val_norm,
         ok_norm=ok_norm,
-    )
-
-
-def barkas_unit_dcs_cm2_per_eV(T_total_eV, W_eV, projectile_mass_me, df_dW):
-    T = np.asarray(T_total_eV, dtype=float)
-    W = np.asarray(W_eV, dtype=float)
-    if np.any(~np.isfinite(T)) or np.any(T <= 0.0):
-        raise ValueError("Barkas DCS requires finite positive projectile kinetic energies.")
-    if np.any(~np.isfinite(W)) or np.any(W <= 0.0):
-        raise ValueError("Barkas DCS requires finite positive energy losses W.")
-    beta, gamma = projectile_beta_gamma(T, projectile_mass_me)
-    beta = np.maximum(beta, np.finfo(float).tiny)
-    gamma2 = gamma * gamma
-    xi = barkas_xi(W, T, projectile_mass_me)
-    kernel = arbi1(xi) + arbi2(xi) / gamma2
-    pref = 4.0 * np.pi * RE_CLASSICAL_CM**2 * ALPHA_FINE / (gamma2 * beta**5)
-    out = pref * np.asarray(df_dW, dtype=float) * kernel
-    if np.any(~np.isfinite(out)):
-        raise FloatingPointError("Barkas DCS produced non-finite values.")
-    return out
-
-
-def barkas_dcs_m2_per_eV(T_total_eV, W_eV, z_int, projectile_mass_me, df_dW):
-    return CM2_TO_M2 * np.asarray(z_int, dtype=float) ** 3 * barkas_unit_dcs_cm2_per_eV(
-        T_total_eV, W_eV, projectile_mass_me, df_dW
     )
 
 
@@ -475,32 +300,14 @@ def apply_barkas_correction_to_dcs_data(
     barkas_m2 = np.zeros_like(born_total_m2)
     quadrature_error = np.zeros_like(born_total_m2)
     model_metadata = {}
-    screened = projectile_density is not None and projectile_density.electrons > 0
-    if include_barkas_dcs and screened:
-        from physics.inelastic_dielectric.polarization import screened_barkas
-        from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import DEFAULT_WORKERS
-        barkas_m2, quadrature_error = screened_barkas.dcs_m2_per_eV(
+    if include_barkas_dcs:
+        from physics.inelastic_dielectric.polarization import nonlinear_polarization
+        from physics.constants import DEFAULT_WORKERS
+        barkas_m2, quadrature_error = nonlinear_polarization.dcs_m2_per_eV(
             T_line, W_line, projectile_mass_me, oos.df_dW_total, projectile_density,
-            workers=DEFAULT_WORKERS if workers is None else workers,
+            z_int=z_int, workers=DEFAULT_WORKERS if workers is None else workers,
             **({"checkpoint_dir": checkpoint_dir} if checkpoint_dir is not None else {}))
-        model_metadata = screened_barkas.metadata(projectile_density)
-        uncontrolled = (born_total_m2 > 0) & (np.abs(barkas_m2) >= born_total_m2)
-        if np.any(uncontrolled):
-            raise RuntimeError(
-                "Screened Barkas correction is as large as the Born DCS; "
-                "the additive correction is uncontrolled relative to this baseline at T/eV="
-                + repr(np.unique(T_line[uncontrolled]).tolist())
-                + ". No clipping or fitted scaling was applied.")
-    elif include_barkas_dcs:
-        barkas_m2 = barkas_dcs_m2_per_eV(
-            T_line,
-            W_line,
-            z_int=z_int,
-            projectile_mass_me=projectile_mass_me,
-            df_dW=oos.df_dW_total,
-        )
-        Wmax = wmax_eV(T_line, projectile_mass_me)
-        barkas_m2 = np.where(W_line <= Wmax, barkas_m2, 0.0)
+        model_metadata = nonlinear_polarization.metadata(projectile_density)
 
     all_born_file = np.hstack([exc_born_file, ion_born_file])
     weights = np.where(all_born_file > 0.0, all_born_file, 0.0)

@@ -74,7 +74,7 @@ Focused regression commands (from the repository root):
 ```bash
 python -m pytest -q tests/test_ion_dcs_export_grid.py \
   tests/test_ion_optical_normalization.py tests/test_hydrogenic_kshell.py \
-  tests/test_barkas_dcs.py tests/test_projectile_relativistic_dcs.py
+  tests/test_polarization_assembly.py tests/test_projectile_relativistic_dcs.py
 ```
 
 These checks establish numerical consistency, not agreement with experiment

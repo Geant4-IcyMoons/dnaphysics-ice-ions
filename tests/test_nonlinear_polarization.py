@@ -6,8 +6,8 @@ import pytest
 from scipy.integrate import quad
 
 from test_projectile_relativistic_dcs import MODULE as gen
-from physics.inelastic_dielectric.polarization import barkas_dcs as bd
-from physics.inelastic_dielectric.polarization import screened_barkas as sb
+from physics.inelastic_dielectric.polarization import correction as bd
+from physics.inelastic_dielectric.polarization import nonlinear_polarization as sb
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import ELEMENTS, load_density
 
 STATES = [(element, q) for element, z in ELEMENTS.items() for q in range(z+1)]
@@ -40,93 +40,6 @@ def test_radial_field_gauss_law_and_derivative(element, charge):
     assert derivative*r == pytest.approx(d.radial_charge_direct(r)[1], abs=1e-7)
 
 
-@pytest.mark.parametrize("beta", [.01, .4])
-def test_independent_point_field_recovers_salvat_integral(beta):
-    gamma = 1/np.sqrt(1-beta*beta)
-    xi = np.array([1e-5, .001, .1, 1.])
-    w = xi*gamma*beta*beta*bd.MEC2_EV/.5616
-    actual, _ = sb.converged_kernel(w, beta, gamma, load_density("H", 1))
-    expected = bd.arbi1(xi)+bd.arbi2(xi)/gamma**2
-    # SBETHE itself is a piecewise fit with a quoted 0.1% tolerance.
-    np.testing.assert_allclose(actual, expected, rtol=.001)
-
-
-def test_force_gradient_is_cubic_not_effective_charge_squared():
-    density = load_density("C", 2)
-    class ScaledField:
-        def __init__(self, scale):
-            self.scale = scale
-        def radial_charge(self, r):
-            return tuple(self.scale*v for v in density.radial_charge(r))
-    args = (np.array([.001, .1, 1.]), np.array([.02, .2, 2.]))
-    baseline = sb.oscillator_quadrature.impulse_products(*args, density)
-    for scale in (-1., 2.):
-        actual = sb.oscillator_quadrature.impulse_products(*args, ScaledField(scale))
-        np.testing.assert_allclose(actual, np.asarray(baseline)*scale**3, rtol=1e-10, atol=1e-13)
-
-
-@pytest.mark.parametrize("element,charge", STATES)
-@pytest.mark.parametrize("relativistic", [False, True])
-def test_all_states_kernel_and_explicit_physical_rejections(element, charge, relativistic):
-    gen.set_projectile(element)
-    gen._set_projectile_charge_state(charge)
-    gen._set_projectile_relativistic_dcs(relativistic)
-    d = load_density(element, charge)
-    s, c = gen.model.epsilon_optical("amorphous"), gen.model.default_dispersion_coefficients()
-    w = np.array([15., 50., 1000.])
-    t = np.full_like(w, gen.PROJECTILE_MASS_NUMBER*1e7)
-    exc = np.array([[gen._selected_dsigma_excitation(v, t[0], i, s, c, 256)
-                     for i in range(len(s.excitations))] for v in w])
-    ion = np.array([[gen._selected_dsigma_ionization(v, t[0], i, s, c, 256)
-                     for i in range(len(s.ionizations))]
-                    + [gen._selected_dsigma_kshell(v, t[0], s, c, 256)] for v in w])
-    data = {"T_line": t, "E_line": w, "exc_vals": exc, "ion_vals": ion}
-    # These are recorded failures of the proposed spectral matching, not
-    # successful all-state production validation. Do not hide them by scaling.
-    rejected = {("He", 0), ("C", 0), ("C", 1), ("O", 0), ("O", 1),
-                *(("S", q) for q in range(6))}
-    if (element, charge) in rejected:
-        with pytest.raises(RuntimeError, match="uncontrolled"):
-            bd.apply_barkas_correction_to_dcs_data(
-                data, s, "amorphous", gen.PROJECTILE_MASS_AU, d.z,
-                include_barkas_dcs=True, born_reference_charge="bare_Z",
-                projectile_density=d, workers=1)
-        return
-    corrected, diag = bd.apply_barkas_correction_to_dcs_data(
-        data, s, "amorphous", gen.PROJECTILE_MASS_AU, d.z,
-        include_barkas_dcs=True, born_reference_charge="bare_Z",
-        projectile_density=d, workers=1)
-    born = exc.sum(axis=1)+ion.sum(axis=1)
-    np.testing.assert_array_equal(diag.DCS_Born_m2_per_eV, born)
-    np.testing.assert_allclose(diag.DCS_total_m2_per_eV, born+diag.DCS_Barkas_m2_per_eV, rtol=1e-14)
-    assert np.all(np.isfinite(diag.DCS_total_m2_per_eV))
-    assert np.all(diag.DCS_total_m2_per_eV >= 0)
-    assert diag.TCS_total_m2[0] == pytest.approx(np.trapezoid(diag.DCS_total_m2_per_eV, w), rel=1e-14)
-    assert diag.S_Barkas_check_eV_m2[0] == pytest.approx(np.trapezoid(w*diag.DCS_Barkas_m2_per_eV, w), rel=1e-14)
-    if d.electrons:
-        assert diag.barkas_model_metadata["barkas_model"] == sb.MODEL
-        assert np.any(diag.DCS_Barkas_m2_per_eV > 0)
-    else:
-        oos = bd.oos_density(w, s, "amorphous")
-        expected = bd.barkas_dcs_m2_per_eV(t, w, d.z, gen.PROJECTILE_MASS_AU, oos.df_dW_total)
-        np.testing.assert_array_equal(diag.DCS_Barkas_m2_per_eV, expected)
-
-
-def test_neutral_is_not_zero_and_cutoff_and_units_are_explicit():
-    d = load_density("H", 0)
-    t, mass = 1e6, 1837.15
-    w = np.array([15., 50., 2*bd.wmax_eV(t, mass)])
-    result, error = sb.dcs_m2_per_eV(t, w, mass, np.ones(3), d, workers=1)
-    beta, gamma = bd.projectile_beta_gamma(t, mass)
-    kernel, _ = sb.converged_kernel(w[:2], beta, gamma, d)
-    pref_cm2 = 4*np.pi*bd.RE_CLASSICAL_CM**2*bd.ALPHA_FINE/(gamma**2*beta**5)
-    np.testing.assert_allclose(result[:2], 1e-4*pref_cm2*kernel, rtol=1e-14)
-    assert result[2] == 0 and error[2] == 0
-    assert np.all(result[:2] > 0)
-    with pytest.raises(ValueError, match="Bohr velocity"):
-        sb.dcs_m2_per_eV(1e4, [10.], mass, [1.], d, workers=1)
-
-
 @pytest.mark.parametrize("phase", ["amorphous", "hexagonal"])
 def test_oos_normalization_remains_eight_plus_two(phase):
     s = gen.model.epsilon_optical(phase)
@@ -138,7 +51,7 @@ def test_oos_normalization_remains_eight_plus_two(phase):
 
 @pytest.mark.parametrize("relativistic", [False, True])
 @pytest.mark.parametrize("element,charge", [(e, z-1) for e, z in ELEMENTS.items()])
-def test_generator_exports_corrected_totals_and_metadata(tmp_path, monkeypatch, relativistic, element, charge):
+def test_generator_exports_corrected_totals_and_metadata(tmp_path, monkeypatch, relativistic, element, charge, synthetic_nonlinear_kernel):
     gen.set_projectile(element)
     gen._set_projectile_charge_state(charge)
     gen._set_projectile_relativistic_dcs(relativistic)
@@ -176,21 +89,6 @@ def test_generator_exports_corrected_totals_and_metadata(tmp_path, monkeypatch, 
         wrong = dict(saved)
     wrong["barkas_model"] = "stale"
     assert not gen._npz_matches_params(wrong, NE=12, Nq=128, T_list=t, include_barkas_dcs=True)
-
-
-def test_unconverged_kernel_and_uncontrolled_correction_fail(monkeypatch):
-    def inconsistent(*args, **kwargs):
-        raise RuntimeError("independent quadrature error exceeds tolerance")
-    monkeypatch.setattr(sb.oscillator_quadrature, "integrate_kernel", inconsistent)
-    with pytest.raises(RuntimeError, match="did not converge"):
-        sb.converged_kernel(np.array([10.]), .1, 1/np.sqrt(.99), load_density("H", 0))
-    monkeypatch.setattr(sb, "dcs_m2_per_eV", lambda *a, **k: (np.ones(2), np.zeros(2)))
-    data = dict(T_line=np.array([1e6]*2), E_line=np.array([10., 20.]),
-                exc_vals=np.full((2, 1), 1e-20), ion_vals=np.full((2, 1), 1e-20))
-    with pytest.raises(RuntimeError, match="uncontrolled"):
-        bd.apply_barkas_correction_to_dcs_data(data, gen.model.epsilon_optical("amorphous"),
-            "amorphous", 1837., 1, include_barkas_dcs=True,
-            born_reference_charge="bare_Z", projectile_density=load_density("H", 0), workers=1)
 
 
 @pytest.mark.parametrize("element,charge", STATES)

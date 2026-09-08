@@ -7,16 +7,17 @@ import json
 import numpy as np
 from tqdm import tqdm
 from physics.inelastic_dielectric import checkpoints
-from physics.inelastic_dielectric.polarization import barkas_dcs as bd, screened_barkas as sb
+from physics.inelastic_dielectric.polarization import correction as bd, nonlinear_polarization as sb
 
 FLAGS = {1: "quadrature_not_converged", 2: "nonfinite_value_or_error",
          4: "outside_velocity_domain", 8: "abs_correction_at_least_born",
-         16: "negative_total"}
+         16: "negative_total", 32: "nonpositive_born_with_nonzero_correction"}
 
 
 def _diagnostic_row(task):
     energy, w, mass, element, charge, path = task
-    signature = json.dumps(dict(energy=energy, mass=mass, element=element, charge=charge), sort_keys=True)
+    signature = json.dumps(dict(energy=energy, mass=mass, element=element, charge=charge,
+                                model=sb.MODEL, quadrature=sb.nonlinear_oscillator.VERSION), sort_keys=True)
     value, error = np.full(w.shape, np.nan), np.full(w.shape, np.nan)
     flags, done = np.zeros(w.shape, np.uint8), np.zeros(w.shape, bool)
     path = Path(path)
@@ -39,8 +40,8 @@ def _diagnostic_row(task):
 
 def write_diagnostic_tables(data, s, density, mass, out_dir, checkpoint_dir, workers, metadata, scale, dat_names=None):
     """Retain raw estimates in diagnostic products and optional standard-layout DAT."""
-    if density is None or density.electrons == 0:
-        raise ValueError("Diagnostic polarization mode requires an electron-bearing projectile")
+    if density is None:
+        raise ValueError("Diagnostic polarization mode requires an explicit projectile charge state")
     out_dir, checkpoint_dir = Path(out_dir), Path(checkpoint_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     checkpoints.require_manifest(checkpoint_dir, dict(source=checkpoints.source_digest(),
@@ -72,11 +73,16 @@ def write_diagnostic_tables(data, s, density, mass, out_dir, checkpoint_dir, wor
             accept(i, _diagnostic_row(task))
     flags[(born > 0) & (np.abs(correction) >= born)] |= 8
     total = born + correction
+    flags[~np.isfinite(born) | ~np.isfinite(correction) | ~np.isfinite(total) | ~np.isfinite(error)] |= 2
     flags[total < 0] |= 16
+    flags[(born <= 0) & (correction != 0)] |= 32
     ratio = np.divide(correction, born, out=np.full_like(born, np.nan), where=born > 0)
     report = dict(metadata, diagnostic_only=True, transport_ready=False,
                   dat_scale_m2=scale, dat_convention="standard legacy DCS/TCS scaling; multiply by dat_scale_m2",
-                  flag_bits=FLAGS, failure_counts={reason: int(np.count_nonzero(flags & bit)) for bit, reason in FLAGS.items()},
+                  flag_bits=FLAGS, magnitude_flag_is_warning_only=True,
+                  failure_counts={reason: int(np.count_nonzero(flags & bit))
+                                  for bit, reason in FLAGS.items() if bit != 8},
+                  warning_counts={FLAGS[8]: int(np.count_nonzero(flags & 8))},
                   units="energy eV; DCS and error m2/eV", rows=int(w.size))
     # Use exactly the existing Born-proportional channel allocation, including
     # its zero-Born fallback. Do not clip negative values or replace missing ones.

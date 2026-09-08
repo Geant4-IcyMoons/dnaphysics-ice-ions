@@ -142,13 +142,12 @@ sampling-table path. Both multiprocessing initializers carry the selected Q.
 
 `--charge-state` cannot be combined with scalar `--charge-mode zeff` or
 `explicit`, or with a non-bare input-reference rescaling. Electron-bearing
-states with `--include-barkas-dcs=true` use the **experimental** screened
-optical-oscillator calculation documented in [SCREENED_BARKAS.md](../polarization/SCREENED_BARKAS.md).
-It uses the radial field and its gradient, not a substitution of Z-F into
-a Z^3 prefactor. Physical acceptance fails for several neutral/low-charge
-states; those exports are rejected, not silently rescaled. This is not yet
-a validated all-state ice DCS correction. The existing bare-nucleus Barkas
-option remains available unchanged. No Bloch DCS is added.
+states with `--include-barkas-dcs=true` use the **experimental** full nonlinear
+oscillator documented in [NONLINEAR_POLARIZATION.md](../polarization/NONLINEAR_POLARIZATION.md).
+Bare states use that same solver. It evaluates the full displaced radial
+field, not a substitution of Z-F into a Z^3 prefactor. No cubic backend is
+available. Convergence and final-DCS positivity checks remain enforced.
+This is not a validated all-state ice DCS correction. No Bloch DCS is added.
 
 These new files are **not automatically registered as a complete charge-state
 ladder in the C++ transport model**. C++ particle definitions, state-specific

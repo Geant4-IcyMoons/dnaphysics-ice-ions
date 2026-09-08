@@ -1,7 +1,7 @@
 """Loss-level resume preserves results without relaxing physical guards."""
 import numpy as np
 import pytest
-from physics.inelastic_dielectric.polarization import screened_barkas as sb
+from physics.inelastic_dielectric.polarization import nonlinear_polarization as sb
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import load_density
 
 
@@ -14,7 +14,7 @@ def test_interrupted_loss_resume(tmp_path, monkeypatch):
         if len(calls) == 2:
             raise RuntimeError("simulated interruption")
         return xi, abs(xi)*1e-6, {}
-    monkeypatch.setattr(sb.oscillator_quadrature, "integrate_kernel", kernel)
+    monkeypatch.setattr(sb.nonlinear_oscillator, "integrate_kernel", kernel)
     w = np.array([15., 50., 100.])
     beta, gamma = .1, 1/np.sqrt(.99)
     with pytest.raises(RuntimeError, match="simulated interruption"):
@@ -35,7 +35,7 @@ def test_real_kernel_checkpoint_reuse(tmp_path, monkeypatch):
     assert np.all(np.isfinite(value)) and np.all(error >= 0)
     def unexpected(*args, **kwargs):
         raise AssertionError("A completed loss must not be recomputed")
-    monkeypatch.setattr(sb.oscillator_quadrature, "integrate_kernel", unexpected)
+    monkeypatch.setattr(sb.nonlinear_oscillator, "integrate_kernel", unexpected)
     np.testing.assert_array_equal(sb._energy_row(task), (value, error))
 
 

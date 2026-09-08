@@ -1,54 +1,44 @@
-# Polarization correction
+# Nonlinear polarization
 
-Production generation uses two implementations:
+The only correction backend is the full nonlinear frozen-projectile oscillator.
+It is used for bare, partially stripped and neutral H, He, C, O and S. Cubic
+truncation and analytic point-projectile Barkas are no longer generator options.
 
-- `barkas_dcs.py`: the Salvat/SBETHE point-projectile Barkas kernel, optical
-  OOS normalization, charge scaling, final-DCS assembly, and diagnostics.
-- `screened_barkas.py`: the frozen-projectile nonlinear-oscillator
-  approximation for electron-bearing states. See [equations and limits](SCREENED_BARKAS.md).
-- `oscillator_quadrature.py`: phase-resolved time integration, adaptive
-  impact quadrature, and separate numerical error estimates for that model.
+## Code
 
-The umbrella name is **polarization**, not a claim that the screened formula
-is an established Barkas correction for every ion or neutral atom. Bare
-states dispatch to Salvat; screened states retain the experimental model
-identity and its convergence/perturbative rejection checks.
+- `nonlinear_oscillator.py`: frozen radial fields, full/leading encounter
+  equations, rotating-amplitude integration and impact quadrature.
+- `nonlinear_polarization.py`: optical spectral assignment, kinematics,
+  loss-level checkpoints and energy-parallel execution.
+- `correction.py`: OOS normalization, scalar charge conventions, assembly
+  with PWBA/RPWBA Born, TCS and stopping diagnostics.
+- `diagnostic_tables.py`: flagged raw estimates, separate from transport products.
+- `plot_correction.py`: Courier/Plasma PDF diagnostics from saved components.
+- [benchmarking](benchmarking/README.md): retained full-strength comparison.
 
-`--include-barkas-dcs=true` remains the generation switch. The corrected
-table is Born plus correction, with the same interaction charge in the
-quadratic and cubic terms. No scalar rescaling is substituted for the
-additive kernel, and no Bloch DCS is included.
-
-## Benchmarks
-
-The [close-collision comparison](CLOSE_COLLISIONS.md) adds a nonrelativistic
-Section-4-inspired alternative to the impact cutoff. It is benchmark-only;
-the production prescription is not replaced. Its shift is evaluated from
-the existing atomic potentials, with no fitted screening radius.
-
-All routines and their figure/report folders are under `benchmarking/`:
+## Generation
 
 ```bash
-python -m physics.inelastic_dielectric.polarization.benchmarking.check_screened_oscillator_nonlinear --workers 10
-python -m physics.inelastic_dielectric.polarization.benchmarking.check_screened_oscillator_nonlinear --plot-only
-python -m physics.inelastic_dielectric.polarization.benchmarking.compare_screened_barkas_point_projectiles --projectile proton --workers 10
-python -m physics.inelastic_dielectric.polarization.benchmarking.compare_screened_barkas_point_projectiles --projectile alpha --workers 10
-python -m physics.inelastic_dielectric.polarization.benchmarking.compare_close_collisions --workers 10
-python -m physics.inelastic_dielectric.polarization.benchmarking.check_integration_failures --workers 10 --dq 1000
-python -m physics.inelastic_dielectric.polarization.benchmarking.benchmark_barkas_sbethe
+ICE_TYPE=amorphous python -m physics.inelastic_dielectric.generate_cross_sections \
+  --projectile He --charge-state 1 --include-barkas-dcs=true \
+  --relativistic-projectile-dcs=true --energy-unit total \
+  --energy-min-MeV 0.1 --energy-max-MeV 100 --dE 1000 --dq 1000
 ```
 
-The all-state figure and its original numerical report are in
-`benchmarking/plots/nonlinear_oscillator/`. Point-proton and alpha comparisons
-use `benchmarking/plots/point_proton/` and `point_alpha/`. SBETHE output uses
-`benchmarking/plots/sbethe_v2/`; its downloaded Fortran/build work is separate
-under `benchmarking/runs/`. The experimental matching comparison uses
-`benchmarking/plots/close_collisions/`. Plots and generated reports are Git-ignored.
-The integration-failure audit writes its numerical-only report under
-`benchmarking/runs/integration/`; it creates no plots or production tables.
+The existing `--include-barkas-dcs` switch and `barkas_*` data names remain
+for active job/table consumers. They now select/store nonlinear polarization,
+including higher even and odd terms, not a pure cubic Barkas term. Correction-off
+runs retain Born. The model metadata is `frozen-full-nonlinear-oscillator-v1`.
+Older corrected caches and energy patches are rejected, not relabelled.
+Regenerate polarization-on tables; Born-only tables are unchanged.
+Use new output/cache directories, or explicitly replace old table ranges
+with `--no-merge-energy-patches`. Do not merge old cubic and nonlinear patches.
 
-`--plot-only` requires an existing report and does not run a numerical
-benchmark or rewrite its original provenance. A fresh clone must first run
-the benchmark or receive the saved report. The oscillator benchmark checks
-the numerical cubic coefficient; it does not validate ice DCS or screened
-relativity. See [the benchmark record](benchmarking/README.md).
+The correction is full minus leading within the same oscillator model, added
+once to the independent Born DCS. Channel allocation is bookkeeping. Negative
+final DCS and nonconverged integrals cannot be exported for transport.
+Correction/Born magnitude is reported, not used as a cubic-validity cutoff.
+
+This remains an experimental ice spectral approximation. Removing truncation
+improves the oscillator solution; it does not establish exact ice DCS or fully
+relativistic nonlinear response. See [equations and limits](NONLINEAR_POLARIZATION.md).

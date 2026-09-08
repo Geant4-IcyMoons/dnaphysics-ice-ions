@@ -87,7 +87,7 @@ def test_no_kshell_does_not_renormalize_valence_or_change_barkas(phase):
     assert gen._ion_elf_per_molecule_factor(s) == factor
     gen._set_kshell_model("old-optical")
     assert gen._ion_elf_per_molecule_factor(s) == factor
-    oos = gen.barkas_dcs.oos_density(np.geomspace(7.0, 1e6, 1000), s, phase)
+    oos = gen.correction.oos_density(np.geomspace(7.0, 1e6, 1000), s, phase)
     assert oos.valence_integral_raw * oos.valence_norm == pytest.approx(8.0)
     assert oos.ok_integral_raw * oos.ok_norm == pytest.approx(2.0)
     assert gen.KSHELL_B_EV == 543.4
@@ -166,14 +166,14 @@ def small_dcs(s):
 
 
 @pytest.mark.parametrize("phase", ["amorphous", "hexagonal"])
-def test_barkas_addition_is_not_density_scaled(phase):
+def test_barkas_addition_is_not_density_scaled(phase, synthetic_nonlinear_kernel):
     s = gen.model.epsilon_optical(phase)
     current = small_dcs(s)
     ratio = 3.34e28 * gen._ion_elf_per_molecule_factor(s)
     legacy = dict(current, exc_vals=current["exc_vals"] / ratio, ion_vals=current["ion_vals"] / ratio)
     diagnostics = []
     for data in (current, legacy):
-        _, diag = gen.barkas_dcs.apply_barkas_correction_to_dcs_data(
+        _, diag = gen.correction.apply_barkas_correction_to_dcs_data(
             data, s, material=phase, projectile_mass_me=gen.PROJECTILE_MASS_AU,
             nuclear_charge=1.0, charge_mode="bare", include_barkas_dcs=True,
             include_kshell=True, dcs_scale_m2=gen.EMFI_DCS_SCALE_M2,
@@ -213,7 +213,7 @@ def test_ten_worker_generation_matches_serial(phase):
 @pytest.mark.parametrize("phase", ["amorphous", "hexagonal"])
 @pytest.mark.parametrize("relativistic", [False, True])
 @pytest.mark.parametrize("barkas", [False, True])
-def test_generated_dat_totals_and_safe_patch_merge(tmp_path, phase, relativistic, barkas):
+def test_generated_dat_totals_and_safe_patch_merge(tmp_path, phase, relativistic, barkas, synthetic_nonlinear_kernel):
     gen._set_projectile_relativistic_dcs(relativistic)
     s = gen.model.epsilon_optical(phase)
     dcs = small_dcs(s)

@@ -60,15 +60,20 @@ def test_standalone_entrypoint_help(tmp_path):
 def test_modules_import_without_old_tree():
     modules = ["pwba.kernels", "rpwba.kernels", "k_shell.hydrogenic",
                "projectile_potentials.generate_projectile_atomic_data",
-               "polarization.benchmarking.benchmark_barkas_sbethe",
-               "polarization.benchmarking.compare_screened_barkas_point_projectiles",
+               "polarization.nonlinear_oscillator", "polarization.nonlinear_polarization",
+               "polarization.benchmarking.compare_full_strength_oscillator",
                "projectile_potentials.benchmarking.benchmark_projectile_form_factors"]
     for name in modules:
         importlib.import_module("physics.inelastic_dielectric."+name)
 
 
+def test_removed_cubic_backends_are_not_importable():
+    for name in ("barkas_dcs", "screened_barkas", "oscillator_quadrature", "close_collisions"):
+        assert importlib.util.find_spec("physics.inelastic_dielectric.polarization."+name) is None
+
+
 def test_component_outputs_are_ignored():
-    paths = ["polarization/benchmarking/plots/nonlinear_oscillator/a.pdf",
+    paths = ["polarization/benchmarking/plots/full_strength_oscillator/a.pdf",
              "projectile_potentials/benchmarking/runs/a.json", "output/tables/a.dat"]
     result = subprocess.run(["git", "check-ignore", *[str(PACKAGE/p) for p in paths]],
                             cwd=ROOT, capture_output=True, text=True, check=True)

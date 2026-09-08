@@ -1,1 +1,1 @@
-"""barkas package."""
+"""Full nonlinear oscillator polarization and dielectric-DCS assembly."""

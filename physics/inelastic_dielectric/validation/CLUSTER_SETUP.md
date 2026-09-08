@@ -105,8 +105,8 @@ The earlier proton campaign remains on idlex. The production grid is 1000
 logarithmic total kinetic energies from 0.1 to 100 MeV, dE=1000 and dq=1000,
 with hydrogenic K continuum, no Bloch correction and no energy-patch merging.
 For alpha particles the same 0.1–100 MeV range is total kinetic energy, not
-MeV/u. Bare He2+ dispatches to the point-projectile Salvat polarization term,
-not the experimental screened-oscillator correction. He0 and He+ are not
+MeV/u. All correction-on states now use the full nonlinear oscillator,
+including bare He2+. He0 and He+ are not
 included by default. Select them explicitly with `--charge-state 0` or
 `--charge-state 1` and `--polarization off`. Neutral hydrogen uses
 `--projectile proton --charge-state 0 --polarization off`. The submission
@@ -140,7 +140,12 @@ That path handling was corrected and covered by a relocation regression.
 All seven checkpoint tests plus the real RPWBA+Barkas amorphous CLI resume
 test then passed (8 passed). No physics formula changed in this repair.
 
-Screened polarization is experimental and has documented physical acceptance
-failures for several low charge states. Keep its runtime rejection checks;
-successful exports or baseline regressions do not validate that correction.
-See [SCREENED_BARKAS.md](../polarization/SCREENED_BARKAS.md).
+The numerical counts and launcher runs above document earlier pipeline
+restoration, not validation of the new nonlinear backend. Regenerate all
+polarization-on products after the model replacement; old corrected caches
+and patches are incompatible. Born-only physics is unchanged.
+
+Full nonlinear polarization remains experimental. Its convergence and
+final-DCS positivity checks remain enforced; correction/Born magnitude alone
+is no longer a rejection criterion. Successful export does not validate the
+optical spectral mapping. See [NONLINEAR_POLARIZATION.md](../polarization/NONLINEAR_POLARIZATION.md).

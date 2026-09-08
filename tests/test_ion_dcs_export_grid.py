@@ -31,7 +31,7 @@ def test_uniform_grid_uses_linear_density_not_simpson():
 
 @pytest.mark.parametrize("barkas", [False, True])
 @pytest.mark.parametrize("relativistic", [False, True])
-def test_writer_honours_requested_nodes(tmp_path, monkeypatch, barkas, relativistic):
+def test_writer_honours_requested_nodes(tmp_path, monkeypatch, barkas, relativistic, synthetic_nonlinear_kernel):
     gen.set_projectile("proton")
     gen._set_projectile_relativistic_dcs(relativistic)
     s, C = _optical_and_dispersion()

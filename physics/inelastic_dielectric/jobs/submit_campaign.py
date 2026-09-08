@@ -26,10 +26,10 @@ def main():
     charge = nuclear_charge if args.charge_state is None else args.charge_state
     if not 0 <= charge <= nuclear_charge:
         parser.error("Charge state must lie between zero and nuclear Z")
-    if args.diagnostic_only and (charge == nuclear_charge or args.polarization != "on"):
-        parser.error("Diagnostic-only campaigns require an electron-bearing state and --polarization on")
-    if charge < nuclear_charge and args.polarization != "off":
-        print("Experimental screened polarization: convergence and physical rejection checks remain enabled.")
+    if args.diagnostic_only and args.polarization != "on":
+        parser.error("Diagnostic-only campaigns require --polarization on")
+    if args.polarization != "off":
+        print("Full nonlinear polarization: convergence and final-DCS positivity checks remain enabled.")
     polarization_modes = (False, True) if args.polarization == "both" else (args.polarization == "on",)
     repo = Path(__file__).resolve().parents[3]
     output = repo / "physics" / "inelastic_dielectric" / "output"

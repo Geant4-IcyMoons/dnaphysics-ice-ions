@@ -7,6 +7,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DIELECTRIC_ROOT = PROJECT_ROOT / "physics" / "inelastic_dielectric"
 OUTPUT_DIR = DIELECTRIC_ROOT / "output" / "caches"
 CROSS_SECTIONS_DIR = DIELECTRIC_ROOT / "output" / "tables"
+# Legacy DAT values times this area scale give m^2/eV (DCS) or m^2 (TCS).
+EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
 CROSS_SECTION_PLOTS_DIR = DIELECTRIC_ROOT / "plots"
 DIAGNOSTIC_PLOTS_DIR = DIELECTRIC_ROOT / "plots"
 DIELECTRIC_PLOTS_DIR = DIELECTRIC_ROOT / "finite_q" / "benchmarking" / "plots"

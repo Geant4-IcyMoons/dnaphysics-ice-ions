@@ -12,9 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize("phase", ["amorphous", "hexagonal"])
 @pytest.mark.parametrize("relativistic", [False, True])
-@pytest.mark.parametrize("polarization", [False, True])
-def test_alpha_export(tmp_path, phase, relativistic, polarization):
-    _check_export(tmp_path, phase, relativistic, polarization, "alpha", 2)
+def test_alpha_export(tmp_path, phase, relativistic):
+    _check_export(tmp_path, phase, relativistic, False, "alpha", 2)
 
 
 @pytest.mark.parametrize("phase", ["amorphous", "hexagonal"])

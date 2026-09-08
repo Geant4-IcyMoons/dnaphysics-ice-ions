@@ -41,6 +41,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from physics.constants import (
     DEFAULT_WORKERS,
     CROSS_SECTIONS_DIR,
+    EMFI_DCS_SCALE_M2,
     MC2_HA,
     MC2_eV,
     AVOGADRO,
@@ -53,7 +54,7 @@ from physics.constants import (
     a0,
 )
 from physics.inelastic_dielectric.finite_q import emfietzoglou_model_finite_q as model
-from physics.inelastic_dielectric.polarization import barkas_dcs
+from physics.inelastic_dielectric.polarization import correction
 from physics.inelastic_dielectric.projectile_potentials import projectile_form_factors as projectile_ff
 
 PROJECTILE_KEY = "proton"
@@ -155,9 +156,9 @@ def _validate_projectile_state_options(charge_mode, include_barkas, born_referen
 
 
 def _barkas_generation_metadata(include_barkas):
-    if include_barkas and PROJECTILE_DENSITY is not None and PROJECTILE_DENSITY.electrons:
-        from physics.inelastic_dielectric.polarization import screened_barkas
-        return screened_barkas.metadata(PROJECTILE_DENSITY)
+    if include_barkas:
+        from physics.inelastic_dielectric.polarization import nonlinear_polarization
+        return nonlinear_polarization.metadata(PROJECTILE_DENSITY)
     return {}
 
 
@@ -386,8 +387,8 @@ def _born_reference_charge_from_argv(default="bare_Z"):
             default=os.environ.get("ICE_BORN_REFERENCE_CHARGE", default),
         )
     ).strip()
-    if ref not in barkas_dcs.BORN_REFERENCE_CHOICES:
-        choices = "|".join(barkas_dcs.BORN_REFERENCE_CHOICES)
+    if ref not in correction.BORN_REFERENCE_CHOICES:
+        choices = "|".join(correction.BORN_REFERENCE_CHOICES)
         raise ValueError(f"--born-reference-charge must be {choices}.")
     return ref
 
@@ -527,7 +528,7 @@ def _print_cli_help_and_exit():
         "  --dE N                         energy-loss integration points (default: 1000)\n"
         "  --dq N                         q-integration points (default: 1000)\n"
         "  --charge-mode bare|zeff|explicit\n"
-        "                                 interaction charge for Born/Barkas terms (default: bare)\n"
+        "                                 interaction charge for Born/nonlinear terms (default: bare)\n"
         "  --explicit-charge Q            point-charge approximation, NOT bound-electron screening\n"
         "  --born-reference-charge bare_Z|unit_charge|explicit_q\n"
         "                                 charge convention already present in input Born DCS (default: bare_Z)\n"
@@ -535,7 +536,7 @@ def _print_cli_help_and_exit():
         "                                 reference charge for --born-reference-charge explicit_q\n"
         "  --include-barkas-dcs[=true|false]\n"
         "                                 add the OOS polarization correction (default: false);\n"
-        "                                 screened oscillator for --charge-state Q<Z, Salvat for bare\n"
+        "                                 full nonlinear polarization for every charge state\n"
         "  --include-bloch-dcs=false      Bloch DCS is intentionally unsupported\n"
         "  --relativistic-projectile-dcs[=true|false]\n"
         "                                 use the finite-Q Dominguez-Munoz RPWBA kernel\n"
@@ -614,9 +615,6 @@ OPTICAL_SUM_UNIT_EV2_M3 = (
     0.5 * np.pi * (hbar / elementary_charge)**2
     * elementary_charge**2 / (electron_mass * epsilon_0)
 )
-
-# Geant4 Emfietzoglou DCS table scale: file values * scale -> m^2
-EMFI_DCS_SCALE_M2 = 1.0e-22 / 3.343
 
 KSHELL_B_EV = model.OXYGEN_K_B_EV
 KSHELL_ZEFF = model.OXYGEN_K_ZEFF
@@ -1687,7 +1685,6 @@ def save_cross_section_corrections_npz(
             if born_reference_explicit_charge is not None
             else np.nan
         ),
-        barkas_arbi_source_sha256=barkas_dcs.ARBI_SOURCE_SHA256,
         heavy_projectile_emax_applied=True,
         dcs_table_variable="energy_loss_eV",
         electron_exchange_correction_applied=False,
@@ -2876,7 +2873,7 @@ def write_emfietzoglou_dcs_tables(
     table_metadata.update(_barkas_generation_metadata(include_barkas_dcs))
     if (dcs_data is not None and dcs_data.get("barkas_charge_applied", False)
             and dcs_data.get("barkas_model_metadata", {}) != _barkas_generation_metadata(include_barkas_dcs)):
-        raise ValueError("Input corrected DCS has incompatible Barkas model provenance; regenerate it.")
+        raise ValueError("Input corrected DCS has incompatible polarization model provenance; regenerate it.")
     if merge_energy_patches:
         _check_energy_patch_normalization(exc_out, ion_out, table_metadata)
 
@@ -3025,17 +3022,20 @@ def write_emfietzoglou_dcs_tables(
 
     if diagnostic_only:
         from physics.inelastic_dielectric.polarization.diagnostic_tables import write_diagnostic_tables
+        from physics.inelastic_dielectric.polarization.plot_correction import plot_correction
         diagnostic_path = out_dir / f"diagnostic_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}"
         write_diagnostic_tables(dcs_data, s, PROJECTILE_DENSITY, PROJECTILE_MASS_AU,
             diagnostic_path, checkpoint_dir / "diagnostic_polarization", _max_workers_from_environment(),
             table_metadata, EMFI_DCS_SCALE_M2,
             dat_names=(exc_out.name, ion_out.name, exc_total_out.name, ion_total_out.name))
+        plot_correction(diagnostic_path / "DIAGNOSTIC_ONLY.npz",
+                        diagnostic_path / "plots" / "polarization_correction.pdf")
         return dcs_data
 
     needs_charge_kernel = (str(charge_mode) != "bare") or bool(include_barkas_dcs)
     if needs_charge_kernel and not bool(dcs_data.get("barkas_charge_applied", False)):
-        print("Assembling vectorized Barkas correction and diagnostics from checkpointed Born DCS...")
-        dcs_data, barkas_diag = barkas_dcs.apply_barkas_correction_to_dcs_data(
+        print("Integrating full nonlinear polarization from checkpointed Born DCS...")
+        dcs_data, barkas_diag = correction.apply_barkas_correction_to_dcs_data(
             dcs_data,
             s,
             material=ice_type if ice_type is not None else ICE_TYPE,
@@ -3058,7 +3058,7 @@ def write_emfietzoglou_dcs_tables(
             bad = ", ".join(f"{v:.6g}" for v in barkas_diag.negative_or_unstable_T_eV[:10])
             raise RuntimeError(f"DCS_total is negative or unstable at projectile energies: {bad}")
         print(
-            "Barkas/charge DCS mode: "
+            "Nonlinear polarization/charge DCS mode: "
             f"charge_mode={charge_mode}, include_barkas_dcs={bool(include_barkas_dcs)}, "
             f"df/dW integral={barkas_diag.df_dW_integral:.6g}, "
             f"born_reference_charge={born_reference_charge}, "
@@ -3218,8 +3218,8 @@ def main():
     born_reference_explicit_charge = _born_reference_explicit_charge_from_argv(default=None)
     _set_projectile_charge_state(_argv_value(("--charge-state",), default=None))
     _validate_projectile_state_options(charge_mode, include_barkas_dcs, born_reference_charge)
-    if diagnostic_only and (not include_barkas_dcs or PROJECTILE_DENSITY is None or PROJECTILE_DENSITY.electrons == 0):
-        raise ValueError("--diagnostic-only requires screened polarization enabled for an electron-bearing projectile")
+    if diagnostic_only and (not include_barkas_dcs or PROJECTILE_DENSITY is None):
+        raise ValueError("--diagnostic-only requires nonlinear polarization and an explicit --charge-state")
     if charge_mode == "explicit" and explicit_charge is None:
         raise ValueError("--charge-mode explicit requires --explicit-charge.")
     if born_reference_charge == "explicit_q" and born_reference_explicit_charge is None:
@@ -3269,7 +3269,7 @@ def main():
     else:
         print("Energy input convention: total projectile kinetic energy.")
     print(
-        "Charge/Barkas mode: "
+        "Charge/polarization mode: "
         f"charge_mode={charge_mode}, explicit_charge={explicit_charge}, "
         f"include_barkas_dcs={include_barkas_dcs}, include_bloch_dcs={include_bloch_dcs}, "
         f"born_reference_charge={born_reference_charge}"
@@ -3557,6 +3557,9 @@ def main():
             sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
             dcs_written = True
 
+    from physics.inelastic_dielectric.polarization.plot_correction import plot_correction
+    plot_correction(cache_path, CROSS_SECTIONS_DIR / "plots" / run_label / "polarization_correction.pdf")
+
     if charge_mode == "bare" and not include_barkas_dcs:
         _run_projectile_pwba_sanity_checks(s, C, dcs_data=dcs_data, Nq=Nq, include_kshell=include_kshell)
     else:
@@ -3564,7 +3567,7 @@ def main():
         diag = dcs_data.get("barkas_diagnostics") if isinstance(dcs_data, dict) else None
         if diag is not None:
             print(
-                "Barkas DCS diagnostics: "
+                "Nonlinear polarization diagnostics: "
                 f"TCS_total rows={diag.TCS_total_m2.size}, "
                 f"S_Barkas_check rows={diag.S_Barkas_check_eV_m2.size}, "
                 f"unstable energies={diag.negative_or_unstable_T_eV.size}"

@@ -21,7 +21,7 @@ The former `python_scripts/` commands are deliberately absent on this branch.
 | [finite_q](finite_q/README.md) | Optical-limit and finite-q ice response |
 | [k_shell](k_shell/README.md) | Published hydrogenic oxygen continuum and sum-rule audit |
 | [projectile_potentials](projectile_potentials/README.md) | Frozen densities, fields, form factors, and atomic-data generation |
-| [polarization](polarization/README.md) | Salvat Barkas and screened-oscillator corrections |
+| [polarization](polarization/README.md) | Full nonlinear oscillator polarization |
 | `numerics.py` | Shared quadrature, unchanged by the relocation |
 | [validation](validation/README.md) | Normalization, applicability, and numerical evidence |
 | `jobs/generate_cross_sections.pbs` | Optional PBS launcher |
@@ -44,10 +44,13 @@ ICE_TYPE=amorphous python -u -m physics.inelastic_dielectric.generate_cross_sect
 
 For RPWBA add `--relativistic-projectile-dcs=true`. For the polarization
 correction use `--include-barkas-dcs=true`. The historical CLI name and
-`_barkas_dcs` table tag are retained to identify compatible tables; that tag
+`_barkas_dcs` table tag remain for active job/table consumers; that tag
 means **Born plus correction**, not correction alone. Use
 `ICE_TYPE=hexagonal` for the other phase. Default generation is PWBA,
-hydrogenic K shell included, no polarization correction.
+hydrogenic K shell included, no polarization correction. Correction-on uses
+the full nonlinear oscillator for every state, including bare ions. There
+is no cubic or analytic Barkas production option. Old corrected tables and
+caches must be regenerated; their model provenance is incompatible.
 
 Fixed charge-state example (C3+, RPWBA, no polarization):
 
@@ -89,19 +92,24 @@ with a 72-hour wall limit. Atomic-data generation defaults to 10 workers.
   replaces the selected table range; incompatible metadata fails explicitly.
 - No neighbouring Geant4 installation is modified automatically. To copy
   completed tables, explicitly pass `--geant4-data-dir /path/to/dna`.
-- Generation no longer emits the old, unrelated multi-plot campaigns. Use
-  the component benchmark/diagnostic scripts for figures.
+- Generation writes a two-page Courier/Plasma PDF under
+  `output/tables/plots/<case>/polarization_correction.pdf`. It compares the
+  selected Born baseline with the additive polarization and their sum, using
+  the generated NPZ rather than reevaluating the physics. Page 1 shows TCS,
+  stopping cross section, and relative changes. Page 2 maps polarization/Born
+  over total incident and loss energy, together with warning flags. No
+  unrelated plotting campaign is run.
 
 Generated outputs are ignored by Git. Existing calculations are not silently
 relabelled or numerically updated by moving the code.
 
 ## Scientific limits
 
-### Diagnostic-only screened polarization
+### Diagnostic-only nonlinear polarization
 
 Use `--diagnostic-only` together with `--include-barkas-dcs=true` for an
-electron-bearing projectile to inspect rejected estimates. Strict rejection
-remains the default. Diagnostic mode retains finite unconverged quadrature
+explicit charge state to inspect rejected estimates. Convergence and final
+DCS positivity checks remain the default. Diagnostic mode retains finite unconverged quadrature
 estimates and excessive or negative corrections without clipping. Undefined
 or non-finite values are represented by NaN and flagged; velocities outside
 the model domain are not extrapolated.
@@ -120,6 +128,31 @@ NPZ also retains the Born channel densities. NaN is a missing value, not zero.
 Each completed loss, including a rejected one, is checkpointed separately
 from strict calculations. This mode skips the separate integrated-total
 diagnostic calculation; it computes the requested Born DCS grid directly.
+Its PDF is saved in that diagnostic case's `plots/polarization_correction.pdf`.
+The plots retain finite rejected estimates and their signs. A missing loss
+node leaves the integrated correction and total moment undefined, not an
+interpolated line across the gap. The warning map also identifies
+nonpositive Born values with a nonzero correction. Display bins retain the
+largest-magnitude signed ratio and union of flags; integrated curves always
+use every original loss node. Stopping moments use the same trapezoidal
+W*DCS quadrature as `S_Barkas_check`, without extra energy cuts or scaling.
+
+Existing diagnostic products and complete caches can be plotted without
+rerunning generation or touching checkpoints:
+
+```bash
+python -m physics.inelastic_dielectric.polarization.plot_correction /path/to/DIAGNOSTIC_ONLY.npz
+python -m physics.inelastic_dielectric.polarization.plot_correction /path/to/cross_section_corrections_pwba_CASE.npz
+```
+
+The default is a PDF under the input file's `plots/` subdirectory; `--output`
+can specify a different PDF path. Corrected caches missing separate Born and
+polarization arrays fail explicitly. Plots describe the current saved range,
+not other energy patches previously merged into DAT files. A zero curve in
+a polarization-off run means the correction was disabled, not calculated
+and found negligible. The same correction/Born magnitude warning is displayed
+for every state. Magnitude alone no longer rejects a full nonlinear result;
+nonconvergence, nonfinite values and negative final DCS still do.
 
 Example campaign (four He0 polarization-on diagnostic jobs in publicx):
 
@@ -130,16 +163,17 @@ python -m physics.inelastic_dielectric.jobs.submit_campaign \
 
 These outputs are for diagnosis only, not transport or physical validation.
 
-The relocation changes organization, not the adopted formulas or cutoffs.
-The ion K continuum remains unscaled; the molecular allocation and the
+The nonlinear replacement leaves the Born kernels, densities and target
+response unchanged. The ion K continuum remains unscaled; molecular allocation and
 polarization OOS normalization remain separate. The latter uses 8 valence
 plus 2 core electrons. Missing core bound excitations are not invented.
 
-The screened-oscillator correction is an approximation, not validated ice
-DCS for every charge state. Numerical agreement with the bare Salvat limit
-does not validate screened relativity or the bound-target spectral treatment.
-Nonconvergence, negative totals, and an uncontrolled correction are still
-rejected. Bloch corrections cannot be enabled in the DCS pipeline.
+The full-minus-leading oscillator correction remains an experimental optical
+spectral approximation. It includes higher even and odd terms, not just
+cubic Barkas. The gamma-dependent electric-field prescription is not a fully
+covariant nonlinear calculation. See [equations and limitations](polarization/NONLINEAR_POLARIZATION.md).
+Bloch corrections cannot be enabled in the DCS pipeline; downstream stopping
+corrections also require a double-counting analysis.
 
 ```bash
 python -m pytest -q

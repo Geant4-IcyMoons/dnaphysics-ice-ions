@@ -44,7 +44,7 @@ def test_energy_and_manifest_reject_incompatible_resume(tmp_path):
 
 @pytest.mark.parametrize("relativistic", [False, True])
 @pytest.mark.parametrize("barkas", [False, True])
-def test_interrupted_dcs_resumes_identically(tmp_path, monkeypatch, relativistic, barkas):
+def test_interrupted_dcs_resumes_identically(tmp_path, monkeypatch, relativistic, barkas, synthetic_nonlinear_kernel):
     gen.set_projectile("proton")
     gen._set_projectile_relativistic_dcs(relativistic)
     s, C = _optical_and_dispersion()
