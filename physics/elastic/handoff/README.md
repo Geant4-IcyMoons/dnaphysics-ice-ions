@@ -73,9 +73,9 @@ retain `handoff_qualified=false` until a scientific assessment establishes the
 supported domain. Full ZBL is a comparator, not experimental truth.
 
 The direct orbit implementation is a runnable reference for the dedicated
-study. It does not yet use interpolated pair maps. The default sampler uses the
-existing collision-tube proposal with a 20% uniform component and exact weights;
-measure variance per CPU-second before scaling. Simultaneous
+study. It does not yet use interpolated pair maps. The default sampler uses uniform entrance positions. The collision-tube
+proposal remains an explicit option; its benefit is condition dependent.
+Measure variance per CPU-second before scaling. Simultaneous
 many-atom forces, recoil cascades and electronic interactions are not included.
 
 ## Sampling and terminal energy
@@ -109,3 +109,17 @@ reports include mean weights, effective sample size, terminated fraction and
 worker/CPU seconds. CPU-scaled estimator variance, rather than trajectories per
 second alone, measures whether the proposal helps. The standard errors use
 centered whole-history residuals and retain denominator covariance.
+
+### Selecting the sampler
+
+Uniform sampling (`--tube-fraction 0`) is the default. The first 1,024-history
+tube tests did not establish a general efficiency gain: in crystalline ice,
+a single history contributed 82–92% of the estimated angular variance. Do not
+clip these histories or treat their absence in a small control as convergence.
+Compare independent controls at the same physical settings and history budget.
+`relative_variance_cpu_seconds` measures estimated cost to relative precision
+(lower is better); `largest_history_variance_fraction` exposes unstable variance
+estimates. These diagnostics are not additional qualification tolerances.
+Retain a nonuniform proposal only after replicated controls support its benefit
+for both observables. Use fresh production histories after sampler selection;
+the pilot estimates and sampler choices are not independent.

@@ -83,3 +83,13 @@ def test_successful_blocks_survive_failure_and_resume_fills_holes(tmp_path,monke
     run.execute(args)
     assert submitted==[0] and saved[0].read_bytes()==before
     assert not list(args.output.glob('*/*/errors.json'))
+
+
+def test_variance_concentration_and_cpu_cost():
+    rows=[[10,1,.1,1,1,0,1,0,0],[10,1,.1,1,1,0,1,0,0],
+          [10,10,1.,1,1,0,1,0,0]]
+    report=statistics([{'rows':rows,'cpu_seconds':12}],.05)
+    for observable in report['observables'].values():
+        assert observable['largest_history_variance_fraction']==pytest.approx(2/3)
+        assert observable['relative_variance_cpu_seconds']==pytest.approx(
+            12*(observable['standard_error']/observable['mean'])**2)

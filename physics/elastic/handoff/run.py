@@ -30,7 +30,7 @@ def atomic(path, value):
     tmp.replace(path)
 
 
-def initialize(case, cutoff, order, terminal_energy_ev=1., tube_fraction=0.8):
+def initialize(case, cutoff, order, terminal_energy_ev=1., tube_fraction=0.):
     global _TRANSPORT, _TUBE_FRACTION
     structure = load_ice_structure(REPOSITORY_ROOT / case['structure'])
     kernel = HandoffKernel(minimum_transfer_ev=cutoff,
@@ -105,7 +105,11 @@ def statistics(products, target):
     obs = {}
     for name, column in (('stopping', 1), ('angular_transport', 2)):
         mean, se = ratio_estimate(weight * rows[:, column], denominator)
+        residual_squared = (weight * rows[:, column] - mean * denominator)**2
+        variance_sum = float(np.sum(residual_squared))
         obs[name] = {'mean': mean, 'standard_error': se,
+                     'largest_history_variance_fraction': float(np.max(residual_squared) / variance_sum) if variance_sum > 0 else None,
+                     'relative_variance_cpu_seconds': (se / mean)**2 * sum(p.get('cpu_seconds', 0.) for p in products) if mean > 0 and se is not None else None,
                      'passes': bool(mean > 0 and se is not None and se > 0 and se / mean <= target)}
     residual_rate = float(np.sum(weight * rows[:, 7]) / np.sum(denominator))
     return {'histories': len(rows), 'observables': obs,
@@ -210,7 +214,7 @@ def main():
     r=sub.add_parser('run');r.add_argument('study',type=Path);r.add_argument('--case-index',type=int,required=True)
     r.add_argument('--output',type=Path,required=True);r.add_argument('--cutoff-ev',type=float,required=True)
     r.add_argument('--terminal-energy-ev',type=float,default=1.)
-    r.add_argument('--tube-fraction',type=float,default=0.8)
+    r.add_argument('--tube-fraction',type=float,default=0.)
     r.add_argument('--order',type=int,default=64);r.add_argument('--workers',type=int,default=1)
     r.add_argument('--block-size',type=int,default=16);r.add_argument('--min-histories',type=int,default=256);r.add_argument('--max-histories',type=int,default=100000)
     s=sub.add_parser('reduce');s.add_argument('--output',type=Path,required=True)

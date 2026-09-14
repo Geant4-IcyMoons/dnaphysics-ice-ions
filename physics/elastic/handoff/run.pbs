@@ -14,5 +14,5 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 "$PYTHON_BIN" -B -m physics.elastic.handoff.run run "$STUDY" \
  --case-index "${PBS_ARRAY_INDEX:-${CASE_INDEX:-0}}" --output "$OUTPUT" \
  --cutoff-ev "$CUTOFF_EV" --workers "${NCPUS:-8}" \
- --terminal-energy-ev "${TERMINAL_ENERGY_EV:-1}" --tube-fraction "${TUBE_FRACTION:-0.8}" \
+ --terminal-energy-ev "${TERMINAL_ENERGY_EV:-1}" --tube-fraction "${TUBE_FRACTION:-0}" \
  --order "${ORBIT_ORDER:-64}" --max-histories "${MAX_HISTORIES:-100000}"
