@@ -15,12 +15,14 @@ class HandoffKernel(FullZBLKernel):
     Direct orbit integration is the reference path; no unvalidated interpolation
     is introduced. boundary_ev=None gives the matched full-ZBL control.
     """
-    def __init__(self, *, minimum_transfer_ev, boundary_ev=30., order=64):
+    def __init__(self, *, minimum_transfer_ev, boundary_ev=30., order=64, terminal_energy_ev=1.):
         if boundary_ev is not None and (not math.isfinite(boundary_ev) or boundary_ev < 30):
             raise ValueError('Boundary must be >=30 eV or None for full ZBL.')
         if order < 16:
             raise ValueError('Orbit order must be >=16.')
-        super().__init__(minimum_transfer_ev=minimum_transfer_ev, projectiles=('C',), energy_bounds_ev=(1.,1e8))
+        if not math.isfinite(terminal_energy_ev) or not 1. <= terminal_energy_ev < 1e8:
+            raise ValueError('Terminal energy must lie in [1, 1e8) eV.')
+        super().__init__(minimum_transfer_ev=minimum_transfer_ev, projectiles=('C',), energy_bounds_ev=(terminal_energy_ev,1e8))
         self.boundary_ev, self.order = boundary_ev, order
 
     @lru_cache(maxsize=2048)
@@ -74,7 +76,10 @@ class HandoffKernel(FullZBLKernel):
     def area_quantile_breakpoints(self,projectile,target,projectile_energy_ev):
         outer=self.maximum_impact_parameter_angstrom(projectile,target,projectile_energy_ev)
         b=self.boundary(target,projectile_energy_ev)
-        return np.unique([0.,(b/outer)**2 if outer else 0.,1.])
+        # Equal proposal probability per logarithmic impact-area interval.
+        # This changes only sampling; the likelihood includes interval widths.
+        return np.unique([0., *np.logspace(-10, -1, 10),
+                          (b/outer)**2 if outer else 0., 1.])
 
     def collide(self,projectile,target,projectile_energy_ev,impact_parameter_angstrom):
         c=self.pair_kinematics(projectile,target,projectile_energy_ev)

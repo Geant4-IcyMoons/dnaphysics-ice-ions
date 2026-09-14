@@ -205,10 +205,19 @@ planned ice cohorts. See [README.md](README.md) for binary, trajectory, reductio
 and PBS commands. Runs require an explicit outer cutoff and retain independent
 source/setting identities. Results do not automatically certify a handoff.
 
-The initial implementation uses direct orbit solves and uniform entrance
-sampling, with bounded parallel history blocks. It does not yet use the
-precomputed maps or optional paired proposals discussed above. Measure runtime
+The implementation uses direct orbit solves and a defensive uniform/collision-
+tube proposal with exact weights and bounded parallel history blocks. It does
+not yet use precomputed maps or optional paired proposals discussed above. Measure runtime
 before scaling; these remain possible optimizations after reference validation.
 The reducer writes independent-cohort boundary comparisons; final assessment
 also requires inspecting binary refinement and cutoff comparisons. It does not
 automatically select a boundary or start the replica stage.
+
+### Terminal tracks
+
+Both phases retain histories that fall below the declared terminal energy,
+including traveled length and residual energy. The observable ends there;
+no below-threshold recoil or angular continuation is invented. Compare 1 and
+2 eV terminal energies where these histories are frequent, separately from the
+outer recoil cutoff. A small residual energy does not establish convergence of
+angular transport. Maximum-collision and numerical failures remain errors.

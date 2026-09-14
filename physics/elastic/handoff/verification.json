@@ -29,5 +29,46 @@
     "physics/elastic/handoff/run.py": "13d64627ed13bcb01dd09eb42b753691e857597da4a60304884b661bf19837d1",
     "physics/elastic/handoff/smoke.py": "92ad9a4e6dcfff46f14e577794e2acdf364d3bf590d304b03d3f2403e28c557c",
     "physics/elastic/handoff/study.py": "47af1b42098bf1a0f3501323af2da32dfb8210b57e7aed69ec4d9135ac92b39f"
+  },
+  "sampling_and_terminal_revision_20260914": {
+    "software_tests": {
+      "passed": 169,
+      "skipped": 1
+    },
+    "compute_validation": {
+      "job": "242394.pbs02",
+      "exit_status": 0,
+      "wall_seconds": 178,
+      "original_failed_low_energy_tracks_replayed": 2,
+      "normalization_draws_per_phase": 256,
+      "normalization": {
+        "hexagonal": {
+          "mean_weight": 1.1011410360788876,
+          "standard_error": 0.07078107261971761
+        },
+        "amorphous": {
+          "mean_weight": 1.096719994281338,
+          "standard_error": 0.07087047540922854
+        }
+      },
+      "both_phase_smoke_and_restart": "passed"
+    },
+    "earlier_test_attempt": {
+      "job": "242378.pbs02",
+      "status": "failed_test_assertion",
+      "reason": "Randomly selected replacement tracks did not reach the terminal floor; replaced with exact replay of the original failing histories."
+    },
+    "model_scope": "weighted track-length response above terminal energy; residual energy retained without deposition or angular continuation",
+    "speedup_measured": false,
+    "physical_qualification": false,
+    "sources": {
+      "physics/elastic/handoff/__init__.py": "aeb0c4442714119cdce81f6c013975e4f6f77fd80d1c4d3a811ab1d174541ac5",
+      "physics/elastic/handoff/binary.py": "9f28655c14fa9ba28304ef494f5f70e38d88cacbbcf86d5b66717636d019fdec",
+      "physics/elastic/handoff/kernel.py": "576cb80ddbe7f26eef0f2aee8283aaa5145595d8bac28b7674eee8735491b36f",
+      "physics/elastic/handoff/run.py": "5449610b83f78ae42687f4f5a84ed1ff6f8d48f5f102b77afd25765fd62129ef",
+      "physics/elastic/handoff/smoke.py": "92ad9a4e6dcfff46f14e577794e2acdf364d3bf590d304b03d3f2403e28c557c",
+      "physics/elastic/handoff/study.py": "25f8f61d6f2fa349c41adbe1a759d1cd12d3126232797818ddd932bd764ec0d5",
+      "physics/elastic/handoff/validate_sampling.py": "2c09cb26be207605211d67626d82cbbe190c2d310e6263d6f5c68335c9090688"
+    }
   }
 }

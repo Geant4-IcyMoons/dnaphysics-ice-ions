@@ -51,9 +51,10 @@ Repeat the command to resume; raising `--max-histories` preserves completed
 blocks. One writer owns each cohort/settings directory. Source changes require
 fresh preparation. The runner targets 5% SE on stopping and angular transport,
 not on cutoff-dependent collision counts or every rare process. Reaching the
-history budget is reported as `sampling_limit`, not success. A trajectory that
-hits its energy floor or collision limit fails explicitly rather than silently
-biasing the sample. Completed blocks remain available after such failures.
+history budget is reported as `sampling_limit`, not success. A track that reaches the terminal energy is retained with its traveled length
+and residual energy. Collision limits and solver failures still fail explicitly;
+successful blocks in the same wave are preserved and checkpoint gaps are filled
+on resume before assessing precision. No stopped histories are discarded.
 
 ## Scope and evidence
 
@@ -72,6 +73,39 @@ retain `handoff_qualified=false` until a scientific assessment establishes the
 supported domain. Full ZBL is a comparator, not experimental truth.
 
 The direct orbit implementation is a runnable reference for the dedicated
-study. It does not yet use interpolated pair maps or optimized importance
-sampling; measure throughput before launching a large campaign. Simultaneous
+study. It does not yet use interpolated pair maps. The default sampler uses the
+existing collision-tube proposal with a 20% uniform component and exact weights;
+measure variance per CPU-second before scaling. Simultaneous
 many-atom forces, recoil cascades and electronic interactions are not included.
+
+## Sampling and terminal energy
+
+`--tube-fraction 0.8` draws 80% of entrance positions from the existing periodic
+collision-tube proposal and 20% uniformly. Logarithmic impact-area intervals
+allocate draws to rare close encounters. The proposal density sums all tube
+preimages, including overlaps; every whole-history numerator and track-length
+denominator receives the exact target/proposal weight. The uniform component
+bounds weights by five. Set `--tube-fraction 0` for an independent uniform
+baseline. The 80% fraction is a numerical tuning choice, not a physical factor.
+This follows defensive mixture importance sampling [Hesterberg (1995)](https://doi.org/10.1080/00401706.1995.10484303);
+no universal speedup is implied by that reference.
+
+The terminal energy defaults to 1 eV and can be raised with
+`--terminal-energy-ev` (PBS: `TERMINAL_ENERGY_EV`). A track that crosses it ends
+normally for the declared above-threshold observable. Its residual energy is
+recorded, not assigned to local deposition or converted into fictitious recoils.
+Outputs are ratios of weighted recoil/angle sums to weighted traveled length,
+including the variable lengths of terminated tracks. They are not the response
+of a particle propagated through the full requested path below the floor.
+The residual-energy-per-tracked-length diagnostic does not bound missing angular
+scattering; compare terminal settings (e.g. 1 versus 2 eV) where termination is
+frequent. All handoff and terminal-sensitivity qualification flags remain false.
+
+`--tube-fraction` and terminal energy enter the checkpoint identity. Old uniform
+schema-1 blocks are preserved but not silently mixed with new schema-2 histories.
+Streams are independent between different cutoff, orbit, floor and proposal
+settings, and deterministic across worker counts at fixed settings. Progress
+reports include mean weights, effective sample size, terminated fraction and
+worker/CPU seconds. CPU-scaled estimator variance, rather than trajectories per
+second alone, measures whether the proposal helps. The standard errors use
+centered whole-history residuals and retain denominator covariance.

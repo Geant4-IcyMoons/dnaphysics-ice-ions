@@ -68,7 +68,7 @@ def prepare(configuration):
     sources = {}
     for directory in ("bca", "nlh", "zbl", "handoff"):
         for path in sorted((REPOSITORY_ROOT/"physics/elastic"/directory).glob("*")):
-            if path.suffix in (".py", ".csv"):
+            if path.suffix in (".py", ".csv") and path.name not in ("smoke.py", "validate_sampling.py"):
                 sources[str(path.relative_to(REPOSITORY_ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
     conditions = []
     for phase in config["phases"]:
