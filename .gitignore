@@ -25,3 +25,7 @@ physics/**/logs/
 /tabular/
 /literature/
 /examples/
+
+# Shared model regeneration products
+models/**/runs/
+models/**/logs/

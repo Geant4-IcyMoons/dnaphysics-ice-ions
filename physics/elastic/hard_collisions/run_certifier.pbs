@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -N nlh_certify
+#PBS -q idle
+#PBS -l select=1:ncpus=256:mem=512gb
+#PBS -l walltime=20:00:00
+#PBS -j oe
+set -euo pipefail
+: "${CERTIFIER_ROOT:?Set CERTIFIER_ROOT to a prepared campaign}"
+: "${CERTIFIER_PYTHON:?Set CERTIFIER_PYTHON to the Python used during prepare}"
+: "${CERTIFIER_CODE:?Set CERTIFIER_CODE to the absolute certify.py path}"
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+export PYTHONDONTWRITEBYTECODE=1
+mkdir -p "$CERTIFIER_ROOT/logs"
+exec >"$CERTIFIER_ROOT/logs/${PBS_JOBID}.log" 2>&1
+nlh_workers="${NLH_WORKERS:-${NCPUS:-1}}"
+nlh_stage="${NLH_STAGE:-calibrate}"
+if [[ "$nlh_stage" != calibrate && "$nlh_stage" != produce ]]; then
+    echo 'NLH_STAGE must be calibrate or produce' >&2
+    exit 2
+fi
+"$CERTIFIER_PYTHON" -B "$CERTIFIER_CODE" "$nlh_stage" "$CERTIFIER_ROOT" --workers "$nlh_workers"
+# A stopped/budget-limited campaign is never resubmitted. Explicitly setting
+# NLH_CONTINUATIONS permits bounded wall-time continuations of pending work.
+nlh_remaining="${NLH_CONTINUATIONS:-0}"
+if [[ "$nlh_remaining" =~ ^[0-9]+$ ]] && (( nlh_remaining > 0 )); then
+    nlh_status="$("$CERTIFIER_PYTHON" -B -c 'import json,sys; s=json.load(open(sys.argv[1])); print(s["status"],s.get("pause_reason",""))' "$CERTIFIER_ROOT/state.json")"
+    if [[ "$nlh_status" == 'paused_restartable time_limit' ]]; then
+        nlh_launcher="${CERTIFIER_CODE%/*}/run_certifier.pbs"
+        qsub -v "CERTIFIER_ROOT=$CERTIFIER_ROOT,CERTIFIER_PYTHON=$CERTIFIER_PYTHON,CERTIFIER_CODE=$CERTIFIER_CODE,NLH_STAGE=$nlh_stage,NLH_WORKERS=$nlh_workers,NLH_CONTINUATIONS=$((nlh_remaining-1))" "$nlh_launcher"
+    fi
+fi

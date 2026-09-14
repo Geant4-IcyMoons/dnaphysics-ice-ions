@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-14",
+  "software_tests": {
+    "passed": 165,
+    "skipped": 1,
+    "scope": "handoff, scalar ZBL and hard-collision tests"
+  },
+  "fresh_checkout_tests": {
+    "passed": 9
+  },
+  "pbs_smoke": {
+    "job": "241886.pbs02",
+    "exit_status": 0,
+    "wall_seconds": 9,
+    "checks": [
+      "both ice phases",
+      "NLH and ZBL branches",
+      "energy conservation",
+      "orbit refinement",
+      "binary moment refinement",
+      "restart block preservation"
+    ],
+    "physical_qualification": false
+  },
+  "sources": {
+    "physics/elastic/handoff/__init__.py": "aeb0c4442714119cdce81f6c013975e4f6f77fd80d1c4d3a811ab1d174541ac5",
+    "physics/elastic/handoff/binary.py": "9f28655c14fa9ba28304ef494f5f70e38d88cacbbcf86d5b66717636d019fdec",
+    "physics/elastic/handoff/kernel.py": "055bc061742472383a9b4aba1d39d5f02e2246161131669556090f54617f06be",
+    "physics/elastic/handoff/run.py": "13d64627ed13bcb01dd09eb42b753691e857597da4a60304884b661bf19837d1",
+    "physics/elastic/handoff/smoke.py": "92ad9a4e6dcfff46f14e577794e2acdf364d3bf590d304b03d3f2403e28c557c",
+    "physics/elastic/handoff/study.py": "47af1b42098bf1a0f3501323af2da32dfb8210b57e7aed69ec4d9135ac92b39f"
+  }
+}

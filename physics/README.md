@@ -1,8 +1,13 @@
 # Physics
 
-Only [inelastic_dielectric](inelastic_dielectric/README.md) is populated on
-`ion_modular`. CTMC and hard/soft elastic folders are placeholders, not usable
-processes. Their implementations and the Geant4 application remain on `ion`.
+[Dielectric inelastic processes](inelastic_dielectric/README.md) and
+[nuclear elastic collisions](elastic/README.md) have separate workflows.
+The combined [handoff study](elastic/handoff/README.md) uses shared
+[ice structures](../models/ice/README.md), outside the process directories.
 
-`constants.py` is the single shared source of material densities, projectile
-masses, numerical worker defaults, plotting style, and output locations.
+CTMC and the Geant4 application remain separate from this elastic migration.
+Executable diagnostic code does not establish physical qualification.
+
+`constants.py` holds the common material and projectile constants for the
+dielectric workflow; the retained elastic isotope conventions are documented
+in `elastic/bca/config.py`.

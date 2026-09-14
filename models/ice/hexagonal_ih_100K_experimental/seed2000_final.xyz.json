@@ -1,0 +1,16 @@
+{
+  "phase": "hexagonal ice Ih, 100 K, experimental cell",
+  "state": "equilibrated and structurally validated for collision sampling",
+  "collision_ready": true,
+  "collision_attested_utc": "2026-08-05T08:22:46.993562+00:00",
+  "sha256": "931a565be218a44a81cec8ce599d38a4aa665f69649383d45550d0945b2fe162",
+  "atoms": 24576,
+  "water_molecules": 8192,
+  "density_g_cm3": 0.9334748312550061,
+  "validation_reports": [
+    {
+      "path": "validation/hexagonal_ih_100K_validation.json",
+      "sha256": "c384df5fc813b905828c4b6e52c81afaa775cac720aeb3c6c3bbf17697ca2c25"
+    }
+  ]
+}

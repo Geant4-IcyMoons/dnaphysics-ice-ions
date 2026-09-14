@@ -1,0 +1,265 @@
+{
+  "schema": 6,
+  "recorded_utc": "2026-09-09 13:49:09 UTC",
+  "files_sha256": {
+    "certify.py": "54b25d9ee718da01a75b0d2e84ec451e838a09da6e5a14082f08a4ae1063ed8e",
+    "_differential.py": "215818ac54a8673694a4386c79aabc54d1cc834addbbaa33416405e87bacab34",
+    "carbon_ice.json": "b003c9942ecc562e06e589d55c675ac86540811b48477336a1dd91860fc62576",
+    "run_certifier.pbs": "7472828c4d0d766950976acf1d8c079b27e203c1713ab2e50dcb9e0ae879b5d9",
+    "tests/test_async_verification.py": "75c69be0015c0f80fe8355b043caaf4e58d48ad2a60976d3606e593fa0357da0",
+    "tests/test_audit_variance.py": "a00128b50b548a7703d4c22280ec5f02723a864aacc3e611c18fdf7e0e51308b",
+    "tests/test_certify.py": "4d35a28cd2dbae5497621ea7276b55039338edf87d7f57f70a85124fe2c509ed",
+    "tests/test_differential.py": "6667c26a48e2a42bbbf64f15583826879194138be155da26e265770d324134c0",
+    "tests/test_pair_protocol.py": "6c9c63031f95c1613f3132e15fa55cf5cbeb0934f53e62706487dec69f5dd6b7",
+    "tests/test_proposal_training.py": "d335a06349b62909c9da999209317da7add7db6914e37ad1eb816a7074ab1c3e",
+    "tests/test_betting_intervals.py": "006d69c69c802d740150bdd772d865a043d5010448c74b456aca5c37e1142996",
+    "README.md": "4f3e8f56c067afdf41886abb8cb790aff829222928e80039a3dd5200d98a4de1",
+    "tests/test_tail_estimator.py": "a2ae8a183010765191779a55121caa057d4fc00968fb175d9f4cb7cb5bff09d2",
+    "tests/test_stages.py": "f2977fa27fcbbf61c337fc92bfdc57cbb0b683c1058852789e7b7f4aa23843ee"
+  },
+  "runtime_commit": "5f4adfe2585c4707c6d53dba10d580e876e1a688",
+  "software_tests": {
+    "passed": 152,
+    "failed": 0,
+    "skipped": 0,
+    "elapsed_seconds": 48.56,
+    "command": "NLH_REAL_RUNTIME_TESTS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 /home/yoffegid/.conda/envs/yoffe_venv/bin/python -B -m pytest -q physics/elastic/hard_collisions/tests",
+    "scope": "Full suite including real retained-runtime replay/resume and pair reuse; new stage boundaries tested with a synthetic executor, not a completed physical staged campaign.",
+    "initial_attempt": "Updated synthetic consumer fixtures for RSE acceptance and staged interval state; corrected NumPy scalar JSON serialization; complete suite rerun successfully."
+  },
+  "launcher_syntax_passed": true,
+  "git_diff_check_passed": true,
+  "real_runtime_checks": {
+    "carbon_both_materials_base_cases": 60,
+    "carbon_pair_maps_checked": 2,
+    "oxygen_amorphous_narrow_energy_domain_ev": [
+      1000,
+      1001
+    ],
+    "oxygen_pair_maps_checked": 10,
+    "oxygen_independent_smoke_histories": 8,
+    "exact_replay_histories": 8,
+    "resume_worker_counts": [
+      2,
+      1
+    ],
+    "committed_block_and_pair_checksums_preserved": true,
+    "unfinished_phase_export_refused": true,
+    "free_flight_exposure_conserved": true
+  },
+  "software_regressions": [
+    "Cost-aware defensive proposal objective and joint-TV sampling surrogate",
+    "Trajectory-local event indices correctly offset when merging training blocks",
+    "Missing early ranges filled without discarding later checkpoints",
+    "Continuous queue replenishment and independent baseline fallback",
+    "Worker-side atomic deterministic-verification proofs tied to current selected cohort",
+    "Pair DCS correlated lab-angle/recoil branches and stable small-angle kinematics",
+    "Quadrature-cache resume and independent area/energy/bin checks",
+    "DCS export recomputes interpolation decisions and rejects unit/kinematic inconsistencies",
+    "Near-duplicate root insertion handled without relaxing numerical tolerances",
+    "Time-uniform grid-betting mixtures with simultaneous scalar coverage",
+    "Exact Bernoulli path enumeration, analytic constant/zero cases and weighted rare-event tests",
+    "Grid-independent scalar confidence, unchanged checkpoint replay and gap rejection",
+    "Statistical distribution TV separated from deterministic pair-map TV",
+    "Exact disjoint tail-score accounting, empty-tail bounds and simultaneous confidence spending",
+    "Relativistic whole-history angular bound tested for H/He/C/O/S masses",
+    "Count support from qualified pair recoil floors rather than computational safety cap",
+    "Pair reuse rejects changed physics/numerics and repeats consumer checks without pair solves",
+    "Calibration/production boundary, independent seed cohorts and signed handoff tamper rejection",
+    "Weighted ratio standard errors retain numerator-denominator covariance",
+    "Zero empirical variance does not automatically pass scalar acceptance",
+    "Calibration geometric replay budget accounting"
+  ],
+  "carbon_campaign": {
+    "root": "runs/carbon_ice",
+    "signature": "93c8d81d6e9299bd2166ad5ceab971e4c0ee8c1d353e3ad48f0517b96c16b5ab",
+    "manifest_sha256": "7d5e0b8a07fc4fb9783ee03fe61434fdbdc2925b3db9c2e97d06a7b99613be36",
+    "index_sha256": "ac7ff57ad3b2985149233c82fd9c69bbf6390acc7bc6b77c2a724abff5187349",
+    "qualified_pair_energy_maps": 962,
+    "qualified_log_energy_intervals": 240,
+    "total_energy_domain_ev": [
+      1000,
+      100000000
+    ],
+    "targets": [
+      "H",
+      "O"
+    ],
+    "angular_integral": "positive_turning_difference_v1",
+    "pair_reference_area_points": 1494943,
+    "pair_reference_kernel_solves": 2989886,
+    "phase_base_cases": 60,
+    "retained_high_energy_preflight_failures": 18,
+    "new_phase_histories": 0,
+    "job": "233312.pbs02",
+    "requested_cpus": 8,
+    "requested_memory_gb": 16,
+    "queue": "idle -> idlex",
+    "job_exit_status": 0,
+    "job_wall_seconds": 192,
+    "job_cpu_seconds": 834,
+    "job_peak_memory_kb": 818680,
+    "binary_dcs_verified": true,
+    "phase_response_qualified": false,
+    "status": "estimator_review_required_before_sampling",
+    "old_broad_arrays_resumed": false,
+    "acceptance_schema": 3,
+    "unchanged_during_estimator_update": true,
+    "current_controller_resume_compatible": false
+  },
+  "statistical_policy": {
+    "scalar_precision_mode": "relative_standard_error",
+    "relative_standard_error_target": 0.05,
+    "scalar_acceptance_method": "Estimated whole-history weighted ratio standard error using centred influences and numerator-denominator covariance",
+    "scalar_guarantee": "Estimated RSE, not finite-sample, simultaneous or optional-stopping-valid confidence coverage; zero variance requires review",
+    "retained_bound_and_distribution_confidence": 0.95,
+    "bounded_scalar_diagnostic_method": "Two one-sided constant-grid betting mixtures, G=20; optional simultaneous_bound acceptance mode",
+    "binned_joint_distribution_tv": 0.005,
+    "histogram_confidence_method": "Bounded-iid empirical Bernstein with separate finite-family spending",
+    "numerical_pair_distribution_tv": 0.005,
+    "numerical_error_separate": true
+  },
+  "production_integration": {
+    "binary_tables": "Exported qualified maps are the same maps consumed by PairMapTable in current ice trajectories",
+    "phase_response": "Schema-6 calibrate/produce commands share one physical runner, freeze designs and separate independent production samples. RSE controls scalar acceptance; distribution and numerical checks remain. Old schema-3 campaign is unchanged and not directly resume-compatible.",
+    "homogeneous_phase_closure_implemented": false
+  },
+  "tail_estimator_research": {
+    "review_date": "2026-09-09",
+    "contract": "README.md#tail-estimator-literature-assessment-and-implementation-contract",
+    "status": "implemented_software_tested_production_feasibility_unresolved",
+    "choice": "Geometry-preserving tail-aware entrance sampling with physical weighted-score bounds and independent cost/precision pilot",
+    "excluded_shortcuts": [
+      "Independent atom-displacement resampling without the joint structural law",
+      "Unweighted impact-parameter or cross-section hardening",
+      "Using observed maxima or isolated-pair tail probabilities as whole-history bounds"
+    ],
+    "runtime_modified": false,
+    "new_trajectories": 0,
+    "broad_jobs_submitted": false,
+    "controller_modified": true,
+    "physical_bounds": {
+      "angular": "Energy-momentum conservation and telescoping log-energy bound",
+      "collision_count": "Minimum fractional recoil of qualified pair interpolant; computational collision cap no longer used as production confidence support",
+      "recoil": "Total entrance kinetic energy"
+    },
+    "pair_reuse": "Implemented and real-runtime tested; source products unchanged, numerical payloads reused with provenance and fresh consumer checks, no new pair solves."
+  },
+  "physical_campaign_qualified": false,
+  "physical_model_validated": false,
+  "real_sampler_speedup_demonstrated": false,
+  "remaining_limitations": [
+    "Earlier bounded-interval high-energy preflights failed 18/18; these do not forecast RSE-policy feasibility. Efficient phase-specific production and unchanged joint-TV acceptance remain undemonstrated.",
+    "A homogeneous phase-specific local law cannot be inferred by density rescaling of finite-path response",
+    "Independent physical-model and structural-ensemble adequacy remain outside numerical certification"
+  ],
+  "cleanup": {
+    "unused_allocation_module_and_tests_removed": true,
+    "obsolete_entrance_kernel_check_and_direct_fallback_removed": true,
+    "old_empty_schema2_preflight_replaced": true,
+    "historical_trajectories_deleted": 0,
+    "superseded_pair_pilot_replaced": true,
+    "removed_superseded_generated_roots": [
+      "/tmp/nlh-empty-preflight-s055jWEI/carbon_ice",
+      "/tmp/nlh-pair-conditioning-0UhhnXRt/carbon_ice"
+    ],
+    "removed_file_count": 1928,
+    "removed_bytes": 209857105,
+    "recovery": "No backup of deleted superseded logs/products. Retained model inputs permit recalculation; all historical trajectory checkpoints and current qualified DCS evidence remain preserved."
+  },
+  "consumer_verification": {
+    "command": "certify.py verify-differential runs/carbon_ice",
+    "verified_pair_energy_maps": 962,
+    "index_sha256": "ac7ff57ad3b2985149233c82fd9c69bbf6390acc7bc6b77c2a724abff5187349",
+    "elapsed_seconds": 57.52,
+    "peak_rss_kb": 174996,
+    "read_only": true,
+    "new_trajectories": 0
+  },
+  "conditioning_audit": {
+    "first_pilot_job": "233256.pbs02",
+    "qualified_maps": 914,
+    "blocked_maps": 12,
+    "offending_map_point_pairs": 21,
+    "cause": "Cancellation in pi minus twice the half-orbit integral and its radial radicand at weak deflection",
+    "resolution": "Algebraically equivalent positive turning-point-difference integral with stable expm1 differences; no smoothing, potential change or relaxed tolerance",
+    "all_offending_pairs_reordered_correctly": true,
+    "analytic_coulomb_cases": 50,
+    "maximum_coulomb_relative_error": 2.75e-15,
+    "old_low_mid_energy_comparison_max_relative_difference": 4.85e-07,
+    "old_cancellation_reference_caches_reused": false,
+    "reason_caches_recomputed": "The numerical reference changed; stale weak-angle values cannot masquerade as the new reference"
+  },
+  "estimator_comparison": {
+    "path": "runs/carbon_ice/scalar_estimator_comparison.json",
+    "sha256": "5e15a06d794bdecfee80c1e573c1d4ddc2a3679f9606ce20b850247739014ef7",
+    "scope": "Constant sequences at retained ratios, full-path exposure normalization, zero variance, ideal unit weights; NOT intervals for historical data; retained earlier bounded-interval policy diagnostic, not an RSE-policy feasibility forecast",
+    "tested_cases": 18,
+    "failed_scalar_preflights": {
+      "betting": 18,
+      "empirical_bernstein": 18,
+      "physical_support": 18
+    },
+    "collision_rate_preflight_passes": {
+      "empirical_bernstein": 0,
+      "betting": 18,
+      "legacy_columns_not_physical_certificates": true
+    },
+    "actual_historical_trajectory_intervals_computed": false,
+    "new_trajectories": 0,
+    "broad_jobs_submitted": false,
+    "tail_band_statistics_available": false,
+    "legacy_count_cap_is_not_physical_support": true
+  },
+  "staged_workflow": {
+    "implemented": true,
+    "commands": [
+      "calibrate",
+      "produce"
+    ],
+    "calibration_handoff": "calibration/index.json",
+    "production_report": "production/report.json",
+    "accepted_outputs": "tables/",
+    "training_pooled_into_production": false,
+    "new_energy_cases": "Local calibration and frozen design required before independent sampling",
+    "jobs_submitted_this_update": false,
+    "physical_staged_campaign_completed": false
+  },
+  "scalar_production_20260914": {
+    "schema": 7,
+    "status": "implemented_software_tested_prepared_not_launched",
+    "software_tests": {
+      "passed": 156,
+      "skipped": 1,
+      "failed": 0,
+      "skip": "Opt-in physical retained-runtime test; no new collision integrations in this revision"
+    },
+    "source_sha256": {
+      "certify.py": "173f8a1492f695a711cb1a9900576dc175bd48b51517d1c63e4d2c99cb779b32",
+      "carbon_ice.json": "8dd922558d1a870cc51b3e8743c8b2476cd68541257fd28ca8462344e55404da",
+      "tests/test_scalar_production.py": "0c82c19fd85ba5fade81ae5fd2b6c56775e75c910f80e5b045f1e5c9ea420c17"
+    },
+    "prepared_root": "physics/elastic/hard_collisions/runs/carbon_ice_scalar",
+    "signature": "9645371b63a2361e8c5d3633f4c067f2f621de1c936b437245ddae0acac42d27",
+    "reused_pair_maps": 962,
+    "reused_pair_intervals": 240,
+    "pair_consumer_reverification": "required during calibration before ice transport",
+    "scope": "5% estimated scalar SE; independent calibration/production, 20% rounded sample growth, observed scalar midpoint convergence; joint distribution not certified",
+    "retained_checks": [
+      "binary numerical maps",
+      "geometry",
+      "baseline comparison",
+      "importance normalization",
+      "tail diagnostics",
+      "zero variance review",
+      "deterministic replay",
+      "checkpoint coverage"
+    ],
+    "limitations": [
+      "No measured speedup",
+      "No new qualified ice response",
+      "Computational history budgets retained",
+      "No automatic 10% fallback"
+    ]
+  }
+}

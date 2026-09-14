@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-14",
+  "status": "implemented_software_tested_not_launched",
+  "tests": {
+    "combined_suite": "162 passed, 1 skipped before adding the reducer test",
+    "final_targeted_suite": "7 passed, including the reducer export test",
+    "skipped": "Opt-in retained physical runtime integration"
+  },
+  "policy": {
+    "scalar_relative_se": 0.05,
+    "sample_growth": 0.2,
+    "cdf_gate": false,
+    "numerical_cutoff_comparison": 0.05
+  },
+  "handoff": {
+    "nlh_turning_potential_ev": 30,
+    "qualified": false,
+    "rationale_reference": "https://doi.org/10.1103/PhysRevA.111.032818",
+    "qualification_remaining": [
+      "handoff scattering and common-boundary sensitivity",
+      "soft cutoff convergence",
+      "combined explicit-ice history operator",
+      "matching ice and energy coverage"
+    ]
+  },
+  "sources": {
+    "python_scripts/physics_ice/nep_mbpol/bca/convergence.py": "d1939651e12dd5ee10bd86ccc7c475d5bda76d04bfca87ca10d4d233c46a010b",
+    "python_scripts/physics_ice/nep_mbpol/simulate_nlh_hard_collisions.py": "485aca5a2d5c1bccc35e7f4a6eb8e57bc00a6c4c6a24c96add725feabffe9c5b",
+    "python_scripts/physics_ice/process_evidence/soft_nuclear_collisions/zbl/run_campaign.py": "0309497b205f5defc21c438f866645bb95eca39d72c5722605c47f5e8e375b04",
+    "pbs/launch_zbl_atomistic_carbon.sh": "5fa0b249142d1fe4aaed4d932c8bd9c8a69a11ef8179185457c8b8ea1914bd7c",
+    "tests/test_zbl_scalar_policy.py": "9e8da837d154f9806ecd4956f2256738bdf0d61b2366438b495316c5d130db73"
+  },
+  "physical_runs_started": false,
+  "historical_outputs_changed": false
+}

@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -N elastic_handoff
+#PBS -q idle
+#PBS -l select=1:ncpus=8:mem=8gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+set -euo pipefail
+cd "${PBS_O_WORKDIR:?Submit from the repository root}"
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+: "${PYTHON_BIN:?Set PYTHON_BIN to the Python executable}"
+: "${STUDY:?Set STUDY to the prepared study JSON}"
+: "${OUTPUT:?Set OUTPUT to the result directory}"
+: "${CUTOFF_EV:?Set CUTOFF_EV to the soft recoil cutoff}"
+"$PYTHON_BIN" -B -m physics.elastic.handoff.run run "$STUDY" \
+ --case-index "${PBS_ARRAY_INDEX:-${CASE_INDEX:-0}}" --output "$OUTPUT" \
+ --cutoff-ev "$CUTOFF_EV" --workers "${NCPUS:-8}" \
+ --order "${ORBIT_ORDER:-64}" --max-histories "${MAX_HISTORIES:-100000}"

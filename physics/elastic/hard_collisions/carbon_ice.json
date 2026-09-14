@@ -1,0 +1,70 @@
+{
+  "runtime_commit": "5f4adfe2585c4707c6d53dba10d580e876e1a688",
+  "kernel_manifest": "../../../python_scripts/physics_ice/nep_mbpol/collision_kernels/nlh_collision_kernels.manifest.json",
+  "projectile": "C",
+  "seed": 29092026,
+  "path_length_angstrom": 100.0,
+  "energies_ev": [
+    1000,
+    10000,
+    100000,
+    1000000,
+    10000000,
+    100000000
+  ],
+  "directions": [
+    {
+      "name": "basal_a_axis",
+      "vector": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "c_axis",
+      "vector": [
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "isotropic",
+      "vector": null
+    }
+  ],
+  "structures": [
+    {
+      "name": "seed1000",
+      "material": "hexagonal",
+      "path": "../../../models/ice/hexagonal_ih_100K_experimental/seed1000_final.xyz.gz"
+    },
+    {
+      "name": "seed2000",
+      "material": "hexagonal",
+      "path": "../../../models/ice/hexagonal_ih_100K_experimental/seed2000_final.xyz.gz"
+    },
+    {
+      "name": "seed3000",
+      "material": "hexagonal",
+      "path": "../../../models/ice/hexagonal_ih_100K_experimental/seed3000_final.xyz.gz"
+    },
+    {
+      "name": "epsr_lda80k",
+      "material": "amorphous",
+      "directions": [
+        "isotropic"
+      ],
+      "path": "../../../models/ice/epsr_lda80k/artifacts/lda80k_epsr.xyz.gz"
+    }
+  ],
+  "historical_diagnostic": "../../../python_scripts/physics_ice/process_evidence/hard_nuclear_collisions/validation/runs/sharded_adaptive_particles/C/a14a646b863910cc662c2ec19f61292f9af5e12393e5cbec2d0ff6da199e9d28/variance_diagnostic",
+  "policy": {
+    "output_scope": "scalar",
+    "scalar_precision_mode": "relative_standard_error",
+    "statistical_relative_tolerance": 0.05,
+    "scalar_interpolation_tolerance": 0.05,
+    "sampling_growth": 0.2
+  }
+}

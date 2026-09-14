@@ -1,8 +1,8 @@
 # Ion dielectric cross sections
 
 `ion_modular` contains the standalone ice dielectric DCS/TCS workflow.
-There is no legacy `python_scripts/` tree or Geant4 application. CTMC and
-elastic folders are empty placeholders; their implementations remain on `ion`.
+There is no legacy `python_scripts/` tree or Geant4 application. CTMC is retained separately; the runnable [elastic handoff study](physics/elastic/handoff/README.md)
+and shared [ice models](models/ice/README.md) are included here.
 
 ```text
 physics/
@@ -19,8 +19,12 @@ physics/
     jobs/
   ctmc/                       (empty)
   elastic/
-    hard_collisions/          (empty)
-    soft_collisions/          (empty)
+    hard_collisions/
+    nlh/
+    zbl/
+    bca/
+    handoff/
+models/ice/                  # shared hexagonal and amorphous structures
 tests/
 ```
 

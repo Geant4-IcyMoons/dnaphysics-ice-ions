@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "projectile": "C",
+  "phases": [
+    "hexagonal_ih_100k",
+    "amorphous_lda_80k"
+  ],
+  "energies_ev": [
+    1000,
+    10000,
+    100000,
+    1000000,
+    10000000,
+    100000000
+  ],
+  "boundary_potential_ev": [
+    30,
+    60,
+    100
+  ],
+  "soft_recoil_cutoffs_ev": [
+    0.0001,
+    1e-05,
+    1e-06
+  ],
+  "path_length_angstrom": 100,
+  "relative_standard_error_target": 0.05,
+  "relative_boundary_change_target": 0.05,
+  "seed": 14092026
+}
