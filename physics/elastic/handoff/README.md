@@ -123,3 +123,16 @@ estimates. These diagnostics are not additional qualification tolerances.
 Retain a nonuniform proposal only after replicated controls support its benefit
 for both observables. Use fresh production histories after sampler selection;
 the pilot estimates and sampler choices are not independent.
+
+The history limit now defaults to zero (unlimited). Sampling continues until both
+scalar SE targets pass; an explicit positive `--max-histories` remains available
+for bounded diagnostics. PBS walltime still applies: resume the identical command
+from saved blocks after interruption. Solver failures stop explicitly. No finite
+precision target can guarantee a completion date or numerical qualification.
+
+For privatex continuation, submit through `medium` with a 48-hour allocation
+and `RESUME_WALL_SECONDS=169200` (47 hours). The wrapper stops the process group,
+then submits the identical settings against the saved blocks. Only timeout
+exit 124 triggers continuation; numerical failures exit without resubmission.
+Continuation submissions are recorded in `ice/continuations.log`; queue availability
+and successful PBS submission remain external requirements.

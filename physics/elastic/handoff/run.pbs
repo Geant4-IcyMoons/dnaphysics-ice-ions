@@ -11,8 +11,26 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 : "${STUDY:?Set STUDY to the prepared study JSON}"
 : "${OUTPUT:?Set OUTPUT to the result directory}"
 : "${CUTOFF_EV:?Set CUTOFF_EV to the soft recoil cutoff}"
-"$PYTHON_BIN" -B -m physics.elastic.handoff.run run "$STUDY" \
+# Optional walltime continuation leaves time for checkpoint shutdown and qsub.
+runner=()
+if (( ${RESUME_WALL_SECONDS:-0} > 0 )); then
+ runner=(timeout --signal=TERM --kill-after=60 "${RESUME_WALL_SECONDS}s")
+fi
+set +e
+"${runner[@]}" "$PYTHON_BIN" -B -m physics.elastic.handoff.run run "$STUDY" \
  --case-index "${PBS_ARRAY_INDEX:-${CASE_INDEX:-0}}" --output "$OUTPUT" \
  --cutoff-ev "$CUTOFF_EV" --workers "${NCPUS:-8}" \
  --terminal-energy-ev "${TERMINAL_ENERGY_EV:-1}" --tube-fraction "${TUBE_FRACTION:-0}" \
- --order "${ORBIT_ORDER:-64}" --max-histories "${MAX_HISTORIES:-100000}"
+ --order "${ORBIT_ORDER:-64}" --max-histories "${MAX_HISTORIES:-0}"
+
+status=$?
+set -e
+if [[ "$status" == 124 ]]; then
+ mkdir -p "$OUTPUT"
+ qsub -q medium -l select=1:ncpus="${NCPUS:-8}":mem=8gb -l walltime=48:00:00 \
+  -o "$OUTPUT/continuation_${PBS_JOBID}.log" \
+  -v "PYTHON_BIN=$PYTHON_BIN,STUDY=$STUDY,OUTPUT=$OUTPUT,CUTOFF_EV=$CUTOFF_EV,CASE_INDEX=${PBS_ARRAY_INDEX:-${CASE_INDEX:-0}},TUBE_FRACTION=${TUBE_FRACTION:-0},TERMINAL_ENERGY_EV=${TERMINAL_ENERGY_EV:-1},ORBIT_ORDER=${ORBIT_ORDER:-64},MAX_HISTORIES=${MAX_HISTORIES:-0},RESUME_WALL_SECONDS=$RESUME_WALL_SECONDS" \
+  "$PBS_O_WORKDIR/physics/elastic/handoff/run.pbs" >> "$OUTPUT/continuations.log"
+ exit 0
+fi
+exit "$status"

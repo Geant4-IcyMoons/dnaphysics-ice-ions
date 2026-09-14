@@ -93,3 +93,26 @@ def test_variance_concentration_and_cpu_cost():
         assert observable['largest_history_variance_fraction']==pytest.approx(2/3)
         assert observable['relative_variance_cpu_seconds']==pytest.approx(
             12*(observable['standard_error']/observable['mean'])**2)
+
+
+def test_unlimited_resume_stops_when_target_met(tmp_path,monkeypatch):
+    import json
+    from physics.elastic.handoff import run
+    from concurrent.futures import Future
+    case={'id':'case','seed':7}
+    manifest={'configuration':{'relative_standard_error_target':.05,'path_length_angstrom':10},'signature':'test','cohorts':[case]}
+    study=tmp_path/'study.json';study.write_text(json.dumps(manifest))
+    monkeypatch.setattr(run,'prepare',lambda config:{'signature':'test'})
+    class Pool:
+        def __init__(self,**kwargs):pass
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def submit(self,func,task):
+            f=Future();f.set_result({'start':task[1],'rows':[[10,1,.2,1,1,0,1,0,0],[10,1.01,.201,1,1,0,1,0,0]]});return f
+    monkeypatch.setattr(run,'ProcessPoolExecutor',Pool)
+    args=SimpleNamespace(study=study,case_index=0,cutoff_ev=1e-5,order=64,terminal_energy_ev=1.,tube_fraction=0.,block_size=2,output=tmp_path/'out',max_histories=0,min_histories=4,workers=1)
+    run.execute(args)
+    report=json.loads(next(args.output.glob('*/*/result.json')).read_text())
+    assert report['histories']==4 and report['scalar_pass']
+    run.execute(args)
+    assert len(list(args.output.glob('*/*/block*')))==2

@@ -145,6 +145,7 @@ def execute(args):
     with (root / 'lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         atomic(root / 'identity.json', identity)
+        (root / 'result.json').unlink(missing_ok=True)
         products = {}
         for path in sorted(root.glob('block_*.json')):
             product = json.loads(path.read_text())
@@ -153,20 +154,21 @@ def execute(args):
                 raise RuntimeError('Invalid checkpoint block.')
             products[start] = product
         n = sum(len(p['rows']) for p in products.values())
-        if products and max(products) + args.block_size > args.max_histories:
+        if args.max_histories and products and max(products) + args.block_size > args.max_histories:
             raise RuntimeError('Maximum histories is smaller than retained work.')
         target = manifest['configuration']['relative_standard_error_target']
         initargs = (case, args.cutoff_ev, args.order, args.terminal_energy_ev, args.tube_fraction)
         with ProcessPoolExecutor(max_workers=args.workers, initializer=initialize, initargs=initargs) as pool:
-            with tqdm(total=args.max_histories, initial=n, unit='histories') as progress:
-                while n < args.max_histories:
+            with tqdm(total=args.max_histories or None, initial=n, unit='histories') as progress:
+                while not args.max_histories or n < args.max_histories:
                     ordered = [products[k] for k in sorted(products)]
                     # Fill any checkpoint holes before assessing, so completion order
                     # cannot select only fast histories after a failed/cancelled wave.
                     contiguous = sorted(products) == list(range(0, n, args.block_size))
                     if contiguous and n >= args.min_histories and statistics(ordered, target)['scalar_pass']:
                         break
-                    starts = [k for k in range(0, args.max_histories, args.block_size) if k not in products][:args.workers]
+                    end = args.max_histories or (max(products, default=-args.block_size) + args.block_size * (args.workers + 1))
+                    starts = list(itertools.islice((k for k in range(0, end, args.block_size) if k not in products), args.workers))
                     tasks = [(case, k, args.block_size, manifest['configuration']['path_length_angstrom']) for k in starts]
                     futures = {pool.submit(block, task): task[1] for task in tasks}
                     errors = []
@@ -216,11 +218,11 @@ def main():
     r.add_argument('--terminal-energy-ev',type=float,default=1.)
     r.add_argument('--tube-fraction',type=float,default=0.)
     r.add_argument('--order',type=int,default=64);r.add_argument('--workers',type=int,default=1)
-    r.add_argument('--block-size',type=int,default=16);r.add_argument('--min-histories',type=int,default=256);r.add_argument('--max-histories',type=int,default=100000)
+    r.add_argument('--block-size',type=int,default=16);r.add_argument('--min-histories',type=int,default=256);r.add_argument('--max-histories',type=int,default=0,help='0 means no history limit')
     s=sub.add_parser('reduce');s.add_argument('--output',type=Path,required=True)
     args=p.parse_args()
     if args.command=='run':
-        if not math.isfinite(args.terminal_energy_ev) or not 1 <= args.terminal_energy_ev < 1e8 or not math.isfinite(args.tube_fraction) or not 0 <= args.tube_fraction < 1 or args.case_index<0 or args.workers<1 or args.block_size<1 or args.min_histories<2 or args.max_histories<args.min_histories or args.max_histories%args.block_size or not math.isfinite(args.cutoff_ev) or args.cutoff_ev<=0:p.error('Invalid case, resource, history or cutoff settings; maximum histories must be a block multiple.')
+        if not math.isfinite(args.terminal_energy_ev) or not 1 <= args.terminal_energy_ev < 1e8 or not math.isfinite(args.tube_fraction) or not 0 <= args.tube_fraction < 1 or args.case_index<0 or args.workers<1 or args.block_size<1 or args.min_histories<2 or args.max_histories<0 or (args.max_histories and (args.max_histories<args.min_histories or args.max_histories%args.block_size)) or not math.isfinite(args.cutoff_ev) or args.cutoff_ev<=0:p.error('Invalid case, resource, history or cutoff settings; maximum histories must be a block multiple.')
         execute(args)
     else:reduce(args)
 
