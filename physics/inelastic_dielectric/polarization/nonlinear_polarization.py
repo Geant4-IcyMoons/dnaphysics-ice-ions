@@ -80,6 +80,7 @@ def converged_kernel(W_eV, beta, gamma, density, *, interaction_charge=None, ret
                         or np.any(~np.isfinite(error[done])) or np.any(error[done] < 0)):
                     raise ValueError("Invalid polarization row checkpoint")
     pending = [idx for idx in np.ndindex(w.shape) if not done[idx]]
+    failures = []
     for idx in tqdm(pending, total=w.size, initial=int(done.sum()), unit="loss",
                     desc=f"Polarization {Path(checkpoint_path).stem if checkpoint_path else ''}",
                     mininterval=60, disable=checkpoint_path is None):
@@ -90,15 +91,13 @@ def converged_kernel(W_eV, beta, gamma, density, *, interaction_charge=None, ret
                 float(xi[idx]), float(gamma*v/omega[idx]), float(gamma), field,
                 rtol=QUADRATURE_RTOL,
                 **({"allow_unconverged": True} if diagnostic_only else {}))
-        except (FloatingPointError, OverflowError) as exc:
+        except (FloatingPointError, OverflowError, RuntimeError) as exc:
             if not diagnostic_only:
-                raise
-            result[idx], error[idx] = np.nan, np.nan
-            row = dict(converged=False, failure=str(exc))
-        except RuntimeError as exc:
-            if not diagnostic_only:
-                raise RuntimeError(f"Nonlinear polarization quadrature did not converge at "
-                                   f"W/eV={w[idx]:g}, beta={beta:g}: {exc}") from exc
+                failures.append(dict(W_eV=float(w[idx]), beta=float(beta), failure=str(exc)))
+                if checkpoint_path is not None:
+                    with checkpoints.atomic_text(checkpoint_path.with_suffix(".failures.json")) as stream:
+                        json.dump(failures, stream, indent=2)
+                continue
             result[idx], error[idx] = np.nan, np.nan
             row = dict(converged=False, failure=str(exc))
         diagnostics.append(dict(W_eV=float(w[idx]), **row))
@@ -106,6 +105,11 @@ def converged_kernel(W_eV, beta, gamma, density, *, interaction_charge=None, ret
         if checkpoint_path is not None:
             checkpoints.atomic_savez(checkpoint_path, signature=signature, W=w,
                                      value=result, error=error, done=done)
+    if failures:
+        raise RuntimeError(f"{len(failures)} unresolved polarization losses; successful losses preserved. "
+                           f"First failure: {failures[0]}")
+    if checkpoint_path is not None:
+        checkpoint_path.with_suffix(".failures.json").unlink(missing_ok=True)
     if return_diagnostics:
         return result, error, diagnostics
     return result, error
@@ -173,6 +177,7 @@ def dcs_m2_per_eV(T_eV, W_eV, mass_me, df_dW, density=None, *, z_int=None, worke
             task += (checkpoint_dir / f"energy_{float(energy).hex()}.npz",)
         tasks.append(task)
     rows = [None] * len(tasks)
+    failures = []
     if tasks and workers > 1 and len(tasks) > 1:
         context = get_context("spawn")
         stop_event = context.Event()
@@ -182,7 +187,10 @@ def dcs_m2_per_eV(T_eV, W_eV, mass_me, df_dW, density=None, *, z_int=None, worke
             futures = {pool.submit(_energy_row, task): i for i, task in enumerate(tasks)}
             try:
                 for future in tqdm(as_completed(futures), total=len(tasks), desc="Polarization energies", unit="energy"):
-                    rows[futures[future]] = future.result()
+                    try:
+                        rows[futures[future]] = future.result()
+                    except (RuntimeError, FloatingPointError, OverflowError) as exc:
+                        failures.append(str(exc))
             except BaseException:
                 stop_event.set()
                 for future in futures:
@@ -190,7 +198,13 @@ def dcs_m2_per_eV(T_eV, W_eV, mass_me, df_dW, density=None, *, z_int=None, worke
                 raise
     else:
         for i, task in enumerate(tqdm(tasks, desc="Polarization energies", unit="energy")):
-            rows[i] = _energy_row(task)
+            try:
+                rows[i] = _energy_row(task)
+            except (RuntimeError, FloatingPointError, OverflowError) as exc:
+                failures.append(str(exc))
+    if failures:
+        raise RuntimeError(f"{len(failures)} unresolved polarization energy rows; "
+                           f"independent work completed. First failure: {failures[0]}")
     for (idx, inverse), (value, err) in zip(indices, rows):
         out[idx], error[idx] = oos[idx]*value[inverse], oos[idx]*err[inverse]
     return out.reshape(shape), error.reshape(shape)

@@ -277,6 +277,24 @@ def plot_correction(path, output=None):
     return output
 
 
+def plot_optional(source, output):
+    """Keep presentation failures separate from numerical generation."""
+    from physics.inelastic_dielectric.checkpoints import atomic_text
+    import json
+    report = Path(output).with_suffix(".status.json")
+    report.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        plot_correction(source, output)
+    except Exception as exc:
+        with atomic_text(report) as stream:
+            json.dump(dict(status="failed", error=str(exc)), stream)
+        print(f"Optional polarization plot failed: {exc}", flush=True)
+        return False
+    with atomic_text(report) as stream:
+        json.dump(dict(status="complete"), stream)
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("npz", type=Path)

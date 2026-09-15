@@ -28,6 +28,8 @@ def _diagnostic_row(task):
             value, error, flags, done = (saved[key].copy() for key in ("value", "error", "flags", "done"))
             if any(array.shape != w.shape for array in (value, error, flags, done)) or done.dtype != np.dtype(bool):
                 raise ValueError("Invalid diagnostic checkpoint")
+            # A resume retries numerical failures, not accepted points or domain exclusions.
+            done[(flags & 3) != 0] = False
     for i in tqdm(np.flatnonzero(~done), total=w.size, initial=int(done.sum()),
                   desc=f"Diagnostic polarization T={energy:g}", unit="loss", mininterval=60):
         v, e, f = sb._energy_row((energy, w[i:i+1], mass, element, charge), diagnostic_only=True)

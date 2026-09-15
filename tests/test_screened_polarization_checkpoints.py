@@ -20,7 +20,7 @@ def test_interrupted_loss_resume(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="simulated interruption"):
         sb.converged_kernel(w, beta, gamma, density, checkpoint_path=path)
     with np.load(path) as saved:
-        np.testing.assert_array_equal(saved["done"], [True, False, False])
+        np.testing.assert_array_equal(saved["done"], [True, False, True])
     resumed = sb.converged_kernel(w, beta, gamma, density, checkpoint_path=path)
     assert len(calls) == 4
     fresh = sb.converged_kernel(w, beta, gamma, density)

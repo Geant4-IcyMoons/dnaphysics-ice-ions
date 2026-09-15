@@ -3022,7 +3022,7 @@ def write_emfietzoglou_dcs_tables(
 
     if diagnostic_only:
         from physics.inelastic_dielectric.polarization.diagnostic_tables import write_diagnostic_tables
-        from physics.inelastic_dielectric.polarization.plot_correction import plot_correction
+        from physics.inelastic_dielectric.polarization.plot_correction import plot_optional as plot_correction
         diagnostic_path = out_dir / f"diagnostic_{PROJECTILE_FILE_TOKEN}_{ice_label}{mode_suffix}"
         write_diagnostic_tables(dcs_data, s, PROJECTILE_DENSITY, PROJECTILE_MASS_AU,
             diagnostic_path, checkpoint_dir / "diagnostic_polarization", _max_workers_from_environment(),
@@ -3557,7 +3557,7 @@ def main():
             sigma_list = _replace_sigma_list_with_dcs_totals(T_list, sigma_list, dcs_data)
             dcs_written = True
 
-    from physics.inelastic_dielectric.polarization.plot_correction import plot_correction
+    from physics.inelastic_dielectric.polarization.plot_correction import plot_optional as plot_correction
     plot_correction(cache_path, CROSS_SECTIONS_DIR / "plots" / run_label / "polarization_correction.pdf")
 
     if charge_mode == "bare" and not include_barkas_dcs:

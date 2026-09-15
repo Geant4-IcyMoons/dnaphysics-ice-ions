@@ -8,6 +8,10 @@ No cubic or point-charge analytic fallback is provided.
 
 from functools import lru_cache
 import math
+import json
+import os
+import time
+from pathlib import Path
 
 import numpy as np
 from scipy.integrate import DOP853, cumulative_simpson, quad, quad_vec, solve_ivp
@@ -15,10 +19,11 @@ from scipy.interpolate import CubicSpline
 
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import load_density
 
-VERSION = "full-minus-leading-rotating-amplitude-ode-v1"
+VERSION = "full-minus-leading-adaptive-errors-lc-v4"
 RELATIVE_TOLERANCE = 1e-3
 BENCHMARK_RTOL = 1e-3
 MAX_X = 50.
+MAX_REFINEMENTS = 8
 
 
 class _StableDOP853(DOP853):
@@ -94,7 +99,7 @@ def frozen_field(element, charge, nodes=8193):
     return RadialField(load_density(element, charge), nodes)
 
 
-def encounter(x, b, eta, field, *, gamma=1., tail=64., rtol=2e-11):
+def encounter(x, b, eta, field, *, gamma=1., tail=64., rtol=2e-11, regularize=True):
     """Scaled oscillator energies and stable full-minus-leading difference.
 
     y0''+x^2*y0=f(R), d''+x^2*d=f(R-eta*(y0+d))-f(R).
@@ -112,20 +117,52 @@ def encounter(x, b, eta, field, *, gamma=1., tail=64., rtol=2e-11):
         raise ValueError("Invalid nonlinear oscillator input")
     end = np.arcsinh(tail*max(4., 1/x))
     evaluations = 0
+    minimum_trial = math.inf
+    last_trial = {}
+
+    def failure(message, solved=None):
+        report = dict(message=message, x=x, b_bohr=b, eta=eta, gamma=gamma,
+                      tail=tail, rtol=rtol, evaluations=evaluations,
+                      minimum_trial_separation_bohr=minimum_trial*b,
+                      last_trial=last_trial)
+        if solved is not None and len(solved.t):
+            tau = np.sinh(solved.t)
+            amplitudes = solved.y
+            y = (np.sin(x*tau)*(amplitudes[:2]+amplitudes[4:6])
+                 - np.cos(x*tau)*(amplitudes[2:4]+amplitudes[6:8]))/x
+            r = np.vstack((np.ones_like(tau), tau))-eta*y
+            distances = np.linalg.norm(r, axis=0)*b
+            report.update(accepted_steps=len(solved.t), last_accepted_s=float(solved.t[-1]),
+                          last_accepted_tau=float(tau[-1]),
+                          minimum_accepted_separation_bohr=float(distances.min()),
+                          last_accepted_state=amplitudes[:, -1].tolist(),
+                          last_accepted_separation_bohr=float(distances[-1]))
+        directory = os.environ.get('ICE_ENCOUNTER_FAILURE_DIR')
+        if directory:
+            from physics.inelastic_dielectric.checkpoints import atomic_text
+            import hashlib
+            target = Path(directory)
+            target.mkdir(parents=True, exist_ok=True)
+            key = hashlib.sha256(json.dumps([x,b,eta,gamma,tail,rtol]).encode()).hexdigest()[:20]
+            with atomic_text(target/f'encounter_{key}.json') as stream:
+                json.dump(report, stream, indent=2)
+        return RuntimeError('Nonlinear encounter failed: '+json.dumps(report))
 
     def rhs(s, state):
-        nonlocal evaluations
+        nonlocal evaluations, minimum_trial, last_trial
         evaluations += 1
         if evaluations > 500000:
-            raise RuntimeError("Nonlinear encounter exceeded the ODE evaluation budget")
+            raise failure("Nonlinear encounter exceeded the ODE evaluation budget")
         tau = math.sinh(s)
         cs,sn=math.cos(x*tau),math.sin(x*tau)
         cx,cz,sx,sz,dcx,dcz,dsx,dsz=state
         rx=1-eta*(sn*(cx+dcx)-cs*(sx+dsx))/x
         rz=tau-eta*(sn*(cz+dcz)-cs*(sz+dsz))/x
         distance=math.hypot(rx,rz)
+        minimum_trial = min(minimum_trial, distance)
+        last_trial = dict(s=s, tau=tau, separation_bohr=b*distance)
         if distance < 1e-8:
-            raise RuntimeError("Trajectory approaches the nuclear singularity; no softened force was substituted")
+            raise failure("Trajectory approaches the nuclear singularity; no softened force was substituted")
         h=math.hypot(1.,tau)
         f0x=field.scalar(b*h)/h**3
         f0z=f0x*tau
@@ -134,10 +171,22 @@ def encounter(x, b, eta, field, *, gamma=1., tail=64., rtol=2e-11):
         c,sn=math.cosh(s)*cs,math.cosh(s)*sn
         return [c*f0x,c*f0z,sn*f0x,sn*f0z,c*dfx,c*dfz,sn*dfx,sn*dfz]
 
-    solved = solve_ivp(rhs, (-end,end), np.zeros(8), method=_StableDOP853,
-                       rtol=rtol, atol=rtol*.01, max_step=.1, t_eval=[end])
+    def recover(exc):
+        if not regularize:
+            raise exc
+        from physics.inelastic_dielectric.polarization.regularized_encounter import encounter as lc_encounter
+        result = lc_encounter(x,b,eta,field,gamma=gamma,tail=tail,rtol=rtol)
+        result['solver'] = 'levi-civita-fallback'
+        result['direct_failure'] = str(exc)
+        return result
+
+    try:
+        solved = solve_ivp(rhs, (-end,end), np.zeros(8), method=_StableDOP853,
+                           rtol=rtol, atol=rtol*.01, max_step=.1)
+    except RuntimeError as exc:
+        return recover(exc)
     if not solved.success or np.any(~np.isfinite(solved.y)):
-        raise RuntimeError("Nonlinear oscillator failed: "+solved.message)
+        return recover(failure(solved.message, solved))
     c0,s0,dc,ds = np.split(solved.y[:,-1],4)
     weights = np.array([1.,gamma**-2])
     leading = .5*float(weights @ (c0*c0+s0*s0))
@@ -185,35 +234,96 @@ def integrate_kernel(xi, b_per_x, gamma, field, *, rtol=RELATIVE_TOLERANCE,
         if xi < transition < MAX_X:
             points.append(np.log(transition))
     evaluations=0
-    for level in range(3):
-        tail=16.*2**level
-        ode_rtol=2e-8/10**level
+    regularized_encounters = 0
+    tail, ode_rtol, impact_rtol, impact_limit = 16., 2e-8, rtol/8, 128
+    history = []
+    progress_dir = os.environ.get('ICE_POLARIZATION_PROGRESS_DIR')
+    progress_last = -math.inf
+
+    def progress(stage, *, force=False, **details):
+        nonlocal progress_last
+        now = time.monotonic()
+        if not progress_dir or (not force and now-progress_last < 10.):
+            return
+        from physics.inelastic_dielectric.checkpoints import atomic_text
+        target = Path(progress_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        row = dict(pid=os.getpid(), updated_unix=time.time(), stage=stage,
+                   xi=xi, b_per_x=b_per_x, gamma=gamma, refinement=level,
+                   completed_impact_evaluations=evaluations,
+                   regularized_encounters=regularized_encounters, tail=tail,
+                   ode_rtol=ode_rtol, impact_limit=impact_limit, history=history,
+                   **details)
+        with atomic_text(target/f'worker_{os.getpid()}.json') as stream:
+            json.dump(row, stream, indent=2)
+        progress_last = now
+
+    for level in range(MAX_REFINEMENTS):
+        progress('refinement_start', force=True)
 
         def integrand(logx):
-            nonlocal evaluations
+            nonlocal evaluations, regularized_encounters
             x=np.exp(logx)
             b=x*b_per_x
             eta=1/(gamma*b*velocity**2)
             window=tail*max(1.,1/x)/max(4.,1/x)
+            progress('encounter_low', x=x, b_bohr=b, eta=eta)
             low=encounter(x,b,eta,field,gamma=gamma,tail=window,rtol=ode_rtol)
+            progress('encounter_fine', x=x, b_bohr=b, eta=eta)
             fine=encounter(x,b,eta,field,gamma=gamma,tail=window,rtol=ode_rtol/10)
+            progress('encounter_extended', x=x, b_bohr=b, eta=eta)
             extended=encounter(x,b,eta,field,gamma=gamma,tail=2*window,rtol=ode_rtol/10)
+            # Success of the direct integrator alone does not establish accuracy
+            # at a close approach. Compare matched-window solves at two tolerances.
+            # Use the solver's existing absolute/relative scale, not the Born
+            # cross section, to select a consistent regularized encounter set.
+            scale = max(abs(row.get(key, row['difference']))
+                        for row in (low, fine) for key in ('full', 'leading'))
+            inconsistent = abs(low['difference']-fine['difference']) > ode_rtol*(.01+scale)
+            if inconsistent or any(row.get('solver') == 'levi-civita-fallback'
+                                   for row in (low, fine, extended)):
+                from physics.inelastic_dielectric.polarization.regularized_encounter import encounter as lc_encounter
+                progress('regularized_consistency_check', x=x, b_bohr=b, eta=eta)
+                rows = []
+                for result, span, tolerance in ((low,window,ode_rtol),
+                        (fine,window,ode_rtol/10), (extended,2*window,ode_rtol/10)):
+                    if result.get('solver') != 'levi-civita-fallback':
+                        result = lc_encounter(x,b,eta,field,gamma=gamma,tail=span,rtol=tolerance)
+                        result['solver'] = 'levi-civita-fallback'
+                    rows.append(result)
+                low, fine, extended = rows
+            regularized_encounters += sum(row.get('solver') == 'levi-civita-fallback'
+                                          for row in (low,fine,extended))
             evaluations+=1
             weight=1/(2*eta*x)
             return weight*np.array([extended["difference"],abs(fine["difference"]-low["difference"]),
                                     abs(extended["difference"]-fine["difference"])])
 
         values,impact_error,info=quad_vec(integrand,np.log(xi),np.log(MAX_X),
-            points=sorted(set(points)),epsabs=atol/8,epsrel=rtol/8,norm="max",limit=128,
+            points=sorted(set(points)),epsabs=atol/8,epsrel=impact_rtol,norm="max",limit=impact_limit,
             quadrature="gk21",full_output=True)
         value,time_error,tail_error=values
         error=float(impact_error+time_error+tail_error)
         converged=bool(info.success and np.isfinite(value) and np.isfinite(error)
                        and error <= atol+rtol*abs(value))
         diagnostics=dict(converged=converged,impact_error=float(impact_error),time_error=float(time_error),
-                         tail_error=float(tail_error),evaluations=evaluations,refinement=level)
+                         tail_error=float(tail_error),evaluations=evaluations,refinement=level,
+                         tail=tail, ode_rtol=ode_rtol, impact_limit=impact_limit,
+                         regularized_encounters=regularized_encounters)
+        history.append(dict(diagnostics, value=float(value), tolerance=float(atol+rtol*abs(value))))
+        diagnostics["history"] = list(history)
+        progress('converged' if converged else 'refinement_end', force=True,
+                 value=float(value), error=error)
         if converged:
             return float(value),error,diagnostics
+        # Refine the dominant estimator, without relaxing the acceptance target.
+        if not info.success or impact_error >= max(time_error, tail_error):
+            impact_rtol /= 2
+            impact_limit *= 2
+        elif time_error >= tail_error:
+            ode_rtol /= 10
+        else:
+            tail *= 2
     if allow_unconverged:
         return float(value),error,diagnostics
     raise RuntimeError(f"Nonlinear polarization integral did not converge: xi={xi:g}, K={value:g}, {diagnostics}")
