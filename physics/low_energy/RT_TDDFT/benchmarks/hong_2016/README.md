@@ -2,13 +2,16 @@
 
 ## Implemented and outstanding
 
-`capture.py` implements the determinant electron-number analysis underlying
-Hong et al., Eqs. 14--16. `capture_curve.py` assembles the Figure 2 ordinate.
-The original collision propagation, coordinate/momentum translation, and
-reference comparison have **not** been reproduced. The unresolved assets in
-[protocol.json](protocol.json) must be supplied or reconstructed with documented
-provenance and validation. This is not a runnable historical input bundle.
-The earlier `hplus.py` density pilot is not the benchmark implementation.
+The [independent calculation](../../docs/BENCHMARK.md) now runs the collision,
+projectile-frame translation and subsequent propagation, and capture analysis.
+Its reduced-resolution execution test has completed. It does **not** reproduce
+the published numerical curves yet. `capture.py` implements the determinant
+counting underlying Eqs. 14--16; `capture_curve.py` assembles the Figure 2 ordinate.
+
+The unresolved historical assets in [protocol.json](protocol.json) concern an
+exact reconstruction of the authors' setup. They do not block running our
+independent setup, whose adopted geometry, potentials and numerical differences
+are explicit. The earlier `hplus.py` density pilot remains a separate diagnostic.
 
 The desired P1 is the probability of exactly one electron in the separated
 projectile region within the Kohn--Sham determinant approximation. It is
@@ -98,5 +101,5 @@ grid. Reference CSV columns are `orientation`, `impact_parameter_bohr`,
 The code tests use analytical and synthetic orbital data, explicitly not
 collision results. They check determinant expansion, complex phase handling,
 spin counting, CAP norm loss, endianness, rejection conditions, and the full
-export-to-curve analysis path. HPC solver execution and numerical reproduction
-remain outstanding.
+export-to-curve analysis path. The independent runner also has a real Octopus integration test. HPC execution
+and numerical reproduction remain outstanding.

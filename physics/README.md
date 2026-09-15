@@ -12,7 +12,7 @@ Executable diagnostic code does not establish physical qualification.
 dielectric workflow; the retained elastic isotope conventions are documented
 in `elastic/bca/config.py`.
 
-[RT-TDDFT](low_energy/RT_TDDFT/README.md) prepares finite clusters from the
-shared ice models, runs Octopus target controls, and implements molecular
-capture counting from complex orbitals. The published collision benchmark,
-periodic ice calculations, and electronic-channel validation remain incomplete.
+[RT-TDDFT](low_energy/RT_TDDFT/README.md) prepares finite ice targets and
+provides a runnable isolated H+--H2O collision and capture workflow. Local and
+MPI execution checks pass; numerical convergence and comparison with published
+capture results remain outstanding.

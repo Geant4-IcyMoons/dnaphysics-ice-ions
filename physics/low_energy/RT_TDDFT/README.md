@@ -2,20 +2,23 @@
 
 ## Current status
 
-The first target is the published 1 keV H+--H2O single-electron capture
-benchmark: H+ captures one electron and becomes neutral H. The probability
-analysis is implemented; **the published collision is not yet reproduced or
-ready to run as a complete benchmark**. Its missing reference inputs and
-propagation stages are recorded in the
-[benchmark protocol](benchmarks/hong_2016/README.md).
+The first target is a 1 keV H+--H2O single-electron capture calculation.
+An **independent collision workflow is runnable**, including neutral-water
+initialization, Ehrenfest propagation, a projectile-frame orbital handoff,
+and determinant electron counting. A reduced-resolution Octopus execution
+test has completed. Numerical convergence and comparison with Hong et al.
+remain outstanding; this is not a validated reproduction of their results.
+See the [runnable calculation](docs/BENCHMARK.md) and the
+[reference protocol](benchmarks/hong_2016/README.md).
 
 | Component | Status |
 |---|---|
 | Accepted amorphous/Ih structure loading and finite-cluster extraction | Implemented and tested |
 | Octopus target ground state and unperturbed propagation | Implemented; local execution checks recorded |
 | Frozen-target, prescribed-proton feasibility runner | Implemented; not the published benchmark |
-| Complex-orbital determinant counting and capture-curve assembly | Analytical and synthetic tests pass |
-| Published collision, projectile-frame translation, numerical comparison | Incomplete |
+| Complex-orbital determinant counting and capture-curve assembly | Analytical, synthetic and solver execution checks pass |
+| Independent molecular collision and projectile-frame handoff | Implemented; reduced-resolution execution tested |
+| Numerical convergence and published reference comparison | Outstanding |
 | Periodic ice collisions, embedding, bulk channel rates, C/O/S | Not implemented |
 
 No transport cross sections or validated 100 eV results are supplied here.
@@ -29,10 +32,14 @@ over residual-target states; it does not establish an intact H2O+ product.
 prepare.py                 accepted ice -> finite-target input bundles
 run.py                     target ground state + unperturbed control
 hplus.py                   separate prescribed-proton execution prototype
+benchmark.py               runnable isolated H+--H2O collision and capture workflow
+frame.py                   complex orbital translation and Galilean boost
 capture.py                 native complex orbitals -> electron-count probabilities
 capture_curve.py           stationary analyses -> 2*pi*b*P1 curve
 benchmarks/hong_2016/       reference protocol, missing assets, analysis instructions
-checks/single_water/       compact completed execution records, not physical validation
+checks/single_water/       earlier target execution records
+checks/hplus_capture/      local/MPI verification and startup-failure record
+jobs/hplus_water.pbs       ChemFarm PBS launcher
 examples/                  prepared five-water targets from both ice phases
 docs/                      installation, prototype, and HPC design
 ```
@@ -82,17 +89,18 @@ A smaller periodic counterpart of each accepted ice structure still requires
 preparation and structural validation; an arbitrary periodically wrapped cutout
 is not sufficient.
 
-Independent encounters can run as separate HPC jobs once their collision
-workflow is complete. No scheduler submission or 12-worker benchmark launcher
-is implemented by the current analysis tools.
+Independent molecular encounters can run as separate HPC jobs. The benchmark
+runner accepts an MPI launcher for a cluster-built Octopus; local testing used
+OpenMP. Scheduler allocation and MPI execution are documented in the benchmark guide.
 
 ## Tests
 
 ```bash
 python -m pytest tests/test_rt_tddft.py tests/test_rt_tddft_hplus.py \
-  tests/test_rt_tddft_capture.py -q
+  tests/test_rt_tddft_capture.py tests/test_rt_tddft_benchmark.py -q
 ```
 
-The capture tests exercise analytical and synthetic data, not benchmark
-collision results. Generated `cases/`, `runs/`, and temporary output should
+The capture tests exercise analytical and synthetic data. The optional solver
+integration test runs a coarse collision; see the benchmark guide for its
+explicit opt-in command. It does not establish physical accuracy. Generated `cases/`, `runs/`, and temporary output should
 remain untracked; retained checks must include provenance and explicit limits.

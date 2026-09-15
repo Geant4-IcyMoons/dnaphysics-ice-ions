@@ -1,11 +1,12 @@
 # Scientific design for HPC collision calculations
 
-Status: proposed design, 2026-09-15. The molecular capture-analysis code is implemented and tested on analytical
-and synthetic data. No HPC jobs, periodic ice collision inputs, embedding, or
-validated physical channel probabilities have been implemented.
-The five-water execution attempts are incomplete. Completed
-single-water checks establish execution and initial-state preparation only.
-
+Status, 2026-09-15: the [independent molecular workflow](BENCHMARK.md)
+implements collision propagation, a projectile-frame handoff and capture
+counting. Its reduced-resolution Octopus integration test has completed.
+The molecular workflow has also passed a 12-rank ChemFarm execution check.
+The bulk design below remains proposed: periodic ice collisions, embedding,
+and numerically validated channel probabilities are not supplied.
+The earlier five-water attempts remain incomplete.
 
 ## Adopted workflow: reproduce, then extend
 
@@ -22,7 +23,9 @@ eight active electrons, Ehrenfest nuclei, and determinant-overlap counting
 with coordinate/momentum translations. At 1 keV, reproduce the Figure 2
 impact-parameter curves before orientation-averaged cross sections. Their
 reported grid and time steps are 0.33 bohr and 0.025 atomic time units. Our
-sphere-integral prototype does not implement that protocol. Their ionization
+older sphere-integral prototype does not implement that protocol. The new
+independent runner records its departures and still requires convergence and
+reference comparison. Their ionization
 estimate subtracts capture from electron loss and has acknowledged limitations;
 it does not resolve every exclusive channel.
 

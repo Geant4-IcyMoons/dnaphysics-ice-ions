@@ -1,0 +1,159 @@
+{
+  "status": "execution_verified_not_numerically_validated",
+  "date": "2026-09-15",
+  "tests_passed": 34,
+  "test_module": "tests/test_rt_tddft_benchmark.py",
+  "maximum_cross_platform_probability_difference": 5.063816033157309e-11,
+  "source_sha256": {
+    "benchmark.py": "b584432b1d04dbcdce954022673801d4ca652554ce53f63764a43adcaa7f8a99",
+    "frame.py": "15e05d8730cd786ab9e7cc41fdcc1b511c4bfb91816c8b87b4fc92b927733b10",
+    "capture.py": "3a3658251dc4b6ffb73c73a193332bc331c968f3b93ba7d5a682d8c585373759"
+  },
+  "pseudopotential_sha256": {
+    "O.psf": "cb4da3bb96fffd638a06310a9bfd34f686b002b143cadf4b4e760206f5604558",
+    "H.psf": "4dfdbd366c5bca6574e3bed824126c6ea9c35cfee9527c160ef80d4e47609a76"
+  },
+  "checks": {
+    "mac_openmp": {
+      "executable_sha256": "91cbb9f94447df8c3cc6190483968efb7601c1e124a3c939d3cd471652c5a691",
+      "version": "octopus 16.4 (git commit af05332)",
+      "settings": {
+        "spacing": 0.8,
+        "dt": 0.1,
+        "impact": 2.0,
+        "initial": 8.0,
+        "flight_end": 16.0,
+        "minimum_separation": 12.0,
+        "radius": 8.0,
+        "cap_width": 2.0,
+        "cap_height": 0.2,
+        "box_margin": 5.0,
+        "maximum_projectile_displacement": 1.0,
+        "clearing_time": 10.0,
+        "samples": 5,
+        "stationarity_tolerance": 0.001,
+        "threads": 2
+      },
+      "initial_orthogonality_error": 1.0191847366058937e-13,
+      "neutral_target_restart_max_amplitude_error": 0.0,
+      "handoff_import_overlap_error": 0.0,
+      "maximum_probability_change": 0.002256267033805659,
+      "stationarity_passed": false,
+      "stages": [
+        {
+          "stage": "collision/gs",
+          "input_sha256": "b868cc7cb14d9e0ca210d644312798f9a004162f8bc0b442d605ac2f110f89c1",
+          "returncode": 0,
+          "seconds": 5.121733083156869,
+          "log_sha256": "f8c2d81cdde683b84c0993258465dfbd825f2a8a5a1db93cbcba920bb6a92b9f"
+        },
+        {
+          "stage": "collision/collision",
+          "input_sha256": "3331eaa04d030f4ef9ecca766082cab8dd5083778ae2ffff24e3fe23a091203c",
+          "returncode": 0,
+          "seconds": 94.21441104193218,
+          "log_sha256": "081f5700e12849ecbf0dc25591aaee426369fc59a280d301734210c2fcf1bd3e"
+        },
+        {
+          "stage": "mesh/mesh",
+          "input_sha256": "026708e78405900fb55aa979caf6ff4170f734e1cf7f00dbd460771a2e2470c5",
+          "returncode": 0,
+          "seconds": 0.7650829998310655,
+          "log_sha256": "96cfac5eec4bff7090652085f3d56b0f55ff8e8e7a36dbfd5537a2e08a92f5ed"
+        },
+        {
+          "stage": "projectile/clearing",
+          "input_sha256": "7772ed08bf9089c596db4b98ee1dd2368faf4cae0547a624838a177afb9e8812",
+          "returncode": 0,
+          "seconds": 1.1652188750449568,
+          "log_sha256": "93dc2f4007367d91fb244405435d7ca9ee94555da4dcb282bbe85caa02265570"
+        }
+      ]
+    },
+    "chemfarm_mpi12": {
+      "executable_sha256": "596531bfe3fe9cc86355698843d1effd86dbbc2d6434045338f7e4ce16e19488",
+      "version": "octopus 16.4 (git commit af05332d6a)",
+      "settings": {
+        "spacing": 0.8,
+        "dt": 0.1,
+        "impact": 2.0,
+        "initial": 8.0,
+        "flight_end": 16.0,
+        "minimum_separation": 12.0,
+        "radius": 8.0,
+        "cap_width": 2.0,
+        "cap_height": 0.2,
+        "box_margin": 5.0,
+        "maximum_projectile_displacement": 1.0,
+        "clearing_time": 10.0,
+        "samples": 5,
+        "stationarity_tolerance": 0.001,
+        "threads": 1
+      },
+      "initial_orthogonality_error": 9.992007221626409e-16,
+      "neutral_target_restart_max_amplitude_error": 0.0,
+      "handoff_import_overlap_error": 0.0,
+      "maximum_probability_change": 0.0022562670338643898,
+      "stationarity_passed": false,
+      "stages": [
+        {
+          "stage": "collision/gs",
+          "input_sha256": "b868cc7cb14d9e0ca210d644312798f9a004162f8bc0b442d605ac2f110f89c1",
+          "returncode": 0,
+          "seconds": 4.540119195997249,
+          "log_sha256": "c42237f48089f718219f65129a70d5663a034855ccab5a7b2bfb08e942d05eaf"
+        },
+        {
+          "stage": "collision/collision",
+          "input_sha256": "3331eaa04d030f4ef9ecca766082cab8dd5083778ae2ffff24e3fe23a091203c",
+          "returncode": 0,
+          "seconds": 97.73328245198354,
+          "log_sha256": "ac4e18eecd9920b2efbec36102bacc56bbc39fc6e64b51276e7861e36a835d32"
+        },
+        {
+          "stage": "mesh/mesh",
+          "input_sha256": "6c4dee83a4573dca016d40f6ed81b3ad6c9f0e122153c7db9ecf93e54f5e757b",
+          "returncode": 0,
+          "seconds": 1.544833360996563,
+          "log_sha256": "e86fa7864e51356135d8edded0c26ef31da628d8cfd1fe48eca70b904735e586"
+        },
+        {
+          "stage": "projectile/clearing",
+          "input_sha256": "c025f251fb066c884109036318ea0d413a5db4a73465788fdad721a00e2cb14f",
+          "returncode": 0,
+          "seconds": 1.9754700780031271,
+          "log_sha256": "7104b6734fa93923cb60ab1fe77eaa096f5d0bd4a70341e86bb5eec41032e8fb"
+        }
+      ],
+      "pbs_job": "245982.pbs02",
+      "exit_status": 0
+    }
+  },
+  "limitations": [
+    "Both are the same coarse execution check; neither is a converged benchmark.",
+    "Short clearing fails stationarity, so no capture value is accepted.",
+    "Temporary solver outputs were removed; the integration test regenerates them."
+  ],
+  "previous_metis_check": {
+    "pbs_job": "245979.pbs02",
+    "exit_status": 0,
+    "maximum_cross_platform_probability_difference": 5.511480161146665e-12
+  },
+  "partitioner": "part_hilbert",
+  "full_resolution_startup_failure": {
+    "pbs_job": "245981.pbs02",
+    "exit_status": 1,
+    "observed": "MPI rank 0 was killed by signal 9 during METIS partitioning, before SCF.",
+    "interpretation": "Memory pressure suspected; not established by the available PBS record.",
+    "log": "metis_startup_failure.log.gz",
+    "uncompressed_log_sha256": "e0d4c501273df1cb382f2a27894683de6894cd47b7e4ba01a9c0883834005f63",
+    "replacement_pbs_job": "245983.pbs02"
+  },
+  "cluster_attempt_closed": {
+    "pbs_job": "245983.pbs02",
+    "exit_status": 143,
+    "reason": "User requested cancellation and removal of associated files on ChemFarm.",
+    "files_removed": true,
+    "shared_installation_preserved": true
+  }
+}

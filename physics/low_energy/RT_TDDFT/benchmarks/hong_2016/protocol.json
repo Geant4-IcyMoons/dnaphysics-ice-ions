@@ -8,7 +8,7 @@
     "Figure 2"
   ],
   "purpose": "1 keV single-electron capture benchmark",
-  "status": "analysis_implemented_reference_inputs_unresolved",
+  "status": "independent_collision_workflow_implemented_not_literature_validated",
   "published_parameters": {
     "energy_ev_total": 1000,
     "active_electrons": 8,
@@ -62,5 +62,16 @@
   ],
   "source_pdf_sha256": "704bbd05c48a6d54927ef1ee96b8f774616e5c0c832a71662f0f214068954edf",
   "source_url": "https://harvest.aps.org/v2/journals/articles/10.1103/PhysRevA.93.062706/fulltext",
-  "accessed": "2026-09-15"
+  "accessed": "2026-09-15",
+  "historical_assets_not_required_to_run_independent_setup": true,
+  "independent_setup": {
+    "entry_point": "physics.low_energy.RT_TDDFT.benchmark",
+    "settings_source": "benchmark.Settings",
+    "geometry_source": "https://cccbdb.nist.gov/expgeom2x.asp?casno=7732185",
+    "orientation": "xy_bisector_positive_x; not yet assigned to a Figure 1 label",
+    "xc": "lda_x + lda_c_pz",
+    "pseudopotentials": "Octopus 16.4 PSF H.psf and O.psf, copied and hashed per run",
+    "handoff": "larger rectangular lab box -> cubic interpolation and exp(-i v dot r) boost -> spherical projectile-frame Ehrenfest propagation",
+    "validation": "reduced-resolution execution and analytic tests; grid/time/box/separation convergence and reference comparison remain outstanding"
+  }
 }

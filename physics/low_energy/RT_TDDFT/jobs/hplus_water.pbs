@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N hplus_water
+#PBS -S /bin/bash
+#PBS -q medium
+#PBS -l select=1:ncpus=12:mpiprocs=12:mem=64gb
+#PBS -l walltime=08:00:00
+#PBS -j oe
+
+# Submit from the repository root. RT_CASE_PATH must name a new output directory.
+set -euo pipefail
+cd "${PBS_O_WORKDIR:?Submit from the repository root}"
+source physics/low_energy/RT_TDDFT/activate_octopus.sh
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+RT_RANKS=$(wc -l < "${PBS_NODEFILE:?Missing PBS allocation}")
+RT_OPTIONS=()
+if [[ ${RT_EXECUTION_CHECK:-0} == 1 ]]; then
+    # Coarse execution test; this does not establish benchmark accuracy.
+    RT_OPTIONS=(--spacing 0.8 --dt 0.1 --initial 8 --flight-end 16
+                --minimum-separation 12 --radius 8 --cap-width 2
+                --cap-height 0.2 --clearing-time 10)
+fi
+exec .venv/bin/python -u -m physics.low_energy.RT_TDDFT.benchmark \
+    --executable "$(command -v octopus)" \
+    --launcher "mpirun -np ${RT_RANKS}" --threads 1 \
+    --output "${RT_CASE_PATH:?Set RT_CASE_PATH to a new output directory}" \
+    "${RT_OPTIONS[@]}"

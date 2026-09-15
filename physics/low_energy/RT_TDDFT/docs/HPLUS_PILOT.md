@@ -1,5 +1,8 @@
 # H+ collision feasibility pilot
 
+For the new isolated-water collision and capture workflow, use
+[BENCHMARK.md](BENCHMARK.md). The older runner below reports density diagnostics.
+
 The `hplus` runner propagates one prescribed 1 keV proton past a frozen water
 molecule or cluster extracted, without relaxation, from the accepted ice registry. It
 prepares neutral water first, then reads its orbitals on the identical mesh
