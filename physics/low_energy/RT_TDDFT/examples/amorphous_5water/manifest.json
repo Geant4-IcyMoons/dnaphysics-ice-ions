@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_solver_tested",
+  "source": {
+    "path": "models/ice/epsr_lda80k/artifacts/lda80k_epsr.xyz.gz",
+    "sha256": "92266727fc236a8bf2f8c3083be9ea77aa8947b5bd9fd16ed8f5487cd17aeece",
+    "frame_index": 0,
+    "phase": "low-density amorphous ice, EPSR neutron model, 80 K",
+    "state": "equilibrated and structurally validated for collision sampling",
+    "collision_ready": true,
+    "use_class": "production-input",
+    "atoms": 9000,
+    "water_molecules": 3000,
+    "density_g_cm3": 0.9343471678603285,
+    "volume_angstrom3": 96051.26640855041,
+    "lattice_angstrom": [
+      [
+        45.796719,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        45.796719,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        45.796719
+      ]
+    ]
+  },
+  "registry": "models/ice/epsr_lda80k/artifacts/collision_structures.json",
+  "registry_sha256": "af1c65db0f38c2fac6560572aea8a5b417a90466bb851dc2a6333aff35909ff8",
+  "phase_id": "amorphous_lda_80k",
+  "molecule_ids_zero_based": [
+    0,
+    2727,
+    1176,
+    856,
+    2564
+  ],
+  "center_molecule_zero_based": 0,
+  "wrapped_origin_angstrom": [
+    13.15619979,
+    34.178203350000004,
+    5.81918113
+  ],
+  "extraction": "oxygen minimum images about center; hydrogens unwrapped about their own oxygen; no rotation or relaxation",
+  "embedding": "none; finite neutral cluster, not bulk ice",
+  "parameters": {
+    "phase": "amorphous_lda_80k",
+    "replica": 0,
+    "center": 0,
+    "molecules": 5,
+    "spacing": 0.3,
+    "padding": 6.0,
+    "dt_au": 0.02,
+    "steps": 100,
+    "energy_ev": 1000.0,
+    "impact": 1.0,
+    "separation": 15.0
+  },
+  "collision": {
+    "projectile": "H+",
+    "energy_ev_total": 1000.0,
+    "energy_ev_per_nucleon": 1000.0,
+    "mass_electron_units": 1836.152673,
+    "velocity_au": [
+      0,
+      0,
+      0.2000715191609324
+    ],
+    "initial_position_angstrom": [
+      1.0,
+      0,
+      -15.0
+    ],
+    "final_position_angstrom": [
+      1.0,
+      0,
+      15.0
+    ],
+    "flight_time_au": 283.35759140026346,
+    "minimum_steps_for_flight": 14168,
+    "runnable": false,
+    "unresolved": [
+      "neutral-target plus bare-projectile initial state",
+      "collision box and absorber convergence",
+      "capture/excitation/continuum analysis",
+      "heavy-ion electronic states and potentials"
+    ]
+  },
+  "input_sha256": {
+    "cluster.xyz": "cc8f9b5ff75b79a5fbc9f611c29f28d68d969d61194b726295efc042c33f4409",
+    "gs.inp": "f2d94e4101afe93526fbad7a54d2fcc930c233c38eabbaf99a5f322c8e550bba",
+    "control_td.inp": "6057dcd743493eb5dadc62d51ee62837b80ba6b8263518ca141ad78adbda47e9",
+    "collision.fragment": "912f24e96796b97280a88393ea82dea9ca7825b989e1a5ad03f5124182b617d0"
+  }
+}

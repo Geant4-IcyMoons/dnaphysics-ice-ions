@@ -1,0 +1,39 @@
+# Input values use atomic units unless explicitly multiplied by a unit.
+UnitsOutput = eV_Angstrom
+PeriodicDimensions = 0
+BoxShape = parallelepiped
+%Lsize
+9.0921*angstrom | 9.08664*angstrom | 9.0585*angstrom
+%
+Spacing = 0.3*angstrom
+PseudopotentialSet = standard
+# XC follows the bundled LDA pseudopotentials; benchmark before adoption.
+ExcessCharge = 0
+SpinComponents = unpolarized
+%Coordinates
+"O" | 0*angstrom | 0*angstrom | 0*angstrom | no
+"H" | 0.7946*angstrom | -0.51769*angstrom | 0.2469*angstrom | no
+"H" | -0.7604*angstrom | -0.49786*angstrom | 0.3607*angstrom | no
+"O" | -2.0658*angstrom | -1.48667*angstrom | 0.8547*angstrom | no
+"H" | -1.9991*angstrom | -2.39864*angstrom | 0.4967*angstrom | no
+"H" | -2.1623*angstrom | -1.54135*angstrom | 1.7995*angstrom | no
+"O" | 0.2118*angstrom | 2.62044*angstrom | 0.5782*angstrom | no
+"H" | 0.0894*angstrom | 1.69081*angstrom | 0.323*angstrom | no
+"H" | -0.5994*angstrom | 3.08664*angstrom | 0.2402*angstrom | no
+"O" | 0.3209*angstrom | 0.16591*angstrom | -2.6991*angstrom | no
+"H" | 1.0805*angstrom | -0.36303*angstrom | -3.0585*angstrom | no
+"H" | 0.2638*angstrom | 0.0335*angstrom | -1.7459*angstrom | no
+"O" | 2.3202*angstrom | -1.33159*angstrom | 0.6757*angstrom | no
+"H" | 3.0921*angstrom | -0.83141*angstrom | 0.3622*angstrom | no
+"H" | 2.4379*angstrom | -1.32532*angstrom | 1.6898*angstrom | no
+%
+CalculationMode = td
+FromScratch = no
+MoveIons = no
+TDPropagator = aetrs
+TDTimeStep = 0.02
+TDMaxSteps = 100
+%TDOutput
+ energy
+ multipoles
+%

@@ -1,0 +1,28 @@
+# Octopus 16.4 collision fragment -- NOT a complete input.
+# Requires a separately verified neutral-target + H+ initial state/restart.
+# Do not obtain it by blindly relaxing the combined +1 system.
+ExperimentalFeatures = yes
+MoveIons = yes
+IonsConstantVelocity = yes
+# Append a movable H projectile to Coordinates at (in angstrom):
+# 1 | 0 | -15 | yes
+# Total ExcessCharge would be +1; this does not enforce projectile charge.
+# Velocities use atomic units, the Octopus input convention.
+%Velocities
+ "O" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "O" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "O" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "O" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "O" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0.200071519161
+%

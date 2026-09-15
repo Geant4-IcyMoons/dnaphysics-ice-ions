@@ -1,0 +1,3 @@
+[submodule "octopus"]
+	path = physics/low_energy/Octopus
+	url = https://gitlab.com/octopus-code/octopus.git
