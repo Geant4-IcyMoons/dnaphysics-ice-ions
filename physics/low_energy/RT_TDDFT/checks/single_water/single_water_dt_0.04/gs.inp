@@ -1,0 +1,31 @@
+# Octopus 16.4: atomic input units, with explicit length factors.
+UnitsOutput = atomic
+PeriodicDimensions = 0
+BoxShape = parallelepiped
+%Lsize
+ 6.0*angstrom | 6.0*angstrom | 12.0*angstrom
+%
+Spacing = 0.4*angstrom
+PseudopotentialSet = standard
+SpinComponents = unpolarized
+%Species
+ "H" | species_pseudo | set | standard | mass | 1.0072764663454
+%
+%Coordinates
+ "O" | 0*angstrom | 0*angstrom | 0*angstrom | no
+ "H" | 0.2573941*angstrom | -0.74321916*angstrom | -0.28681197*angstrom | no
+ "H" | -0.77517201*angstrom | 0.13125538*angstrom | -0.59079942*angstrom | no
+%
+CalculationMode = gs
+FromScratch = yes
+ExcessCharge = 0
+MoveIons = no
+ConvRelDens = 1e-8
+ConvEigenError = yes
+EigensolverTolerance = 1e-9
+EigensolverMaxIter = 100
+MaximumIter = 300
+%Output
+ density
+%
+OutputFormat = cube

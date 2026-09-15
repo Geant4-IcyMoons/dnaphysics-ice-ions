@@ -1,0 +1,197 @@
+{
+  "source": {
+    "sha256": "92266727fc236a8bf2f8c3083be9ea77aa8947b5bd9fd16ed8f5487cd17aeece",
+    "phase": "amorphous_lda_80k",
+    "molecule_ids": [
+      0
+    ],
+    "registry_sha256": "af1c65db0f38c2fac6560572aea8a5b417a90466bb851dc2a6333aff35909ff8",
+    "wrapped_origin_angstrom": [
+      13.15619979,
+      34.178203350000004,
+      5.81918113
+    ],
+    "positions_angstrom": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.25739410000000085,
+        -0.7432191600000024,
+        -0.2868119699999996
+      ],
+      [
+        -0.7751720099999986,
+        0.13125537999999892,
+        -0.5907994199999997
+      ]
+    ]
+  },
+  "settings": {
+    "phase": "amorphous_lda_80k",
+    "replica": 0,
+    "center": 0,
+    "energy_ev": 1000.0,
+    "impact": 1.0,
+    "separation": 8.0,
+    "spacing": 0.4,
+    "transverse_half": 6.0,
+    "clearance": 4.0,
+    "cap_width": 2.0,
+    "cap_height": 0.2,
+    "dt": [
+      0.04,
+      0.02
+    ],
+    "threads": 2,
+    "workers": 2,
+    "executable": "/Users/yoffegid/.local/opt/octopus-16.4/bin/octopus",
+    "output": "/private/tmp/hplus-pilot"
+  },
+  "trajectory": {
+    "velocity_au": 0.2000715191609324,
+    "steps": 7557,
+    "dt_au": 0.02,
+    "end_z_angstrom": 8.00168881162993,
+    "box_half_lengths_angstrom": [
+      6.0,
+      6.0,
+      12.0
+    ]
+  },
+  "model": "standard LDA pseudopotentials; prescribed H+; frozen target",
+  "initialization": "neutral-water GS orbitals read unchanged on identical mesh; H added only for TD; total electron count unchanged",
+  "not_validated": [
+    "finite initial separation",
+    "grid and box",
+    "absorber",
+    "projectile potential",
+    "excitation and exclusive event probabilities"
+  ],
+  "input_sha256": {
+    "gs.inp": "f155a7011e0b19f41126b130e9626114c3ca6766b98d400e8a8db3af61eb9736",
+    "td.inp": "26cb10fba7b629886de5bc8574ea187f92fdadd8a66e0fef632b9db9bf820a92"
+  },
+  "executable_sha256": "91cbb9f94447df8c3cc6190483968efb7601c1e124a3c939d3cd471652c5a691",
+  "stages": [
+    {
+      "stage": "gs",
+      "returncode": 0,
+      "seconds": 1.8621059998404235
+    },
+    {
+      "stage": "td",
+      "returncode": 0,
+      "seconds": 221.78526304196566
+    }
+  ],
+  "initial_target": {
+    "electron_count_on_grid": 7.999985976921958,
+    "projectile_sphere_electrons": {
+      "1.0": 8.459075611522289e-10,
+      "1.5": 5.017224369841663e-09,
+      "2.0": 2.3729290773674934e-08
+    }
+  },
+  "density_samples": [
+    {
+      "step": 0,
+      "projectile_z_angstrom": -8.0,
+      "electron_count_on_grid": 7.999985976921958,
+      "projectile_sphere_electrons": {
+        "1.0": 8.459075611522289e-10,
+        "1.5": 5.017224369841663e-09,
+        "2.0": 2.3729290773674934e-08
+      }
+    },
+    {
+      "step": 944,
+      "projectile_z_angstrom": -6.001112314651495,
+      "electron_count_on_grid": 7.999862364042835,
+      "projectile_sphere_electrons": {
+        "1.0": 2.9565778374632434e-05,
+        "1.5": 6.265095050929788e-05,
+        "2.0": 0.00013215780593393004
+      }
+    },
+    {
+      "step": 1888,
+      "projectile_z_angstrom": -4.002224629302991,
+      "electron_count_on_grid": 7.999691194377324,
+      "projectile_sphere_electrons": {
+        "1.0": 0.0020357857595626476,
+        "1.5": 0.004085072690252672,
+        "2.0": 0.010789714698217729
+      }
+    },
+    {
+      "step": 2832,
+      "projectile_z_angstrom": -2.0033369439544852,
+      "electron_count_on_grid": 7.999608075979881,
+      "projectile_sphere_electrons": {
+        "1.0": 0.24004552142178612,
+        "1.5": 0.5719761801092855,
+        "2.0": 2.209087357077866
+      }
+    },
+    {
+      "step": 3776,
+      "projectile_z_angstrom": -0.004449258605982109,
+      "electron_count_on_grid": 7.9979538222927316,
+      "projectile_sphere_electrons": {
+        "1.0": 2.1078308456801316,
+        "1.5": 5.702039553627495,
+        "2.0": 7.2338848400893125
+      }
+    },
+    {
+      "step": 4720,
+      "projectile_z_angstrom": 1.9944384267425228,
+      "electron_count_on_grid": 7.962789278195568,
+      "projectile_sphere_electrons": {
+        "1.0": 0.3530510546930302,
+        "1.5": 0.597004309162262,
+        "2.0": 1.7057112928492173
+      }
+    },
+    {
+      "step": 5664,
+      "projectile_z_angstrom": 3.9933261120910295,
+      "electron_count_on_grid": 7.924436790773473,
+      "projectile_sphere_electrons": {
+        "1.0": 0.26949243646444726,
+        "1.5": 0.343086734426056,
+        "2.0": 0.3691515416370143
+      }
+    },
+    {
+      "step": 6608,
+      "projectile_z_angstrom": 5.992213797439533,
+      "electron_count_on_grid": 7.88989439418212,
+      "projectile_sphere_electrons": {
+        "1.0": 0.2536131089988136,
+        "1.5": 0.33268198905159235,
+        "2.0": 0.36538933088323494
+      }
+    },
+    {
+      "step": 7552,
+      "projectile_z_angstrom": 7.991101482788036,
+      "electron_count_on_grid": 7.858244295053453,
+      "projectile_sphere_electrons": {
+        "1.0": 0.24014864442661787,
+        "1.5": 0.3210401964885355,
+        "2.0": 0.3573794249094145
+      }
+    }
+  ],
+  "absorbed_electrons_from_grid_norm": 0.14174168186850533,
+  "interpretation": "Sphere populations are capture diagnostics, not exclusive capture probabilities; absorbed norm is an emission proxy, not a validated ionization probability.",
+  "status": "feasibility_run_completed_not_physically_validated",
+  "initial_density_l1_difference_electrons": 0.0,
+  "fixed_target_drift_angstrom": 0.0,
+  "projectile_path_error_angstrom": 2.9540199619759733e-08,
+  "largest_sphere_cap_overlap_angstrom": 0.0016888116299291767
+}

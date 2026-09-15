@@ -1,0 +1,51 @@
+# Octopus 16.4: atomic input units, with explicit length factors.
+UnitsOutput = atomic
+PeriodicDimensions = 0
+BoxShape = parallelepiped
+%Lsize
+ 6.0*angstrom | 6.0*angstrom | 12.0*angstrom
+%
+Spacing = 0.4*angstrom
+PseudopotentialSet = standard
+SpinComponents = unpolarized
+%Species
+ "H" | species_pseudo | set | standard | mass | 1.0072764663454
+%
+%Coordinates
+ "O" | 0*angstrom | 0*angstrom | 0*angstrom | no
+ "H" | 0.2573941*angstrom | -0.74321916*angstrom | -0.28681197*angstrom | no
+ "H" | -0.77517201*angstrom | 0.13125538*angstrom | -0.59079942*angstrom | no
+ "H" | 1.0*angstrom | 0 | -8.0*angstrom | yes
+%
+CalculationMode = td
+FromScratch = yes
+ExcessCharge = 1
+ExperimentalFeatures = yes
+MoveIons = yes
+IonsConstantVelocity = yes
+RecalculateGSDuringEvolution = no
+%Velocities
+ "O" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0
+ "H" | 0 | 0 | 0.20007151916093
+%
+TDPropagator = aetrs
+TDTimeStep = 0.04
+TDMaxSteps = 3779
+AbsorbingBoundaries = cap
+ABWidth = 2.0*angstrom
+ABCapHeight = -0.2
+TDEnergyUpdateIter = 10
+TDOutputComputeInterval = 10
+%TDOutput
+ energy
+ multipoles
+ geometry
+%
+OutputInterval = 472
+RestartWriteInterval = 944
+%Output
+ density
+%
+OutputFormat = cube

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "reference_doi": "10.1103/PhysRevA.93.062706",
+  "reference_sections": [
+    "II",
+    "III",
+    "Figure 1",
+    "Figure 2"
+  ],
+  "purpose": "1 keV single-electron capture benchmark",
+  "status": "analysis_implemented_reference_inputs_unresolved",
+  "published_parameters": {
+    "energy_ev_total": 1000,
+    "active_electrons": 8,
+    "occupied_orbitals_per_spin": 4,
+    "xc_family": "LDA",
+    "ionic_potential_family": "norm-conserving pseudopotentials",
+    "nuclear_dynamics": "Ehrenfest with velocity Verlet",
+    "electronic_propagator": "enforced time-reversal symmetry",
+    "finite_difference_points_per_axis": 9,
+    "spacing_bohr": 0.33,
+    "time_step_au": 0.025,
+    "box_radius_bohr": 25,
+    "absorber_inner_radius_bohr": 20,
+    "absorber_outer_radius_bohr": 25,
+    "absorber_height_magnitude_hartree": 2,
+    "initial_projectile_position_bohr": [
+      -15,
+      "b",
+      0
+    ],
+    "initial_velocity_direction": [
+      1,
+      0,
+      0
+    ],
+    "reported_final_separation_bohr": 40,
+    "orientation_labels": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f"
+    ],
+    "figure_2_ordinate": "2*pi*b*P1",
+    "figure_2_ordinate_unit": "bohr"
+  },
+  "required_reference_assets": {
+    "oriented_water_coordinates": null,
+    "pseudopotential_files_and_identifiers": null,
+    "exact_xc_parameterization": null,
+    "coordinate_and_momentum_translation_implementation": null,
+    "post_translation_propagation_settings": null,
+    "numerical_figure_2_data_with_provenance": null
+  },
+  "notes": [
+    "Absorber onset follows the stated 20--25 bohr shell; Eq. 17 uses R0 ambiguously relative to its description as a thickness.",
+    "The analysis counts electrons in the entire post-translation projectile-centered box, including its absorber shell; late-time stability must be established.",
+    "No geometry, pseudopotential identity, author data, or translation code is fabricated by this protocol ledger.",
+    "Published parameters are a reproduction target, not a declaration that current Octopus defaults reproduce the historical calculation."
+  ],
+  "source_pdf_sha256": "704bbd05c48a6d54927ef1ee96b8f774616e5c0c832a71662f0f214068954edf",
+  "source_url": "https://harvest.aps.org/v2/journals/articles/10.1103/PhysRevA.93.062706/fulltext",
+  "accessed": "2026-09-15"
+}

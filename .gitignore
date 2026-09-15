@@ -29,3 +29,6 @@ physics/**/logs/
 # Shared model regeneration products
 models/**/runs/
 models/**/logs/
+
+# Generated RT-TDDFT input bundles (curated examples are tracked separately)
+/physics/low_energy/RT_TDDFT/cases/

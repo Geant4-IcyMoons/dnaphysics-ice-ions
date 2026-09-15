@@ -17,6 +17,9 @@ physics/
     polarization/
     validation/
     jobs/
+  low_energy/
+    Octopus/                 # pinned solver source submodule
+    RT_TDDFT/                # target preparation and capture-analysis development
   ctmc/                       (empty)
   elastic/
     hard_collisions/
@@ -72,3 +75,10 @@ Operational generation is not physical validation for every state and
 energy. The screened polarization correction remains an approximation with
 explicit rejection checks. See [validation](physics/inelastic_dielectric/validation/README.md)
 and [polarization benchmarks](physics/inelastic_dielectric/polarization/README.md).
+
+## Low-energy collision development
+
+[RT-TDDFT](physics/low_energy/RT_TDDFT/README.md) contains ice-target preparation,
+execution checks, and molecular capture analysis. The published H+ benchmark
+and periodic ice collision workflow remain incomplete; no validated low-energy
+transport rates are supplied.
