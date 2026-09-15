@@ -19,6 +19,15 @@
       "density_g_cm3": 0.9334742974038461,
       "density_role": "imposed experimental H2O ice-Ih cell",
       "cell_reference_doi": "10.1107/S0108768111046908"
+    },
+    "cubic_ic_100k": {
+      "status": "structurally_validated_density_proxy",
+      "temperature_k": 100.0,
+      "configuration_count": 3,
+      "manifest": "cubic_ic_100K/manifest.json",
+      "density_g_cm3": 0.9334742974730634,
+      "density_role": "equal molecular volume to measured H2O Ih at 100 K; accepted approximation, not measured Ic density",
+      "collision_ready": false
     }
   }
 }

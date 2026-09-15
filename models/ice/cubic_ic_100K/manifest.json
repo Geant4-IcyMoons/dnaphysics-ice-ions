@@ -1,0 +1,146 @@
+{
+  "status": "structurally_validated_density_proxy",
+  "created_utc": "2026-09-15T18:11:37.582523+00:00",
+  "config": {
+    "schema_version": 1,
+    "phase": "cubic ice Ic, 100 K, Ih-volume approximation",
+    "temperature_k": 100.0,
+    "seeds": [
+      1000,
+      2000,
+      3000
+    ],
+    "replication": [
+      10,
+      10,
+      10
+    ],
+    "ih_unit_cell_volume_angstrom3": 128.188109,
+    "cell_reference_doi": "10.1107/S0108768111046908",
+    "density_role": "equal molecular volume to measured H2O Ih at 100 K; accepted approximation, not measured Ic density",
+    "potential_sha256": "70b5fa54c185bc75f0ae9cea408f7db77d5d021069c48b77966fc9a7d84eb4aa",
+    "genice_version": "2.2.13.3",
+    "timestep_fs": 0.2,
+    "block_steps": 500000,
+    "equilibration_blocks": 10,
+    "sampling_blocks": 10,
+    "thermo_interval_steps": 10000,
+    "thermostat": "nvt_nhc",
+    "thermostat_coupling_steps": 200,
+    "minimization_force_tolerance_ev_angstrom": 0.0001,
+    "minimization_max_steps": 100000,
+    "minimum_cubic_fraction": 0.99,
+    "familywise_alpha": 0.05
+  },
+  "structures": [
+    {
+      "path": "seed1000_final.xyz.gz",
+      "sha256": "ec8a14d14bb2a9d918a66ab31c7e0069d40289cb12a749c2f19a02c06640ad93",
+      "phase": "cubic ice Ic, 100 K, Ih-volume approximation",
+      "temperature_k": 100.0,
+      "water_molecules": 8000,
+      "lattice_angstrom": [
+        [
+          63.52713148,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          63.52713148,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          63.52713148
+        ]
+      ],
+      "density_g_cm3": 0.9334742974730634,
+      "collision_ready": false
+    },
+    {
+      "path": "seed2000_final.xyz.gz",
+      "sha256": "6e725a56af61df954f8be9d23733185dc71c3111ae2581e692f42fc0da14e2a6",
+      "phase": "cubic ice Ic, 100 K, Ih-volume approximation",
+      "temperature_k": 100.0,
+      "water_molecules": 8000,
+      "lattice_angstrom": [
+        [
+          63.52713148,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          63.52713148,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          63.52713148
+        ]
+      ],
+      "density_g_cm3": 0.9334742974730634,
+      "collision_ready": false
+    },
+    {
+      "path": "seed3000_final.xyz.gz",
+      "sha256": "502ca7013a52b527ee40f78decda2018ee5777e9540a212aef92a1c83ee6c424",
+      "phase": "cubic ice Ic, 100 K, Ih-volume approximation",
+      "temperature_k": 100.0,
+      "water_molecules": 8000,
+      "lattice_angstrom": [
+        [
+          63.52713148,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          63.52713148,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          63.52713148
+        ]
+      ],
+      "density_g_cm3": 0.9334742974730634,
+      "collision_ready": false
+    }
+  ],
+  "reports": [
+    {
+      "path": "validation/seed1000.json",
+      "sha256": "d9ffda36da369212d69f8f4aa1186b1549d107d558e27137f37539b0fd4086f5"
+    },
+    {
+      "path": "validation/seed2000.json",
+      "sha256": "2acf60c2179a4e0f32f15aa193eef37f0fdbbf0263262ab1c48171b47a25e01f"
+    },
+    {
+      "path": "validation/seed3000.json",
+      "sha256": "3261523877a42e4b8b7f2cbeb15612cacb456d2f135a7375c65d9777cedbe8f1"
+    }
+  ],
+  "preparations": [
+    {
+      "path": "preparation/seed1000.json",
+      "sha256": "3b8650a41ef542eb6a3c8cbdb0eeabcdcf26b57eb788cd4b5111d5883e25e831"
+    },
+    {
+      "path": "preparation/seed2000.json",
+      "sha256": "c856ef16c1354f2005b311f2fa165bf00fd3eb6617f37c2429a98fede6a68298"
+    },
+    {
+      "path": "preparation/seed3000.json",
+      "sha256": "fbc12b2a5eaf203fe22e06ff2d43635392f2969467a672cbf9e52f79569485e3"
+    }
+  ],
+  "distinct_proton_configurations": true,
+  "collision_ready": false,
+  "integration": "Available for visualization; cubic ion-collision phase is not configured."
+}

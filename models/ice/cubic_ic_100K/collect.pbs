@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#PBS -N ice_ic_plot
+#PBS -q idle
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+cd "${PBS_O_WORKDIR:?Submit from the repository root}"
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+export LD_LIBRARY_PATH="/apps01/apps/anaconda3-2022.10/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+PYTHON="$PWD/python_scripts/physics_ice/nep_mbpol/.venv/bin/python"
+export PHYSICS_ICE_PLOT_FONT_DIR="$PWD/models/ice/cubic_ic_100K/runs/fonts"
+"${PYTHON}" models/ice/cubic_ic_100K/validate.py --collect

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "phase": "cubic ice Ic, 100 K, Ih-volume approximation",
+  "temperature_k": 100.0,
+  "seeds": [1000, 2000, 3000],
+  "replication": [10, 10, 10],
+  "ih_unit_cell_volume_angstrom3": 128.188109,
+  "cell_reference_doi": "10.1107/S0108768111046908",
+  "density_role": "equal molecular volume to measured H2O Ih at 100 K; accepted approximation, not measured Ic density",
+  "potential_sha256": "70b5fa54c185bc75f0ae9cea408f7db77d5d021069c48b77966fc9a7d84eb4aa",
+  "genice_version": "2.2.13.3",
+  "timestep_fs": 0.2,
+  "block_steps": 500000,
+  "equilibration_blocks": 10,
+  "sampling_blocks": 10,
+  "thermo_interval_steps": 10000,
+  "thermostat": "nvt_nhc",
+  "thermostat_coupling_steps": 200,
+  "minimization_force_tolerance_ev_angstrom": 0.0001,
+  "minimization_max_steps": 100000,
+  "minimum_cubic_fraction": 0.99,
+  "familywise_alpha": 0.05
+}

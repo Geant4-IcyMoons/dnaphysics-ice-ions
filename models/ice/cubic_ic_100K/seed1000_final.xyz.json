@@ -1,0 +1,9 @@
+{
+  "phase": "cubic ice Ic, 100 K, Ih-volume approximation",
+  "state": "structurally validated classical 100 K snapshot; density proxy",
+  "collision_ready": false,
+  "sha256": "ec8a14d14bb2a9d918a66ab31c7e0069d40289cb12a749c2f19a02c06640ad93",
+  "density_role": "equal molecular volume to measured H2O Ih at 100 K; accepted approximation, not measured Ic density",
+  "validation_report": "validation/seed1000.json",
+  "validation_sha256": "d9ffda36da369212d69f8f4aa1186b1549d107d558e27137f37539b0fd4086f5"
+}

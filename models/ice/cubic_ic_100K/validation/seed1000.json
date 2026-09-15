@@ -1,0 +1,1550 @@
+{
+  "seed": 1000,
+  "created_utc": "2026-09-15T18:10:42.107324+00:00",
+  "config": {
+    "schema_version": 1,
+    "phase": "cubic ice Ic, 100 K, Ih-volume approximation",
+    "temperature_k": 100.0,
+    "seeds": [
+      1000,
+      2000,
+      3000
+    ],
+    "replication": [
+      10,
+      10,
+      10
+    ],
+    "ih_unit_cell_volume_angstrom3": 128.188109,
+    "cell_reference_doi": "10.1107/S0108768111046908",
+    "density_role": "equal molecular volume to measured H2O Ih at 100 K; accepted approximation, not measured Ic density",
+    "potential_sha256": "70b5fa54c185bc75f0ae9cea408f7db77d5d021069c48b77966fc9a7d84eb4aa",
+    "genice_version": "2.2.13.3",
+    "timestep_fs": 0.2,
+    "block_steps": 500000,
+    "equilibration_blocks": 10,
+    "sampling_blocks": 10,
+    "thermo_interval_steps": 10000,
+    "thermostat": "nvt_nhc",
+    "thermostat_coupling_steps": 200,
+    "minimization_force_tolerance_ev_angstrom": 0.0001,
+    "minimization_max_steps": 100000,
+    "minimum_cubic_fraction": 0.99,
+    "familywise_alpha": 0.05
+  },
+  "validator_sha256": "464a9cf3daa6a196ea7f1c4f0c75419c7b2f6c75e27e6174cf956fbe584ad498",
+  "statistics_sha256": "8453b7d419b044a1d0a171e2114539f74b041f2c0ac3cbeaa99ee1e83293acaa",
+  "signature": "a80bc440eba3f8df2876163e4743f2675319bfe9d28692d1752622ec079863b8",
+  "passed": true,
+  "gates": {
+    "all_sampling_structures_pass": true,
+    "target_temperature_in_mean_interval": true,
+    "no_resolved_drift": true
+  },
+  "temperature": {
+    "mean": 100.03123269648201,
+    "standard_deviation": 0.5331112887849632,
+    "hac_standard_error": 0.02503740021152961,
+    "confidence_level": 0.9833333333333333,
+    "confidence_interval": [
+      99.97129366613564,
+      100.09117172682838
+    ],
+    "newey_west_lag_records": 5
+  },
+  "trends": {
+    "temperature_k": {
+      "slope_per_ns": -0.15755297491282516,
+      "slope_standard_error_per_ns": 0.08202484385757522,
+      "raw_two_sided_p_value": 0.05475745721171031,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 0.38330220048197217
+    },
+    "potential_energy_ev": {
+      "slope_per_ns": 0.05497269611842288,
+      "slope_standard_error_per_ns": 0.26555910664335874,
+      "raw_two_sided_p_value": 0.8360040913499247,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 1.0
+    },
+    "pxx_gpa": {
+      "slope_per_ns": -0.005023308126392879,
+      "slope_standard_error_per_ns": 0.003056448335576629,
+      "raw_two_sided_p_value": 0.10027713865108842,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 0.6016628319065305
+    },
+    "pyy_gpa": {
+      "slope_per_ns": -0.0015842716167748362,
+      "slope_standard_error_per_ns": 0.002919788220438899,
+      "raw_two_sided_p_value": 0.5874065295263741,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 1.0
+    },
+    "pzz_gpa": {
+      "slope_per_ns": -0.004096712688502991,
+      "slope_standard_error_per_ns": 0.0026851009235782544,
+      "raw_two_sided_p_value": 0.12707956437863624,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 0.6353978218931812
+    },
+    "pyz_gpa": {
+      "slope_per_ns": 0.00013057079117162815,
+      "slope_standard_error_per_ns": 0.002682691425270541,
+      "raw_two_sided_p_value": 0.961181036527895,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 1.0
+    },
+    "pxz_gpa": {
+      "slope_per_ns": 0.006065212280911079,
+      "slope_standard_error_per_ns": 0.0024135888953830047,
+      "raw_two_sided_p_value": 0.011972854277169029,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 0.09578283421735223
+    },
+    "pxy_gpa": {
+      "slope_per_ns": 0.0011921945505715445,
+      "slope_standard_error_per_ns": 0.002784496167909785,
+      "raw_two_sided_p_value": 0.668538643783378,
+      "newey_west_lag_records": 5,
+      "holm_adjusted_p_value": 1.0
+    }
+  },
+  "frames": [
+    {
+      "sha256": "d07469f2abae1a68a99fa3e11fda0890cde3af4d59efd0f0cb7590fa9676e6dd",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9997064974227345,
+        "correlation_maximum": -0.8738991792606456,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.5322933851818075,
+          "mean": 2.7647657925266618,
+          "maximum": 3.1680949498341815
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9217845394097078,
+          "nearest_mean": 0.9754045568462416,
+          "nearest_maximum": 1.0411222098253086,
+          "second_nearest_minimum": 1.5612673897480378,
+          "second_nearest_mean": 1.7989977096364096,
+          "second_nearest_maximum": 2.2162787395834207
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.45737647369654333,
+            "largest_neighbor": 0.0011070112395803276,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7933573585314941,
+            "largest_neighbor": 0.0035619884027924915,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.3692986645545671,
+            "largest_neighbor": 0.0006867770166418261,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.638253280781708,
+            "largest_neighbor": 0.0027359928480269607,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.2842633595818122,
+            "largest_neighbor": 0.0036185633485866313,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.5105637084770583,
+            "largest_neighbor": 0.004328626195640294,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.3938418918346543,
+            "largest_neighbor": 0.008446163915259762,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 5.522754387333367e-07,
+        "forbidden_222_intensity": 5.133483454945011e-06
+      }
+    },
+    {
+      "sha256": "3a61de8c791e8319eca09569727e008d6bc5a9f47b30a84dbcad55610510b169",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9995253321524339,
+        "correlation_maximum": -0.8884878477194218,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.543452636067097,
+          "mean": 2.764767172680738,
+          "maximum": 3.2225659216363165
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9224203881200632,
+          "nearest_mean": 0.9754126141961228,
+          "nearest_maximum": 1.0288036923876496,
+          "second_nearest_minimum": 1.5579920091119468,
+          "second_nearest_mean": 1.799022604154415,
+          "second_nearest_maximum": 2.281644020778868
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.45568072716841906,
+            "largest_neighbor": 0.00154523290066727,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7766852500128861,
+            "largest_neighbor": 0.004771670740852375,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.3595218759626236,
+            "largest_neighbor": 0.0013207682682143723,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.6345753343031385,
+            "largest_neighbor": 0.0041337274208886,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.27480333942212676,
+            "largest_neighbor": 0.00474936634179416,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.48243779544814785,
+            "largest_neighbor": 0.006550294250169984,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.3629048363860176,
+            "largest_neighbor": 0.009219704966406927,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 9.381226484158944e-07,
+        "forbidden_222_intensity": 4.345243752031228e-06
+      }
+    },
+    {
+      "sha256": "a272f4ed37e1fad38a159ca949bf9a83f1bba7b96963d9bd094b378ff39066b9",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9998985645472694,
+        "correlation_maximum": -0.8758750055845386,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.526963959457766,
+          "mean": 2.7644601871109806,
+          "maximum": 3.127244821500053
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9262893139979681,
+          "nearest_mean": 0.9755062625220117,
+          "nearest_maximum": 1.0338267103688223,
+          "second_nearest_minimum": 1.544129630927831,
+          "second_nearest_mean": 1.7985378857393743,
+          "second_nearest_maximum": 2.169464728598571
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.45330412099784073,
+            "largest_neighbor": 0.001240017941105659,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.788197247570898,
+            "largest_neighbor": 0.0045325088682861454,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.36233751709151046,
+            "largest_neighbor": 0.0014909172917334105,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.643671842455131,
+            "largest_neighbor": 0.0027475149831856327,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.27589144426421097,
+            "largest_neighbor": 0.00529616035530851,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.47891728177496873,
+            "largest_neighbor": 0.008053705668201395,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.38441584387402494,
+            "largest_neighbor": 0.011544841440310897,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 1.0451828244417922e-06,
+        "forbidden_222_intensity": 1.3133060714676559e-06
+      }
+    },
+    {
+      "sha256": "c8c78d9d73298883d63744d21ae7be78b6c0c03a335944c09c68cf27b7e56e76",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9998909056877956,
+        "correlation_maximum": -0.8660629290070845,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.5331228976068534,
+          "mean": 2.7648448296305785,
+          "maximum": 3.137828479155377
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9225000574665247,
+          "nearest_mean": 0.9749720876088622,
+          "nearest_maximum": 1.039929370905986,
+          "second_nearest_minimum": 1.5634550683553372,
+          "second_nearest_mean": 1.7996152186422332,
+          "second_nearest_maximum": 2.182878826584942
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.45294863637713745,
+            "largest_neighbor": 0.0009346760572291479,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7853068111139038,
+            "largest_neighbor": 0.0015204427802972783,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.36051768989112193,
+            "largest_neighbor": 0.0009298153710169658,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.6274831242936401,
+            "largest_neighbor": 0.0037363741662416587,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.27420560848588377,
+            "largest_neighbor": 0.00225146260963261,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.47821734348164696,
+            "largest_neighbor": 0.00401265752709532,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.3800095577954001,
+            "largest_neighbor": 0.004069796664256146,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 1.7097641496150683e-06,
+        "forbidden_222_intensity": 1.1419532815151502e-05
+      }
+    },
+    {
+      "sha256": "532d01f1ca4c72a967e1126c4b521d48f379a449214f172390fa859d2fb3fc8f",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9996694761437465,
+        "correlation_maximum": -0.8821596643311297,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.5284854258210965,
+          "mean": 2.7648979104094877,
+          "maximum": 3.113609931249911
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9220047946740246,
+          "nearest_mean": 0.975364103116541,
+          "nearest_maximum": 1.0313642540668488,
+          "second_nearest_minimum": 1.5497668020231885,
+          "second_nearest_mean": 1.7991982381433704,
+          "second_nearest_maximum": 2.1965869821377604
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.45664563617374715,
+            "largest_neighbor": 0.0005961609192782457,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7952291893111965,
+            "largest_neighbor": 0.0013821502527687558,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.35392838227721707,
+            "largest_neighbor": 0.0007550462731129216,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.6087792553108327,
+            "largest_neighbor": 0.005597894700867849,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.2870340369462442,
+            "largest_neighbor": 0.0018455674288187637,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.4751670334395824,
+            "largest_neighbor": 0.0023803577117647336,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.39777994788227117,
+            "largest_neighbor": 0.0031913031388873625,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 2.9298385859179355e-06,
+        "forbidden_222_intensity": 2.4424913684834897e-06
+      }
+    },
+    {
+      "sha256": "4061d93ccfd69cfae12bdab0b3a68c27bc41b9c9fcff222654b1f2d0a42a1418",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9996766335624739,
+        "correlation_maximum": -0.8643633825526759,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.5416553293719235,
+          "mean": 2.764661304814713,
+          "maximum": 3.2413642344993185
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.917890956037142,
+          "nearest_mean": 0.9753227326557744,
+          "nearest_maximum": 1.0349756570481399,
+          "second_nearest_minimum": 1.550945380385083,
+          "second_nearest_mean": 1.7989515797551208,
+          "second_nearest_maximum": 2.2864310867455777
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.4551677790291857,
+            "largest_neighbor": 0.0007724022803697286,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7943332862703317,
+            "largest_neighbor": 0.0023573381673810878,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.3595934648330366,
+            "largest_neighbor": 0.0022102239991816926,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.6137777921665944,
+            "largest_neighbor": 0.0058876909362144255,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.283376844123663,
+            "largest_neighbor": 0.002915395196610207,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.48006908998284487,
+            "largest_neighbor": 0.007740124349344966,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.39625903265418017,
+            "largest_neighbor": 0.005547247623412137,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 1.0821371827575128e-06,
+        "forbidden_222_intensity": 3.6241896560436096e-06
+      }
+    },
+    {
+      "sha256": "bdcde9d77badbce7d540712d840055b2ca442f29caae565e642518be7c60cbed",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9995565844329014,
+        "correlation_maximum": -0.884158762329671,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.5294203483490887,
+          "mean": 2.765024845288535,
+          "maximum": 3.118435106091304
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9181014203596526,
+          "nearest_mean": 0.9753221910321898,
+          "nearest_maximum": 1.0321375894425577,
+          "second_nearest_minimum": 1.56353722316816,
+          "second_nearest_mean": 1.7994039057188802,
+          "second_nearest_maximum": 2.176706564103613
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.4524642267994663,
+            "largest_neighbor": 0.0007778571379851901,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7786185958527031,
+            "largest_neighbor": 0.00380121049853464,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.3453913743167383,
+            "largest_neighbor": 0.0031481336284803698,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.5824360262840879,
+            "largest_neighbor": 0.007805621127321753,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.2702754178993983,
+            "largest_neighbor": 0.003978431781608896,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.4437855545283979,
+            "largest_neighbor": 0.010144348386890444,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.3665043910021667,
+            "largest_neighbor": 0.008550867448145762,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 7.008263171711892e-07,
+        "forbidden_222_intensity": 4.747999655101668e-06
+      }
+    },
+    {
+      "sha256": "97281ff3cda592fd901bb30b65e146dd0c4a6fa541618921d6d7192f1d61c8a9",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9998500462333453,
+        "correlation_maximum": -0.8747812366412216,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.533455098125959,
+          "mean": 2.7646425134613617,
+          "maximum": 3.065129198950739
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.91991555691928,
+          "nearest_mean": 0.9753258017718766,
+          "nearest_maximum": 1.0362145841516006,
+          "second_nearest_minimum": 1.5504355162480656,
+          "second_nearest_mean": 1.7988730105058657,
+          "second_nearest_maximum": 2.118772312414472
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.45329109640683074,
+            "largest_neighbor": 0.0007867286141472312,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7847409365472429,
+            "largest_neighbor": 0.003217623298719854,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.35173353690435505,
+            "largest_neighbor": 0.0031359078587964656,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.5996348503045477,
+            "largest_neighbor": 0.008939494267238052,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.2750343717709064,
+            "largest_neighbor": 0.0031796387937023433,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.464478044126409,
+            "largest_neighbor": 0.00897070921988154,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.3777775382008071,
+            "largest_neighbor": 0.007743054298789947,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 3.595157152420557e-06,
+        "forbidden_222_intensity": 2.4941734804879157e-06
+      }
+    },
+    {
+      "sha256": "381dbafbf971bd0d27b8d9c939b8c803f12275094449a22887aefc6898d3b83c",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9995087295460947,
+        "correlation_maximum": -0.8727038737001033,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.5117124309575516,
+          "mean": 2.7646614367437943,
+          "maximum": 3.146312837943868
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9258692867644162,
+          "nearest_mean": 0.9752247840722527,
+          "nearest_maximum": 1.0305810328970368,
+          "second_nearest_minimum": 1.5450521542633162,
+          "second_nearest_mean": 1.7989927879869752,
+          "second_nearest_maximum": 2.1970147010689813
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.4530786141352505,
+            "largest_neighbor": 0.0005405995190930515,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7937070826911036,
+            "largest_neighbor": 0.0023007872779352836,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.3496743009681045,
+            "largest_neighbor": 0.0017596168137685758,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.5893860049443752,
+            "largest_neighbor": 0.00626610175719326,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.28077366157702693,
+            "largest_neighbor": 0.0021726070192414453,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.4569706224465855,
+            "largest_neighbor": 0.004961995671559495,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.3940113722788073,
+            "largest_neighbor": 0.005231820606152152,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 1.6835317790506416e-06,
+        "forbidden_222_intensity": 7.634685366493715e-08
+      }
+    },
+    {
+      "sha256": "2229e10ceeceacb07c22d51a9f4555f0ab421ea40d3b5b7ab649b8ebeacee8a1",
+      "passed": true,
+      "chill": {
+        "water_molecules": 8000,
+        "hexagonal_count": 0,
+        "hexagonal_fraction": 0.0,
+        "cubic_count": 8000,
+        "cubic_fraction": 1.0,
+        "clathrate_count": 0,
+        "other_count": 0,
+        "four_neighbor_count": 8000,
+        "coordination_minimum": 4,
+        "coordination_maximum": 4,
+        "correlation_minimum": -0.9996867645141535,
+        "correlation_maximum": -0.8735955725177783,
+        "four_nearest_oo_distance_a": {
+          "minimum": 2.505406461525163,
+          "mean": 2.764603398731158,
+          "maximum": 3.122045772520991
+        },
+        "passes_published_bulk_ih_benchmark": false
+      },
+      "bernal_fowler": {
+        "two_nearest_oxygen_oh_distance_a": {
+          "nearest_minimum": 0.9244708962286593,
+          "nearest_mean": 0.9755063984501431,
+          "nearest_maximum": 1.0354974718729946,
+          "second_nearest_minimum": 1.5157848213074805,
+          "second_nearest_mean": 1.798611567516557,
+          "second_nearest_maximum": 2.1585838844869047
+        },
+        "oxygen_network_edges": 16000,
+        "oxygen_network_is_symmetric_and_four_connected": true,
+        "oxygen_with_exactly_two_nearest_hydrogens": 8000,
+        "hydrogen_bond_edges_with_exactly_one_proton": 16000,
+        "all_hydrogens_link_nearest_oxygen_neighbors": true,
+        "orientation_sha256": "09f2f1106d501ef527e0fb55b6181db43efc38f9fcedfa0cd8c5125192fcc7d2",
+        "passes_bernal_fowler_rules": true
+      },
+      "bragg": {
+        "reflections": [
+          {
+            "hkl": [
+              1,
+              1,
+              1
+            ],
+            "normalized_peak": 0.4536593672262253,
+            "largest_neighbor": 0.000509092376630586,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              2,
+              2,
+              0
+            ],
+            "normalized_peak": 0.7835032877669756,
+            "largest_neighbor": 0.004590171584326155,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              1,
+              1
+            ],
+            "normalized_peak": 0.350672069669871,
+            "largest_neighbor": 0.004832894284314076,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              0,
+              0
+            ],
+            "normalized_peak": 0.587032683632239,
+            "largest_neighbor": 0.017072259554058503,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              3,
+              3,
+              1
+            ],
+            "normalized_peak": 0.27462213998473056,
+            "largest_neighbor": 0.0039821880431674325,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              2,
+              2
+            ],
+            "normalized_peak": 0.45967898388753425,
+            "largest_neighbor": 0.011540533171430339,
+            "local_maximum": true
+          },
+          {
+            "hkl": [
+              4,
+              4,
+              0
+            ],
+            "normalized_peak": 0.3744071931593487,
+            "largest_neighbor": 0.0105193734644343,
+            "local_maximum": true
+          }
+        ],
+        "all_local_maxima": true,
+        "forbidden_200_intensity": 2.1970981239408696e-07,
+        "forbidden_222_intensity": 2.6015158805149317e-06
+      }
+    }
+  ],
+  "blocks": [
+    {
+      "block": 0,
+      "receipt_sha256": "51f2dc938e93fb59ba5d35eb1cda8b896ea326630fae2fe1f46138a6fbb1f2ba"
+    },
+    {
+      "block": 1,
+      "receipt_sha256": "edad952284ba08e15ae2af3d4aefec8bcd9e65461eb7d313eac8ba5aeb7e3527"
+    },
+    {
+      "block": 2,
+      "receipt_sha256": "2b15974115a46369031b17da2bd281ad58e33c95d1ddf8e4fe1877f1276e1348"
+    },
+    {
+      "block": 3,
+      "receipt_sha256": "81da596c0e9ae8e44831a2e5393e8323b059ab081e5c5f6e907ac6e9d1066e01"
+    },
+    {
+      "block": 4,
+      "receipt_sha256": "c293d4ce524fb19264f953655668d9e852de49b22dc326b41161ad53071a5bf1"
+    },
+    {
+      "block": 5,
+      "receipt_sha256": "875239904d353f13c20e8607761f78b9746fe77395c1cbc806bd83e4e11524f7"
+    },
+    {
+      "block": 6,
+      "receipt_sha256": "e51517f29715ce0e81402ce2a54dd340f374538585009dcf32b40cea0da7168b"
+    },
+    {
+      "block": 7,
+      "receipt_sha256": "f3fa5407631163fa17f87e993cd8a926e38d6962e7b68ba21e57bb5be704ebea"
+    },
+    {
+      "block": 8,
+      "receipt_sha256": "3ede24fd1e07e0a9685fd9b8db84552093b8f9c62bed3d5ce1c7e473d55f3ad6"
+    },
+    {
+      "block": 9,
+      "receipt_sha256": "0a0e978c2a6ce487cab2ee9834d8a2d8cb50aa78ab0ff9b4dd7d41eaba8c412c"
+    },
+    {
+      "block": 10,
+      "receipt_sha256": "f76d1f220ab10a2c45e6ccaf02df6a11ff751f2c8b7f34ef7d9e36d3272153cf"
+    },
+    {
+      "block": 11,
+      "receipt_sha256": "88603d906bcaf0139c820023871d70346acc7f1393ae18ce965164c6620949b6"
+    },
+    {
+      "block": 12,
+      "receipt_sha256": "7afc8973eda2868a7a32ba2335f066aa3f4be63c89077a227b089f2859f13d82"
+    },
+    {
+      "block": 13,
+      "receipt_sha256": "1fc41b7abe79086c87f5eff56545b72319080c0b2330af764a25c72fc273d541"
+    },
+    {
+      "block": 14,
+      "receipt_sha256": "c55c7d613acaa50d38b5b076af6616de8e6c206b3e0c08aa234a59fde6c4bda4"
+    },
+    {
+      "block": 15,
+      "receipt_sha256": "abe208f984b5d37fc985c3b61fa81607d854689f944d16dd992a85e35ce3942f"
+    },
+    {
+      "block": 16,
+      "receipt_sha256": "c2eb65b932dd8214fe82f3c0b2bb7e9b075e6c21098a9b0d2f214c78de638fc7"
+    },
+    {
+      "block": 17,
+      "receipt_sha256": "253b56ecef3ded50329222d44c16685bd9dd0dff074839d51a6c8c3219ee8ce4"
+    },
+    {
+      "block": 18,
+      "receipt_sha256": "7ea68b70ab796de6565c7710d7f12909eafe3d9d0d4cb89b29a2128ee6f83661"
+    },
+    {
+      "block": 19,
+      "receipt_sha256": "ce7c20ea61de4eb7e3dfe468f9b6d826142c4bd1c53dd3e1a4452285aee44902"
+    }
+  ],
+  "sampling_records": 500,
+  "sampling_column_means": {
+    "temperature_k": 100.03123269648201,
+    "kinetic_energy_ev": 310.3212394288599,
+    "potential_energy_ev": -4509.486704552803,
+    "pxx_gpa": -0.17121817500662004,
+    "pyy_gpa": -0.17079653537574016,
+    "pzz_gpa": -0.1704318282414201,
+    "pyz_gpa": -0.0002988873408943398,
+    "pxz_gpa": 0.00046847116102342163,
+    "pxy_gpa": 0.0009470330670488802
+  },
+  "block_means": [
+    {
+      "temperature_k": 100.08335310342,
+      "kinetic_energy_ev": 310.4829296214,
+      "potential_energy_ev": -4509.40385673,
+      "pxx_gpa": -0.17196912158940006,
+      "pyy_gpa": -0.171635577199,
+      "pzz_gpa": -0.17240534382819997,
+      "pyz_gpa": -0.004248126407320199,
+      "pxz_gpa": -0.0029965999599648008,
+      "pxy_gpa": 0.0028706196650482014
+    },
+    {
+      "temperature_k": 100.06424777629998,
+      "kinetic_energy_ev": 310.42366024520004,
+      "potential_energy_ev": -4509.700018464,
+      "pxx_gpa": -0.17297483745480005,
+      "pyy_gpa": -0.1716856464948001,
+      "pzz_gpa": -0.17187579505079997,
+      "pyz_gpa": -0.0013079134309659996,
+      "pxz_gpa": -0.0008213983409139999,
+      "pxy_gpa": -0.0012779271294672
+    },
+    {
+      "temperature_k": 100.0074510007,
+      "kinetic_energy_ev": 310.2474628186,
+      "potential_energy_ev": -4509.395075953999,
+      "pxx_gpa": -0.1639141174298,
+      "pyy_gpa": -0.16707482908880003,
+      "pzz_gpa": -0.16465617136580002,
+      "pyz_gpa": 0.0048431095618640015,
+      "pxz_gpa": -0.00016277507129660045,
+      "pxy_gpa": -0.0012809111105276003
+    },
+    {
+      "temperature_k": 100.09963222358004,
+      "kinetic_energy_ev": 310.5334314148,
+      "potential_energy_ev": -4509.4358042740005,
+      "pxx_gpa": -0.16649151945780002,
+      "pyy_gpa": -0.17012186995939999,
+      "pzz_gpa": -0.16601821576540002,
+      "pyz_gpa": 0.0009967380769167996,
+      "pxz_gpa": -0.001683693421826801,
+      "pxy_gpa": 0.0037360894096368003
+    },
+    {
+      "temperature_k": 100.13609704980001,
+      "kinetic_energy_ev": 310.64655418380005,
+      "potential_energy_ev": -4509.542429076,
+      "pxx_gpa": -0.170228101846,
+      "pyy_gpa": -0.17173695947779993,
+      "pzz_gpa": -0.1676815240334,
+      "pyz_gpa": -0.0011746655276217996,
+      "pxz_gpa": -0.0021028649342266005,
+      "pxy_gpa": 0.004292296212140799
+    },
+    {
+      "temperature_k": 99.97896678843998,
+      "kinetic_energy_ev": 310.1590978568001,
+      "potential_energy_ev": -4509.613045288,
+      "pxx_gpa": -0.171480724177,
+      "pyy_gpa": -0.1680320431536,
+      "pzz_gpa": -0.17192301578879998,
+      "pyz_gpa": 0.0021337845639071997,
+      "pxz_gpa": 0.0022840613524692005,
+      "pxy_gpa": -0.006291952072793202
+    },
+    {
+      "temperature_k": 100.09223232846,
+      "kinetic_energy_ev": 310.5104751386001,
+      "potential_energy_ev": -4509.428592161999,
+      "pxx_gpa": -0.1762675827488,
+      "pyy_gpa": -0.17234620076780005,
+      "pzz_gpa": -0.1721018854562,
+      "pyz_gpa": -0.0006407860050949998,
+      "pxz_gpa": 0.0009570442135194199,
+      "pxy_gpa": 0.0016506465492808003
+    },
+    {
+      "temperature_k": 99.98541694610002,
+      "kinetic_energy_ev": 310.1791078166,
+      "potential_energy_ev": -4509.49980166,
+      "pxx_gpa": -0.1723930674302,
+      "pyy_gpa": -0.17086753190020001,
+      "pzz_gpa": -0.17226937905179995,
+      "pyz_gpa": -0.0036819495097740024,
+      "pxz_gpa": 0.005301639548468602,
+      "pxy_gpa": 0.0023977091047935996
+    },
+    {
+      "temperature_k": 99.97878416241998,
+      "kinetic_energy_ev": 310.1585313068,
+      "potential_energy_ev": -4509.194819031999,
+      "pxx_gpa": -0.1716209308144,
+      "pyy_gpa": -0.1702435560392,
+      "pzz_gpa": -0.17049454397599995,
+      "pyz_gpa": 0.000825195100574,
+      "pxz_gpa": 0.0019559601655501995,
+      "pxy_gpa": -0.00016685617987299996
+    },
+    {
+      "temperature_k": 99.88614558560005,
+      "kinetic_energy_ev": 309.871143886,
+      "potential_energy_ev": -4509.653602888,
+      "pxx_gpa": -0.174841747118,
+      "pyy_gpa": -0.1742211396768,
+      "pzz_gpa": -0.17489240809780005,
+      "pyz_gpa": -0.0007342598314284003,
+      "pxz_gpa": 0.001953338058455601,
+      "pxy_gpa": 0.0035406162222496
+    }
+  ],
+  "normal_stress_gpa": -0.17081551287459334,
+  "geometric_density_sensitivity": {
+    "scenarios": [
+      {
+        "relative_density": 0.999,
+        "relative_length": 1.0003335557285393,
+        "cubic_fraction": 1.0,
+        "ice_rules_pass": true,
+        "nearest_oo_distances_angstrom": {
+          "minimum": 2.5062421542027224,
+          "mean": 2.7655255480319436,
+          "maximum": 3.123087148773174
+        },
+        "waters_in_14_angstrom_crop": 95
+      },
+      {
+        "relative_density": 1.0,
+        "relative_length": 1.0,
+        "cubic_fraction": 1.0,
+        "ice_rules_pass": true,
+        "nearest_oo_distances_angstrom": {
+          "minimum": 2.505406461525163,
+          "mean": 2.764603398731158,
+          "maximum": 3.122045772520991
+        },
+        "waters_in_14_angstrom_crop": 95
+      },
+      {
+        "relative_density": 1.001,
+        "relative_length": 0.9996668887161934,
+        "cubic_fraction": 1.0,
+        "ice_rules_pass": true,
+        "nearest_oo_distances_angstrom": {
+          "minimum": 2.504571882362306,
+          "mean": 2.763682478143791,
+          "maximum": 3.121005783845605
+        },
+        "waters_in_14_angstrom_crop": 95
+      }
+    ],
+    "basis": "Illustrative +/-0.1% density sensitivity, motivated by sub-0.1% D2O polytype differences reported in arXiv:2602.13053v1; not an uncertainty bound for H2O.",
+    "scope": "Geometric perturbations only. No relaxation, force, stress, or equilibrium-density prediction is made."
+  },
+  "limits": [
+    "Density is the accepted Ih-volume approximation, not an Ic measurement.",
+    "Classical nuclear dynamics; nuclear quantum effects are omitted.",
+    "No significant drift is not proof of full equilibrium.",
+    "Structural acceptance does not validate NEP forces or ion interactions."
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "crop_side_angstrom": 14.0,
+  "png_sha256": "d27fa8fb3e7cb4223c0c6a1c9ea06be27ec3e338b0604d389a29bdd67ad626bd",
+  "rows": [
+    {
+      "label": "Hexagonal ice Ih, 100 K",
+      "path": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/models/ice/hexagonal_ih_100K_experimental/seed1000_final.xyz.gz",
+      "sha256": "723081661f108a32478ec20b10ed3a64a74528c76ba0f5ec1cb7fcbb1fc700ee",
+      "displayed_waters": 87
+    },
+    {
+      "label": "Cubic ice Ic, 100 K",
+      "path": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/models/ice/cubic_ic_100K/seed1000_final.xyz.gz",
+      "sha256": "ec8a14d14bb2a9d918a66ab31c7e0069d40289cb12a749c2f19a02c06640ad93",
+      "displayed_waters": 95
+    },
+    {
+      "label": "Amorphous LDA, 80 K",
+      "path": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/models/ice/epsr_lda80k/artifacts/lda80k_epsr.xyz.gz",
+      "sha256": "92266727fc236a8bf2f8c3083be9ea77aa8947b5bd9fd16ed8f5487cd17aeece",
+      "displayed_waters": 84
+    }
+  ],
+  "note": "Visualization provenance; rendering does not establish structure acceptance."
+}

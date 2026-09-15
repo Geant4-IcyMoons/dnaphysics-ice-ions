@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#PBS -N ice_ic_100K
+#PBS -q gpuq_private
+#PBS -l select=1:ncpus=4:ngpus=1:mem=8gb:node_type=gpu48gb
+#PBS -l walltime=48:00:00
+#PBS -j oe
+
+set -euo pipefail
+cd "${PBS_O_WORKDIR:?Submit from the repository root}"
+REPO_ROOT="$PWD"
+ICE_MODEL_DIR="${REPO_ROOT}/models/ice/cubic_ic_100K"
+NEP_RUNTIME="${REPO_ROOT}/python_scripts/physics_ice/nep_mbpol"
+PYTHON="${NEP_RUNTIME}/.venv/bin/python"
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+export LD_LIBRARY_PATH="/apps01/apps/anaconda3-2022.10/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+if ! type module >/dev/null 2>&1; then
+    source /etc/profile.d/modules.sh
+fi
+module load cuda/12.6
+case "${PBS_ARRAY_INDEX:-}" in
+    0) ICE_SEED=1000 ;;
+    1) ICE_SEED=2000 ;;
+    2) ICE_SEED=3000 ;;
+    *) echo 'Submit with -J 0-2' >&2; exit 2 ;;
+esac
+"${PYTHON}" "${ICE_MODEL_DIR}/run.py" prepare --seed "${ICE_SEED}"
+ICE_BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ic-gpumd.XXXXXXXX")"
+trap 'rm -rf -- "${ICE_BUILD_DIR}"' EXIT
+cp -a "${NEP_RUNTIME}/upstream/GPUMD-v3.9.3/src" "${ICE_BUILD_DIR}/src"
+echo "Compiling GPUMD on $(hostname), job ${PBS_JOBID}"
+nvidia-smi --query-gpu=name,uuid,memory.total,driver_version --format=csv,noheader
+make -C "${ICE_BUILD_DIR}/src" clean >/dev/null
+"${PYTHON}" - "${ICE_BUILD_DIR}/src" "${ICE_MODEL_DIR}/runs/seed${ICE_SEED}/build.log" <<'PY'
+import pathlib, subprocess, sys, time
+from tqdm import tqdm
+source = pathlib.Path(sys.argv[1])
+command = ['make', '-C', str(source), '-j', '4', 'gpumd', 'CFLAGS=-std=c++14 -O3 -arch=native']
+plan = subprocess.check_output(command + ['-n'], text=True)
+total = sum(' -c ' in line and '.cu' in line for line in plan.splitlines())
+with open(sys.argv[2], 'w') as log, tqdm(total=total, desc='Compile GPUMD CUDA objects', unit='object') as bar:
+    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+    while process.poll() is None:
+        done = min(sum(1 for _ in source.rglob('*.o')), total)
+        bar.update(max(0, done - bar.n))
+        time.sleep(5)
+    if process.returncode:
+        raise SystemExit(f'Compilation failed; inspect {sys.argv[2]}')
+    bar.update(total - bar.n)
+PY
+"${PYTHON}" "${ICE_MODEL_DIR}/run.py" simulate --seed "${ICE_SEED}" --gpumd "${ICE_BUILD_DIR}/src/gpumd"
+"${PYTHON}" "${ICE_MODEL_DIR}/validate.py" --seed "${ICE_SEED}"
