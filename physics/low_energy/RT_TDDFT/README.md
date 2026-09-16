@@ -47,7 +47,9 @@ docs/                      installation, prototype, and HPC design
 Solver source is the pinned sibling [Octopus submodule](../Octopus).
 Build details and solver-test limitations are in
 [INSTALLATION.md](docs/INSTALLATION.md). Binaries and build products are not
-tracked. The local installation has OpenMP but no MPI.
+tracked. The Mac installation has OpenMP but no MPI; the
+[Chemfarm Linux installation](docs/LINUX_INSTALLATION.md) has MPI and OpenMP
+and passed the recorded installation checks.
 
 ## Target preparation and controls
 

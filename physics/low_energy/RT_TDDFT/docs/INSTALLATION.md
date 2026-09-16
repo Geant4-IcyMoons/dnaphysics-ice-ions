@@ -1,5 +1,8 @@
 # Local Octopus installation
 
+The Apple Silicon installation is recorded below. The Chemfarm Linux build
+and its checks are recorded in [LINUX_INSTALLATION.md](LINUX_INSTALLATION.md).
+
 Source: official [Octopus repository](https://gitlab.com/octopus-code/octopus),
 release tag `16.4`, commit `af05332d6a12d9f2e1f0c280a28a42234c6c1f4b`.
 The version-16 download page still linked 16.3 when checked; the official
