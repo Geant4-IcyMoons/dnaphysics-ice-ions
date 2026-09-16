@@ -1,0 +1,10 @@
+{
+  "initialization": "relaxed_charged_cell",
+  "energy_ev": 20000,
+  "start_fractional": [0.15, 0.37, 0.43],
+  "direction_cartesian": [1, 0, 0],
+  "length_angstrom": 8,
+  "spacing_angstrom": 0.15,
+  "dt_au": 0.02,
+  "output_every": 10
+}

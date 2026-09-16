@@ -19,7 +19,8 @@ See the [runnable calculation](docs/BENCHMARK.md) and the
 | Complex-orbital determinant counting and capture-curve assembly | Analytical, synthetic and solver execution checks pass |
 | Independent molecular collision and projectile-frame handoff | Implemented; reduced-resolution execution tested |
 | Numerical convergence and published reference comparison | Outstanding |
-| Periodic ice collisions, embedding, bulk channel rates, C/O/S | Not implemented |
+| Periodic frozen-host H input scaffold and finite-path energy analysis | Implemented; tiny periodic solver checks only |
+| Validated bulk stopping, embedding, bulk channel rates, C/O/S | Outstanding |
 
 No transport cross sections or validated 100 eV results are supplied here.
 The eight-electron capture analyzer currently targets one water molecule.
@@ -29,6 +30,7 @@ over residual-target states; it does not establish an intact H2O+ product.
 ## Layout
 
 ```text
+bulk.py                    periodic H stopping inputs and finite-path energy diagnostic
 prepare.py                 accepted ice -> finite-target input bundles
 run.py                     target ground state + unperturbed control
 hplus.py                   separate prescribed-proton execution prototype
@@ -50,6 +52,14 @@ Build details and solver-test limitations are in
 tracked. The Mac installation has OpenMP but no MPI; the
 [Chemfarm Linux installation](docs/LINUX_INSTALLATION.md) has MPI and OpenMP
 and passed the recorded installation checks.
+
+## Periodic bulk ice
+
+The [bulk scaffold](docs/BULK.md) accepts a complete periodic H2O cell of any
+phase, with structural validation required by default. It preserves every atom,
+prepares a relaxed charged cell and drives one H nucleus through the frozen host.
+It does not prepare a bare incoming H+ state or produce capture probabilities.
+See the guide for inputs, execution, analysis and outstanding convergence work.
 
 ## Target preparation and controls
 
