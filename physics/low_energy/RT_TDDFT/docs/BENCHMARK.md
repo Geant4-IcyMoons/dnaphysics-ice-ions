@@ -8,7 +8,8 @@ with Ehrenfest dynamics, transfers the outgoing orbitals to an inertial frame
 moving with the proton, and propagates further before counting electrons.
 The solver is Octopus 16.4; its source does not need modification.
 
-The complete chain has passed a reduced-resolution solver execution test.
+The complete chain has completed at full resolution. Projectile-frame
+continuation through 600 au passes the recorded stationarity criterion.
 **Numerical convergence and comparison with published capture curves have not
 been established.** Execution success and late-time stationarity are separate
 checks; neither establishes physical accuracy. No excitation or exclusive
@@ -203,16 +204,39 @@ All files deployed or generated for this benchmark attempt were removed from
 ChemFarm; pre-existing installation files and unrelated working edits were
 preserved. No cluster benchmark job remains active.
 
-The full-resolution case is now running locally with **12 OpenMP threads**:
+### ChemFarm full-resolution result and clearing continuation
+
+Job 246063.pbs02 completed the full-resolution calculation on 2026-09-16
+with 256 CPUs (32 MPI ranks, eight OpenMP threads each) and 128 GB RAM.
+All solver stages returned zero. At 200 au of projectile-frame clearing,
+P(1) = 0.3359338585. The maximum probability range over the last three
+samples was 0.001234596, exceeding the unchanged 0.001 stationarity tolerance.
+This value is therefore not an accepted capture yield.
+
+`continue_clearing.py` extends the native TD restart, including the complete
+nuclear trajectory required by Octopus to restore positions and velocities.
+It checks checkpoint probabilities against the preceding analysis and keeps
+the original collision and clearing results unchanged. Each completed stage
+writes its analysis atomically. An interrupted stage can be retried from its
+intact predecessor; this may repeat at most one original clearing duration.
+Run this continuation on a compute node with the same solver installation:
 
 ```bash
-python -m physics.low_energy.RT_TDDFT.benchmark --threads 12 \
-  --output physics/low_energy/RT_TDDFT/runs/hplus_capture_local_20260915/full_resolution
+python -m physics.low_energy.RT_TDDFT.continue_clearing \
+  --case /absolute/path/to/case --executable /absolute/path/to/octopus \
+  --launcher 'mpirun -np 32' --end-time 600
 ```
 
-The launched run uses that output directory; do not rerun the command against
-an existing directory. `result.json` records execution state, and `capture.json`
-is written after the clearing stage. Its launch receipt and log are one level
-above the case directory. This local run uses the same full-resolution physics
-settings as the cluster attempt. Completion, numerical convergence and
-reference comparison remain outstanding.
+For the completed case, this adds two 200-au stages, retaining samples every
+50 au and the original stationarity criterion. Results appear separately in
+`case/clearing_0016000/capture.json` and `case/clearing_0024000/capture.json`.
+PBS job 247653.pbs02 was submitted on 2026-09-17 with the same 256-CPU,
+128-GB allocation. It completed with exit status zero. The probability range was 0.000388410
+at 400 au and 0.000302942 at 600 au; both pass the 0.001 tolerance.
+The final P(1) is 0.335077333. See the [benchmark figure](../benchmarks/hplus_water_1kev/README.md).
+Passing stationarity alone does not establish numerical convergence.
+
+The superseded 64-GB attempt's ground-state output and restart were removed
+after the successful run completed. Its compact failure diagnostics and
+submission provenance remain; the successful run's scientific outputs and
+checkpoints are retained.

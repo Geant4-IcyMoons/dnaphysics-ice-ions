@@ -5,8 +5,9 @@
 The first target is a 1 keV H+--H2O single-electron capture calculation.
 An **independent collision workflow is runnable**, including neutral-water
 initialization, Ehrenfest propagation, a projectile-frame orbital handoff,
-and determinant electron counting. A reduced-resolution Octopus execution
-test has completed. Numerical convergence and comparison with Hong et al.
+and determinant electron counting. The full-resolution molecular calculation and continuation have completed;
+late-time stationarity passes at 600 au. See the
+[results and PDF visualizations](benchmarks/hplus_water_1kev/README.md). Numerical convergence and comparison with Hong et al.
 remain outstanding; this is not a validated reproduction of their results.
 See the [runnable calculation](docs/BENCHMARK.md) and the
 [reference protocol](benchmarks/hong_2016/README.md).
@@ -17,7 +18,7 @@ See the [runnable calculation](docs/BENCHMARK.md) and the
 | Octopus target ground state and unperturbed propagation | Implemented; local execution checks recorded |
 | Frozen-target, prescribed-proton feasibility runner | Implemented; not the published benchmark |
 | Complex-orbital determinant counting and capture-curve assembly | Analytical, synthetic and solver execution checks pass |
-| Independent molecular collision and projectile-frame handoff | Implemented; reduced-resolution execution tested |
+| Independent molecular collision and projectile-frame handoff | Implemented; full-resolution execution and late-time stationarity pass |
 | Numerical convergence and published reference comparison | Outstanding |
 | Periodic frozen-host H input scaffold and finite-path energy analysis | Implemented; tiny periodic solver checks only |
 | Validated bulk stopping, embedding, bulk channel rates, C/O/S | Outstanding |

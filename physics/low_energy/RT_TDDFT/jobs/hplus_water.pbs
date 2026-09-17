@@ -12,7 +12,7 @@ cd "${PBS_O_WORKDIR:?Submit from the repository root}"
 source physics/low_energy/RT_TDDFT/activate_octopus.sh
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS=${RT_THREADS:-1}
 RT_RANKS=$(wc -l < "${PBS_NODEFILE:?Missing PBS allocation}")
 RT_OPTIONS=()
 if [[ ${RT_EXECUTION_CHECK:-0} == 1 ]]; then
@@ -23,6 +23,6 @@ if [[ ${RT_EXECUTION_CHECK:-0} == 1 ]]; then
 fi
 exec .venv/bin/python -u -m physics.low_energy.RT_TDDFT.benchmark \
     --executable "$(command -v octopus)" \
-    --launcher "mpirun -np ${RT_RANKS}" --threads 1 \
+    --launcher "mpirun -np ${RT_RANKS} --map-by slot:PE=${OMP_NUM_THREADS} --bind-to hwthread --use-hwthread-cpus" --threads "${OMP_NUM_THREADS}" \
     --output "${RT_CASE_PATH:?Set RT_CASE_PATH to a new output directory}" \
     "${RT_OPTIONS[@]}"

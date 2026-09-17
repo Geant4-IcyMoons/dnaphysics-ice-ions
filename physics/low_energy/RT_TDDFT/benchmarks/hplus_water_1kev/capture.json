@@ -1,0 +1,683 @@
+{
+  "schema_version": 1,
+  "status": "analyzed_not_literature_validated",
+  "collision": {
+    "energy_ev_total": 1000.0,
+    "orientation": "xy_bisector_positive_x",
+    "impact_parameter_bohr": 2.0
+  },
+  "frames": [
+    {
+      "time_au": 299.90000000000003,
+      "clearing_time_au": 0.0,
+      "projectile_position_bohr": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "target_positions_bohr": [
+        [
+          -44.94317978315587,
+          -3.405845226515824,
+          1.677966097046733e-11
+        ],
+        [
+          -43.20707764298697,
+          -2.253921216246454,
+          3.62274605567865e-11
+        ],
+        [
+          -44.0127787807609,
+          -5.166547340428567,
+          2.321151470243597e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6012422993340953,
+        0.338042586305828,
+        0.05770395134308187,
+        0.0029446880950063513,
+        6.578822169704676e-05,
+        6.839393911138891e-07,
+        2.76035327667598e-09,
+        5.470102183712578e-13,
+        2.7797455103776716e-17
+      ],
+      "p_one_electron": 0.338042586305828,
+      "mean_electrons": 0.4625511424267035,
+      "p_more_than_two": 0.003011163016994827
+    },
+    {
+      "time_au": 349.90000000000003,
+      "clearing_time_au": 50.0,
+      "projectile_position_bohr": [
+        0.0016563811336242687,
+        5.796464021286928e-05,
+        -1.2622141162443171e-15
+      ],
+      "target_positions_bohr": [
+        [
+          -54.99409583430872,
+          -3.713167942553721,
+          1.9460697784716916e-11
+        ],
+        [
+          -52.40814120409792,
+          -2.041485020699669,
+          5.165760376876555e-11
+        ],
+        [
+          -53.789737150128204,
+          -6.387920190300076,
+          2.96645630853157e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6030818221770697,
+        0.33704431031415727,
+        0.05697406699748193,
+        0.002837493014329919,
+        6.168195963783889e-05,
+        6.230987501311699e-07,
+        2.4381476351904528e-09,
+        4.2558063278564496e-13,
+        1.900377901736506e-17
+      ],
+      "p_one_electron": 0.33704431031415727,
+      "mean_electrons": 0.4597547813162779,
+      "p_more_than_two": 0.002899800511291124
+    },
+    {
+      "time_au": 399.90000000000003,
+      "clearing_time_au": 100.0,
+      "projectile_position_bohr": [
+        0.0052085532623642825,
+        0.00023480868499892708,
+        -3.8876318085649e-15
+      ],
+      "target_positions_bohr": [
+        [
+          -65.12134171674101,
+          -3.9935651678011967,
+          2.1318886208867054e-11
+        ],
+        [
+          -60.809662917580255,
+          -1.2552822159064612,
+          7.696182471801693e-11
+        ],
+        [
+          -63.15584583275956,
+          -8.61086793889836,
+          3.931410224104175e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6039938254366836,
+        0.3365584989077212,
+        0.05660573374873458,
+        0.0027817940578201503,
+        5.955370632540694e-05,
+        5.918667943836691e-07,
+        2.2755463368151118e-09,
+        3.745270467226008e-13,
+        1.5754376320849553e-17
+      ],
+      "p_one_electron": 0.3365584989077212,
+      "mean_electrons": 0.4583565363938242,
+      "p_more_than_two": 0.0028419419068608206
+    },
+    {
+      "time_au": 449.90000000000003,
+      "clearing_time_au": 150.0,
+      "projectile_position_bohr": [
+        0.0102417545409045,
+        0.00047876048251978894,
+        -7.257961168897988e-15
+      ],
+      "target_positions_bohr": [
+        [
+          -75.27573436084721,
+          -4.264818312301407,
+          2.2863155454681296e-11
+        ],
+        [
+          -68.91495836926684,
+          -0.26123132707810326,
+          1.0609630343933058e-10
+        ],
+        [
+          -72.38842719374361,
+          -11.186995975923162,
+          5.012014792354868e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6048701483209024,
+        0.33612115596360115,
+        0.05623079774817582,
+        0.0027201264550113548,
+        5.7211168209230986e-05,
+        5.58238184889603e-07,
+        2.105587596378999e-09,
+        3.2772216847915195e-13,
+        1.3025755269595434e-17
+      ],
+      "p_one_electron": 0.33612115596360115,
+      "mean_electrons": 0.4569747793245679,
+      "p_more_than_two": 0.002777897967320807
+    },
+    {
+      "time_au": 499.90000000000003,
+      "clearing_time_au": 200.0,
+      "projectile_position_bohr": [
+        0.016325315631254795,
+        0.0008042292128020493,
+        -1.1017047480968548e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -85.44204220409765,
+          -4.532260261902504,
+          2.4266105997365687e-11
+        ],
+        [
+          -76.88797569710255,
+          0.8246161123463367,
+          1.3697116929826147e-10
+        ],
+        [
+          -81.56511264012315,
+          -13.915520415320582,
+          6.143096885551524e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6052284214859499,
+        0.3359338584889663,
+        0.05608347482727703,
+        0.00269733040932751,
+        5.6366403918567385e-05,
+        5.463377937284526e-07,
+        2.0464552305556474e-09,
+        3.1181535539826385e-13,
+        1.2128922178187404e-17
+      ],
+      "p_one_electron": 0.3359338584889663,
+      "mean_electrons": 0.45642100895705995,
+      "p_more_than_two": 0.002754245197806864
+    },
+    {
+      "time_au": 549.9000000000001,
+      "clearing_time_au": 250.0,
+      "projectile_position_bohr": [
+        0.023305708268882983,
+        0.0011223843823851881,
+        -1.542328486879271e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -95.61478607449949,
+          -4.797700937213572,
+          2.559193209206885e-11
+        ],
+        [
+          -84.78908566422062,
+          1.9600964658782098,
+          1.68799985270063e-10
+        ],
+        [
+          -90.71232301236269,
+          -16.72551361999432,
+          7.301327726683659e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6055696034611615,
+        0.3357548596294147,
+        0.055943612364864004,
+        0.0026758126053814026,
+        5.557468057372211e-05,
+        5.352664475467158e-07,
+        1.991859719125792e-09,
+        2.973953219662403e-13,
+        1.1332124556744413e-17
+      ],
+      "p_one_electron": 0.3357548596294147,
+      "mean_electrons": 0.45589450918305974,
+      "p_more_than_two": 0.002731924544559797
+    },
+    {
+      "time_au": 599.9000000000001,
+      "clearing_time_au": 300.0,
+      "projectile_position_bohr": [
+        0.03093740424897845,
+        0.0015667220358989394,
+        -2.1019123312655546e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -105.79150220967716,
+          -5.061926683661504,
+          2.686992302677533e-11
+        ],
+        [
+          -92.64571018265245,
+          3.126191609433864,
+          2.012218667482407e-10
+        ],
+        [
+          -99.84160244738905,
+          -19.585455928074797,
+          8.476266808895909e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6058815707863351,
+        0.3356003469286096,
+        0.055809227149603464,
+        0.0026535816889453117,
+        5.474781571830279e-05,
+        5.236954466656531e-07,
+        1.93505769628997e-09,
+        2.8372588313547403e-13,
+        1.0614622688167053e-17
+      ],
+      "p_one_electron": 0.3356003469286096,
+      "mean_electrons": 0.4554011676470914,
+      "p_more_than_two": 0.0027088551354517124
+    },
+    {
+      "time_au": 649.9000000000001,
+      "clearing_time_au": 350.0,
+      "projectile_position_bohr": [
+        0.03917172303470529,
+        0.0020041214422339532,
+        -2.755729120535655e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -115.97089625754562,
+          -5.3253421064747855,
+          2.811558451726916e-11
+        ],
+        [
+          -100.47232563150762,
+          4.312902878300586,
+          2.340451626361049e-10
+        ],
+        [
+          -108.95891189059105,
+          -22.478914696733764,
+          9.66244665019311e-11
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6060657525980874,
+        0.33550735419724215,
+        0.055731138507643635,
+        0.0026409545088998732,
+        5.428109966525461e-05,
+        5.171850726395381e-07,
+        1.9031138407611044e-09,
+        2.754389838999683e-13,
+        1.0169655383648696e-17
+      ],
+      "p_one_electron": 0.33550735419724215,
+      "mean_electrons": 0.45511221648386446,
+      "p_more_than_two": 0.002695754697027057
+    },
+    {
+      "time_au": 699.9000000000001,
+      "clearing_time_au": 400.0,
+      "projectile_position_bohr": [
+        0.047804669346511786,
+        0.002526421395606584,
+        -3.4759314920164934e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -126.15221082489813,
+          -5.588180691884624,
+          2.933802880796054e-11
+        ],
+        [
+          -108.27742272649179,
+          5.514381232376371,
+          2.671570125305331e-10
+        ],
+        [
+          -118.06769864707321,
+          -25.39632643523846,
+          1.085667518465711e-10
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6062699810702982,
+        0.3354018886014031,
+        0.055646208419498445,
+        0.0026276165109983085,
+        5.379309548735569e-05,
+        5.104317315751335e-07,
+        1.8703150126763054e-09,
+        2.681230423731615e-13,
+        9.804513134689609e-18
+      ],
+      "p_one_electron": 0.3354018886014031,
+      "mean_electrons": 0.45479489073776924,
+      "p_more_than_two": 0.002681921908800385
+    },
+    {
+      "time_au": 749.9000000000001,
+      "clearing_time_au": 450.0,
+      "projectile_position_bohr": [
+        0.05687845951683148,
+        0.0029874579844771402,
+        -4.195555930988517e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -136.33496687111344,
+          -5.850588706986975,
+          3.05430364032263e-11
+        ],
+        [
+          -116.06637795647347,
+          6.726929505581384,
+          3.0048574679020536e-10
+        ],
+        [
+          -127.17012454834887,
+          -28.33166676339889,
+          1.2056937215089297e-10
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6064643038387434,
+        0.3353032773075464,
+        0.055564157012717046,
+        0.002614445195003538,
+        5.331103066469857e-05,
+        5.037770322982526e-07,
+        1.8380324685214607e-09,
+        2.601378996077756e-13,
+        9.389669522455888e-18
+      ],
+      "p_one_electron": 0.3353032773075464,
+      "mean_electrons": 0.4544907009558273,
+      "p_more_than_two": 0.0026682618409931505
+    },
+    {
+      "time_au": 799.9000000000001,
+      "clearing_time_au": 500.0,
+      "projectile_position_bohr": [
+        0.06625944362490699,
+        0.003483603585346575,
+        -4.935874002079207e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -146.5188431115906,
+          -6.112663529937787,
+          3.173448923750429e-11
+        ],
+        [
+          -123.84279842394149,
+          7.948070299787305,
+          3.339831684442046e-10
+        ],
+        [
+          -136.2676297833131,
+          -31.280908309562605,
+          1.3261882829212703e-10
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.606596703690298,
+        0.3352344787965934,
+        0.05550939583209759,
+        0.0026059197414818884,
+        5.3000626765581405e-05,
+        4.9949528716394e-07,
+        1.8172214520770382e-09,
+        2.546898412856178e-13,
+        9.102280347772774e-18
+      ],
+      "p_one_electron": 0.3352344787965934,
+      "mean_electrons": 0.454285540573844,
+      "p_more_than_two": 0.0026594216810107846
+    },
+    {
+      "time_au": 849.9000000000001,
+      "clearing_time_au": 550.0,
+      "projectile_position_bohr": [
+        0.07596918891799465,
+        0.00398063114841002,
+        -5.697253302295039e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -156.70361404679144,
+          -6.374473133631354,
+          3.291511603191217e-11
+        ],
+        [
+          -131.60921588420794,
+          9.176066313619556,
+          3.676153905967799e-10
+        ],
+        [
+          -145.36121980415632,
+          -34.24123170904117,
+          1.4470565928962746e-10
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6067756438471291,
+        0.33514230347278295,
+        0.055434803496511684,
+        0.002594179119596922,
+        5.257461473170949e-05,
+        4.936597775562801e-07,
+        1.789221135389046e-09,
+        2.489264001287197e-13,
+        8.830415008482468e-18
+      ],
+      "p_one_electron": 0.33514230347278295,
+      "mean_electrons": 0.45400722531948107,
+      "p_more_than_two": 0.0026472491835762583
+    },
+    {
+      "time_au": 899.9000000000001,
+      "clearing_time_au": 600.0,
+      "projectile_position_bohr": [
+        0.08590154295818538,
+        0.0045345346068381386,
+        -6.544040657184885e-14
+      ],
+      "target_positions_bohr": [
+        [
+          -166.889115534545,
+          -6.636066770602011,
+          3.4086903147708974e-11
+        ],
+        [
+          -139.36747259403197,
+          10.409654176497,
+          4.013577130085051e-10
+        ],
+        [
+          -154.451623183368,
+          -37.21058929617971,
+          1.5682298252666164e-10
+        ]
+      ],
+      "probabilities_by_electron_count": [
+        0.6068996460869168,
+        0.3350773329171679,
+        0.05538389241563117,
+        0.0025863460730440923,
+        5.229097152648769e-05,
+        4.897650796857183e-07,
+        1.770389578425406e-09,
+        2.4420383895359903e-13,
+        8.587909835940904e-18
+      ],
+      "p_one_electron": 0.3350773329171679,
+      "mean_electrons": 0.4538157793031138,
+      "p_more_than_two": 0.0026391285802840566
+    }
+  ],
+  "stationarity_frames": 3,
+  "maximum_probability_change": 0.0003029423966188771,
+  "stationarity_passed": true,
+  "stationarity_tolerance": 0.001,
+  "method": "determinant electron-number counting in the entire post-handoff sphere",
+  "limitations": [
+    "Independent setup; historical pseudopotential identities and geometry are not established.",
+    "Larger rectangular laboratory box precedes the spherical projectile-frame calculation.",
+    "Finite separation, interpolation, grid, timestep, CAP and clearing duration require convergence.",
+    "Cropping removes target electron density; residual electrostatic effects require separation convergence.",
+    "Post-handoff nonlocal pseudopotential Galilean covariance is not established.",
+    "P(1) is a Kohn-Sham determinant regional count inclusive over residual-target states.",
+    "No reference comparison, excitation or exclusive ionization result is claimed."
+  ],
+  "source_sha256": {
+    "projectile/mesh.mesh_index": "c3f8fad7735bcc121332fd203d6445d9aac32aa04f0b8f2534a34ad3645a65b9",
+    "collision/td.general/coordinates": "0e2faa3a09ad189bd68ff1b6d2649f41aacf4c38f9d9aef4ccbaac90ce63d47a",
+    "projectile/td.general/coordinates": "430cbd8f10ebc87382225e907be27d6f2c1e181167c288e3a70cb169ea78e4b4",
+    "collision/static/wf-k000001-st00001.obf": "fd5745eed8e9f18e7c2655ed51bd3b4676f0ab3d641e4250f35dab310321d230",
+    "collision/static/wf-k000001-st00002.obf": "cc1821d696dbd7d430a6c24d464831b03d88afb4f85501d17e6d9ab65a807826",
+    "collision/static/wf-k000001-st00003.obf": "8c2fa3609fb539e2ea2b8d751f6b2646b586a95c376b90f451a38832cfbaff05",
+    "collision/static/wf-k000001-st00004.obf": "f7e478dc663d06503515d4b8efa2e6ade9953280eda11bb8532aabc648ee1a77",
+    "collision/static/wf-k000002-st00001.obf": "886863b6dc5c002c9e0aa4e3050edbfc4894d9412f9179f3c39180aea02c0a84",
+    "collision/static/wf-k000002-st00002.obf": "fbf9769922856906d737458eba27178aecde86db4ff1e8236f341622abdf4458",
+    "collision/static/wf-k000002-st00003.obf": "b43f472e0f246c0a0ca02afa7878cf449d2a7df789a65d15ecea1ad475193268",
+    "collision/static/wf-k000002-st00004.obf": "1947b8b3275c48ea67e35443a7e23ec99fd56b06c9afdf36a9eed15012da7167",
+    "collision/output_iter/td.0011996/wf-k000001-st00001.obf": "2e77e2321b587277b77498c334e2247af40a8fa2270c0a0fb2961004686a26df",
+    "collision/output_iter/td.0011996/wf-k000001-st00002.obf": "ef4d7eebbd26877b32c85d175891541ea4ad5455edefc3e0e315523c9e5f573f",
+    "collision/output_iter/td.0011996/wf-k000001-st00003.obf": "7739a74d88d7b66475db0fdca3e2f1de094b78359df9a55fe02cc7ca1ff13853",
+    "collision/output_iter/td.0011996/wf-k000001-st00004.obf": "ce9c134671f0314594834f0334a498e3d47460aa96a298f1787c29571685a0f5",
+    "collision/output_iter/td.0011996/wf-k000002-st00001.obf": "a96634355fa7dd6567aae02d8ce45f376a97ec9b5355f8fa78a366b6f3d86902",
+    "collision/output_iter/td.0011996/wf-k000002-st00002.obf": "bd9dc4669206aa75387df87e68a539120d88c4e6d40b044415f88318d3069f5c",
+    "collision/output_iter/td.0011996/wf-k000002-st00003.obf": "eef2a330801cc48e47c8464f472e570d4bfc9bd5f79c1b4f035c37e00d6799d2",
+    "collision/output_iter/td.0011996/wf-k000002-st00004.obf": "a2da26c191f3d8c0af8ea0d519629349b6b03ec663ff563816ab069b85356478",
+    "projectile/output_iter/td.0000000/wf-k000001-st00001.obf": "20b329a5cea53924d80a61adb577abbf77c331028b42c328e3182e0474e185ec",
+    "projectile/output_iter/td.0000000/wf-k000001-st00002.obf": "225656629ca980cc076023b77909482799c061e8ed668a23b3d831632d568c04",
+    "projectile/output_iter/td.0000000/wf-k000001-st00003.obf": "32a8b627a2f7abf456d79284f8b2bfef20faf855f8f6f9fb5e1670588bdc4669",
+    "projectile/output_iter/td.0000000/wf-k000001-st00004.obf": "eed305c0db3960fd6e52b8ba3230699cfcd60675c5737cf8f645db79399b54dc",
+    "projectile/output_iter/td.0000000/wf-k000002-st00001.obf": "fac984eba2119fa9d032e193bb485afbc9a6d1cbf5e3a25d1f34f6f492c6fdcc",
+    "projectile/output_iter/td.0000000/wf-k000002-st00002.obf": "d7ee2070761839c67246770b5e8ffb7d866faa9405b5673d7bce0cd6cdc91b3a",
+    "projectile/output_iter/td.0000000/wf-k000002-st00003.obf": "6343cd4457aed254d2241e4b4d63d2055b4de01af1fee6c1664b36720925e5d1",
+    "projectile/output_iter/td.0000000/wf-k000002-st00004.obf": "bacfc132faccee5b9ccbc136bc5c0eb3639b9539217e115bf3fcffc1c66cafb3",
+    "projectile/output_iter/td.0002000/wf-k000001-st00001.obf": "ecafa087fb62ee2300cdf97cd1d288b34e60bd2904cfee285ed55885c81d24dd",
+    "projectile/output_iter/td.0002000/wf-k000001-st00002.obf": "3c52f5b20e8ee8f9f60e6bdcf9a0f14616338ad4fe4a5aebc1a879b865a4fae8",
+    "projectile/output_iter/td.0002000/wf-k000001-st00003.obf": "84faca5e1069b9a5f5118a927a7711928ecf4aa67808ecb6efbac3aafb0ad97f",
+    "projectile/output_iter/td.0002000/wf-k000001-st00004.obf": "c1a017179c55356187d8a7b37759095acd9b0ef6f1cc566c6038ccaec964c349",
+    "projectile/output_iter/td.0002000/wf-k000002-st00001.obf": "7cfe69323249e1866bb229e0f9136536af604ada7f21d4b2d76a316699714cc6",
+    "projectile/output_iter/td.0002000/wf-k000002-st00002.obf": "3724aa1e53d666068d7b65028ac46303bbf98b2f3e23a5b1a9c79cbf07a88cd2",
+    "projectile/output_iter/td.0002000/wf-k000002-st00003.obf": "dfe1143b40aa6be7484a2da746f639f3afe8fcc352a3475ddf0b558cae55ccab",
+    "projectile/output_iter/td.0002000/wf-k000002-st00004.obf": "4831e9c23b0189427b4836ea9f852986680513c4c48f5d3a907fe0c0e8c661fc",
+    "projectile/output_iter/td.0004000/wf-k000001-st00001.obf": "173018d48a4379aeea74a630a149b13c9ebdc23b243b79d551ed581b91c92875",
+    "projectile/output_iter/td.0004000/wf-k000001-st00002.obf": "7b006fa225c530cce7223bd819a1ae0936906002f2e20b1b2c6f2a3ea4982fa4",
+    "projectile/output_iter/td.0004000/wf-k000001-st00003.obf": "f4b20774d71e38ed190a542d4330f17bb8a75c39e82e8b9945dbc886d6ea396b",
+    "projectile/output_iter/td.0004000/wf-k000001-st00004.obf": "722a9de31126d779be02241f885048c21720bc1712c75953025a8f00ff263c0a",
+    "projectile/output_iter/td.0004000/wf-k000002-st00001.obf": "2c7adf0c12ba97ce1965c07ebb715d4a9afebb902f727cb240cb4877b4ba6516",
+    "projectile/output_iter/td.0004000/wf-k000002-st00002.obf": "e94b93933960c001828117dee5b6bfa2f48a4b79f9e81459a079d41332be5ba1",
+    "projectile/output_iter/td.0004000/wf-k000002-st00003.obf": "6bafa14c599494ab26acec2f3ba999bdff85a4e348074943ed7220e32ccc7147",
+    "projectile/output_iter/td.0004000/wf-k000002-st00004.obf": "0ae4b7cf44c3283e1b7f731a1ca186d7c51555f1e235db8d5346eade04c3d184",
+    "projectile/output_iter/td.0006000/wf-k000001-st00001.obf": "be8a66a8383e7f1045b9e05f304212d48409106c6a6bf9ab72cce2b54fac8593",
+    "projectile/output_iter/td.0006000/wf-k000001-st00002.obf": "ab1c0d0be80201cb9826f125d74b9576906ee2b2d4666f8a44b9bedda3467563",
+    "projectile/output_iter/td.0006000/wf-k000001-st00003.obf": "e95fcfe7d5feff63b4dcbdad0e8d5a58c57f142b92c1d0d6564c0f2afbf01696",
+    "projectile/output_iter/td.0006000/wf-k000001-st00004.obf": "b9279f64be40d2ba265fd6de50ab79dd22ec4d5e7f4700ba429d3455581cae2a",
+    "projectile/output_iter/td.0006000/wf-k000002-st00001.obf": "dfea0d488a375b89da9a1900e6bf55eb2432a25be46fce8cc3a1f445e6cd7e36",
+    "projectile/output_iter/td.0006000/wf-k000002-st00002.obf": "ee143fdfb2bea8d02b0434ad507dfb518e85f5b4323eb0cd0f02c7b1eda021cf",
+    "projectile/output_iter/td.0006000/wf-k000002-st00003.obf": "34faef18b0ac2fe536c181f86dfd0446f4c2568ccf0d487cbbc64f740f492670",
+    "projectile/output_iter/td.0006000/wf-k000002-st00004.obf": "b87cf5047e1d2a5cb1e9b3e4ba765c91e2903ad34ccd0170a9d0e8b625d20c33",
+    "projectile/output_iter/td.0008000/wf-k000001-st00001.obf": "5f585713a46c93adf7a0a8b229df5209c778ecdbb1911eb0650ef96c2fbe1203",
+    "projectile/output_iter/td.0008000/wf-k000001-st00002.obf": "5239bf500528ccbe2d01de16778ec049d85c0444aaf906445d64ed79e93d34eb",
+    "projectile/output_iter/td.0008000/wf-k000001-st00003.obf": "804662a9a0c6737e46ded1800a999f01d6123628a0808c6f16f8961ab5964b5f",
+    "projectile/output_iter/td.0008000/wf-k000001-st00004.obf": "fd65fa0d45407357d3654e2759446b27cad1ecec90a6d24139a4d8373ad44cc1",
+    "projectile/output_iter/td.0008000/wf-k000002-st00001.obf": "2e85de7fd3721105a0c5e889b45ee71e7394aa4c665f523fad7aebcfb7d5ef88",
+    "projectile/output_iter/td.0008000/wf-k000002-st00002.obf": "94e133c8601999b6761f1e0a02b18a16579cd99ca1aea5e268968eb99e33f511",
+    "projectile/output_iter/td.0008000/wf-k000002-st00003.obf": "95461ac49c76eaa378117782d76dfd2aaa822a0a33452b77d8662ff9dfbd4305",
+    "projectile/output_iter/td.0008000/wf-k000002-st00004.obf": "84decb891159b8c8032336b1cb8ebd0d1185faef03cc7da49fad40b4b1950e07",
+    "clearing_0016000/output_iter/td.0010000/wf-k000001-st00001.obf": "e73ef30afc2841fc903a9f030c82bf4426caaad0c3d0a6bf9236cb0f1eef9825",
+    "clearing_0016000/output_iter/td.0010000/wf-k000001-st00002.obf": "f383eeb4dc9bf4ee657245584807decad7e8a5d6b39642a9b1c38cc77167d04f",
+    "clearing_0016000/output_iter/td.0010000/wf-k000001-st00003.obf": "1ae27ba4e4e297b834a8bfbe5887df8b31a760140c2692f7e9cff9e2eabb253b",
+    "clearing_0016000/output_iter/td.0010000/wf-k000001-st00004.obf": "1fdf550440455011f2f246dfafa337f476d3644d1644bcd91c48a9e8396f37f2",
+    "clearing_0016000/output_iter/td.0010000/wf-k000002-st00001.obf": "6b5b7a27eb905ad57912dcc15dbadf17157d343091b7ffad4c008d5a0a7396ef",
+    "clearing_0016000/output_iter/td.0010000/wf-k000002-st00002.obf": "ca8b6f175e05b290c3b64d07fba64f78e5cf12f7d051b995d2412d8637d2f3ab",
+    "clearing_0016000/output_iter/td.0010000/wf-k000002-st00003.obf": "4de131dbbeeea8154d582865c9f7d54051564e08986197cf5c828e77ea983c77",
+    "clearing_0016000/output_iter/td.0010000/wf-k000002-st00004.obf": "788352218d09b1ee8119f58c7484df09612affd147aea055660c189c2641e56c",
+    "clearing_0016000/output_iter/td.0012000/wf-k000001-st00001.obf": "f645003c4c0eea1e978be2354be8b2d086bce42ceb5c38ba99e239c590ec0a83",
+    "clearing_0016000/output_iter/td.0012000/wf-k000001-st00002.obf": "360638d8d953bb4a8c60d4a9d1ac98f3bd128bb06350988b63d36d3fc71f6cbe",
+    "clearing_0016000/output_iter/td.0012000/wf-k000001-st00003.obf": "30fb1df4bf074298ccfce13ab6d7637aee09c9dcc0171db31b3bba744843155e",
+    "clearing_0016000/output_iter/td.0012000/wf-k000001-st00004.obf": "7df1179088cc5851188d8b853731af8427c217122e9e8ce5a9b5a67c0fc3643a",
+    "clearing_0016000/output_iter/td.0012000/wf-k000002-st00001.obf": "6e1d5178e1b42a5bfda7643cea967fc182385c8179e6c7de2a7e7a39b93a5300",
+    "clearing_0016000/output_iter/td.0012000/wf-k000002-st00002.obf": "986a3d23bd8fc855aa60b188c79d82c2fd1c57ce4066a3553956445ce24b9f86",
+    "clearing_0016000/output_iter/td.0012000/wf-k000002-st00003.obf": "b8af8855d2225173e9f5600cf9810548b60c5807d5abfe1ec45f5b5f257bf84c",
+    "clearing_0016000/output_iter/td.0012000/wf-k000002-st00004.obf": "34276910a18f0f233f615951d1129e55bded33e5ccddb5529ff0a4c3c1175cd3",
+    "clearing_0016000/output_iter/td.0014000/wf-k000001-st00001.obf": "7a67596e28267265564b4d89ce8a803bc785a1b7bef259f8a992a555d326ee13",
+    "clearing_0016000/output_iter/td.0014000/wf-k000001-st00002.obf": "828c779ef48dc4b1fa08903ff804d7692b4e8298e0fc345769015dd3dbe91306",
+    "clearing_0016000/output_iter/td.0014000/wf-k000001-st00003.obf": "c71cbcae624e393bc9217cb6738e0051fc7d15ad7fcd4ba07970a10e785ef701",
+    "clearing_0016000/output_iter/td.0014000/wf-k000001-st00004.obf": "8ecfb120ab486f349f99c6009701a8502476dfcbdfcdde587f0d1bdf567d387b",
+    "clearing_0016000/output_iter/td.0014000/wf-k000002-st00001.obf": "f8f73a06db90a231cb89f4359fe5ad3c1244c6d6c79864486f0e582d712d28b0",
+    "clearing_0016000/output_iter/td.0014000/wf-k000002-st00002.obf": "8aadca04e06b5072750862114ccb13630b218ca3c684523d0bf5fbda123c9ac8",
+    "clearing_0016000/output_iter/td.0014000/wf-k000002-st00003.obf": "0afe9801913ede9c2d95418dcebe1da75a9a3ec7596109ebe2ba7ad061d1ced0",
+    "clearing_0016000/output_iter/td.0014000/wf-k000002-st00004.obf": "53026f866c368e2bc75e47c4ad709cebb5b4eb6b970ca5815af79ffff338afc3",
+    "clearing_0016000/output_iter/td.0016000/wf-k000001-st00001.obf": "0722ee3210904e84a3254c69b53ed7ae534177d2f3e788183fe9e2eefa50fa41",
+    "clearing_0016000/output_iter/td.0016000/wf-k000001-st00002.obf": "cda77508bbdd2cc00bc4cc9ebaaf0645a81107810dafbcfd50e7ff93431c6540",
+    "clearing_0016000/output_iter/td.0016000/wf-k000001-st00003.obf": "81c9707672376a1d9d93d63510dc28f0bfedabb967107602ecf6b65ecd7f5870",
+    "clearing_0016000/output_iter/td.0016000/wf-k000001-st00004.obf": "dc6189731fe6ca9779546ed43b9a9b1934fde1843bf6f4b991610927c88ae1ec",
+    "clearing_0016000/output_iter/td.0016000/wf-k000002-st00001.obf": "07598273461556fb8d5fdd8f676733baf99957e4e5266198bb058ec099cc86de",
+    "clearing_0016000/output_iter/td.0016000/wf-k000002-st00002.obf": "df50587226d494952975b2c009753e7395e9b6a35cbf932165706b0643638726",
+    "clearing_0016000/output_iter/td.0016000/wf-k000002-st00003.obf": "9b3988ab383d0e62b87e58c9a0279e0d2c0421cc1447415c00f039dc8fecf84f",
+    "clearing_0016000/output_iter/td.0016000/wf-k000002-st00004.obf": "7023e8b8c2ec0858fb05af00848774bf6484ff7fe078dd9d3128e0e1cb8d89ad",
+    "clearing_0016000/td.general/coordinates": "40446b08b1de1eba3e2c7c3dc4733fb3574bd2502897b6a1991cf78ccae0874e",
+    "clearing_0024000/output_iter/td.0018000/wf-k000001-st00001.obf": "079ec03ce3aabb2d3f6a5b08644aeea7c3f92de48da66f77c68f25f730a56730",
+    "clearing_0024000/output_iter/td.0018000/wf-k000001-st00002.obf": "bebf1efa6d7b84852ebd85db02b4263aa8f0e760f1ac766d61250a3bde71ce46",
+    "clearing_0024000/output_iter/td.0018000/wf-k000001-st00003.obf": "b5b7ee486ee2c41f4b10ec9819aed8515996ff8399a61eb130c7bd39b1db4d6a",
+    "clearing_0024000/output_iter/td.0018000/wf-k000001-st00004.obf": "101542437b932edb5c5257a61aef7c1579619ceec1552aef8d8c9dbaf3a80312",
+    "clearing_0024000/output_iter/td.0018000/wf-k000002-st00001.obf": "c66f9435272d95604fbd022b1a440535790014d74c8e421b1719345c0b95cd79",
+    "clearing_0024000/output_iter/td.0018000/wf-k000002-st00002.obf": "92d852a2f45072b70c647bb8f5e50be2334169b324e33848aaceb4295b59f768",
+    "clearing_0024000/output_iter/td.0018000/wf-k000002-st00003.obf": "34bf6e9af7f8b3418d7048c6f8225296b20bd6f8d4865108c2f52bd373f330dc",
+    "clearing_0024000/output_iter/td.0018000/wf-k000002-st00004.obf": "452a40f5a4732f100c3929a496764e0e4509f7d895a3980b164be49649cc1358",
+    "clearing_0024000/output_iter/td.0020000/wf-k000001-st00001.obf": "1675d21df4c4d14ce0278cfd91a3ba73cc23df4f2fc73644e1696b565d48ae33",
+    "clearing_0024000/output_iter/td.0020000/wf-k000001-st00002.obf": "4a4b40e3792255d0c73b6b3734f32b94f5a9a34da582e8282fc421f59bf3f65e",
+    "clearing_0024000/output_iter/td.0020000/wf-k000001-st00003.obf": "59f817d26b75f6b97deb52dbabc09c6a9f2cd36825d5a82f05c4a2ab57e8bf10",
+    "clearing_0024000/output_iter/td.0020000/wf-k000001-st00004.obf": "bbc14656277deff2656afac13c575bf2657da8747ca4816fedebbe3de84a3ac9",
+    "clearing_0024000/output_iter/td.0020000/wf-k000002-st00001.obf": "b93bce012fa39822cee88de3a971ef51f6dcbe1afcf3d8f94ec478f6e14b91f0",
+    "clearing_0024000/output_iter/td.0020000/wf-k000002-st00002.obf": "35fc586fbe0e74a0a78b312eca4da626b71ae5694a8851694128ae44cfe7fe5c",
+    "clearing_0024000/output_iter/td.0020000/wf-k000002-st00003.obf": "eddbb6f311da824f5e0b21f1275530f7492bbcb94801552e532d448710b91e1e",
+    "clearing_0024000/output_iter/td.0020000/wf-k000002-st00004.obf": "63a5c7d0b0e1c916f08be8e773af0c0e737cad70d89f75ef3a2d7ec914fe8ef3",
+    "clearing_0024000/output_iter/td.0022000/wf-k000001-st00001.obf": "1d8c602efb11d4bc88d8999d4c98cdff00c7f392870af65b33e2f545590d2109",
+    "clearing_0024000/output_iter/td.0022000/wf-k000001-st00002.obf": "b0835030e89d1c39db40bd683c8162bb1bc5e891527d4fe6eec4d610b35c344b",
+    "clearing_0024000/output_iter/td.0022000/wf-k000001-st00003.obf": "63650ba7d4c043ba212b9a104d9d514ca08b7d6f4303b9e18e618a01d75f0815",
+    "clearing_0024000/output_iter/td.0022000/wf-k000001-st00004.obf": "e37a0f24b7ddfabdb7ac09995e23d48df64017d85598cd24cfe84b3a0239c4c7",
+    "clearing_0024000/output_iter/td.0022000/wf-k000002-st00001.obf": "2a2f151f51331c53ed32b85c43deb7a314aaaaa829261dd37294810d8dbc9547",
+    "clearing_0024000/output_iter/td.0022000/wf-k000002-st00002.obf": "db509d28fbf1d4ca3c933469a39c7978b6331bcbaadb13e86627e80c0725520f",
+    "clearing_0024000/output_iter/td.0022000/wf-k000002-st00003.obf": "64a61afb84a18b66912af8bc36cb863f2509e441de3c900de71afc916833ca28",
+    "clearing_0024000/output_iter/td.0022000/wf-k000002-st00004.obf": "f05c0fb333afa44c76bc0de8074e329faba21522a9eca5c219d29f3a7f12a538",
+    "clearing_0024000/output_iter/td.0024000/wf-k000001-st00001.obf": "ab9567746087a6ab8aaab8b6e52a3e84e02694990934bced028f5d2a473ea7a4",
+    "clearing_0024000/output_iter/td.0024000/wf-k000001-st00002.obf": "72288c55540b21daa72d1c05ff0c41f988be41b83cf84ec582daefb23348a595",
+    "clearing_0024000/output_iter/td.0024000/wf-k000001-st00003.obf": "7f2901961d6c289fb71715ce54fe279ff85e4cc4d4f0b6615bf10977b403a2a0",
+    "clearing_0024000/output_iter/td.0024000/wf-k000001-st00004.obf": "d7e579b4ed13de437723fc00b7f886697ecd74f708321c21ac713e717e90fabd",
+    "clearing_0024000/output_iter/td.0024000/wf-k000002-st00001.obf": "c22ce0d530f90ed36c87e5b92d6c8489825adf70df14925bcbfc4b4115143ec0",
+    "clearing_0024000/output_iter/td.0024000/wf-k000002-st00002.obf": "99b7047f0033e0e694f6677f30dd0bf7a720bb355d29c78872f138c66ab0341e",
+    "clearing_0024000/output_iter/td.0024000/wf-k000002-st00003.obf": "c6c094cffd7a50743500a13909860bc4de9b2174bf4fa70aed6d53c3de5beffb",
+    "clearing_0024000/output_iter/td.0024000/wf-k000002-st00004.obf": "c9bbef7ff73d531a2b94afae57c04d6abdf822f3fa5f6082e5df28beb94a0e98",
+    "clearing_0024000/td.general/coordinates": "5c7196bde9662d58f67e1fdb4ae231449d48d2d01d7a1ce5abe17bfb26194ad8"
+  },
+  "continuation": {
+    "parent": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/low_energy/RT_TDDFT/runs/hplus_water_1keV_b2_256cpu_128gb_20260916/case/clearing_0016000",
+    "parent_restart_sha256": "7d56289eb065a1c31c1fddd2cf67004bd778f6138cbea5d61814926e624d2635",
+    "input_sha256": "fef28bbca5a9d86c1905052084aef74c46e9f830fb7ca3044055910461f3aeb7",
+    "end_step": 24000,
+    "executable_sha256": "596531bfe3fe9cc86355698843d1effd86dbbc2d6434045338f7e4ce16e19488",
+    "implementation_sha256": "29e5195d686f53e7a6c481e327f8a790aa440b51003e6637ec11705aeb47f140",
+    "checkpoint_probability_error": 0.0,
+    "returncode": 0,
+    "log_sha256": "959407ee718feead62d130139f172e18fa6549b54e1638018196db1dc5158768"
+  }
+}

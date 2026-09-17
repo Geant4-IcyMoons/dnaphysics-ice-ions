@@ -1,0 +1,126 @@
+{
+  "launcher": [
+    "mpirun",
+    "-np",
+    "32",
+    "--map-by",
+    "slot:PE=8",
+    "--bind-to",
+    "hwthread",
+    "--use-hwthread-cpus"
+  ],
+  "schema_version": 1,
+  "status": "executed_not_numerically_validated",
+  "settings": {
+    "spacing": 0.33,
+    "dt": 0.025,
+    "impact": 2.0,
+    "initial": 15.0,
+    "flight_end": 45.0,
+    "minimum_separation": 40.0,
+    "radius": 25.0,
+    "cap_width": 5.0,
+    "cap_height": 2.0,
+    "box_margin": 5.0,
+    "maximum_projectile_displacement": 1.0,
+    "clearing_time": 200.0,
+    "samples": 5,
+    "stationarity_tolerance": 0.001,
+    "threads": 8
+  },
+  "reference_doi": "10.1103/PhysRevA.93.062706",
+  "geometry_source": "https://cccbdb.nist.gov/expgeom2x.asp?casno=7732185",
+  "orientation": "xy_bisector_positive_x",
+  "water_positions_bohr": [
+    [
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      1.1083243728449144,
+      1.4309006225373728,
+      0.0
+    ],
+    [
+      1.1083243728449144,
+      -1.4309006225373728,
+      0.0
+    ]
+  ],
+  "energy_ev_total": 1000.0,
+  "xc": "lda_x + lda_c_pz",
+  "executable_sha256": "596531bfe3fe9cc86355698843d1effd86dbbc2d6434045338f7e4ce16e19488",
+  "version": "octopus 16.4 (git commit af05332d6a)\n",
+  "source_sha256": {
+    "benchmark.py": "b584432b1d04dbcdce954022673801d4ca652554ce53f63764a43adcaa7f8a99",
+    "frame.py": "15e05d8730cd786ab9e7cc41fdcc1b511c4bfb91816c8b87b4fc92b927733b10",
+    "capture.py": "3a3658251dc4b6ffb73c73a193332bc331c968f3b93ba7d5a682d8c585373759"
+  },
+  "pseudopotential_sha256": {
+    "H.psf": "4dfdbd366c5bca6574e3bed824126c6ea9c35cfee9527c160ef80d4e47609a76",
+    "O.psf": "cb4da3bb96fffd638a06310a9bfd34f686b002b143cadf4b4e760206f5604558"
+  },
+  "stages": [
+    {
+      "stage": "collision/gs",
+      "input_sha256": "7f6210673e0c3d06c93b7652f5b02c1462a84159c953f1557524dc757a04c684",
+      "returncode": 0,
+      "seconds": 243.1450784401968,
+      "log_sha256": "9669c394ee825ef5b773bc2814c5e9854a61158ec560b7c7c62a7d40fbd3b5e8"
+    },
+    {
+      "stage": "collision/collision",
+      "input_sha256": "a7b56ef5d037449019973d65e850f9b95cebf7f480e2e1b99c23f0f47e43de27",
+      "returncode": 0,
+      "seconds": 25857.88022082951,
+      "log_sha256": "b725c5ac03092f922183b9e684079b9f1edc8f48b627a0d8a1a487e0f73e4ad8"
+    },
+    {
+      "stage": "mesh/mesh",
+      "input_sha256": "9f996684c840b0cd61e1b6327be8ef5785f1b353afbc43149fefd9e0e215a0fc",
+      "returncode": 0,
+      "seconds": 31.76117084082216,
+      "log_sha256": "3ca9c752b84e992a8b38ca923127218524d436b1e6bfc6a430975b0eb49b02ed"
+    },
+    {
+      "stage": "projectile/clearing",
+      "input_sha256": "fef28bbca5a9d86c1905052084aef74c46e9f830fb7ca3044055910461f3aeb7",
+      "returncode": 0,
+      "seconds": 1728.9476032871753,
+      "log_sha256": "fadce1cee855d8e0aa2fa6c88e1ef5d4ef80012b449ca96ec8de4098d1ac8c6c"
+    }
+  ],
+  "limitations": [
+    "Independent setup; historical pseudopotential identities and geometry are not established.",
+    "Larger rectangular laboratory box precedes the spherical projectile-frame calculation.",
+    "Finite separation, interpolation, grid, timestep, CAP and clearing duration require convergence.",
+    "Cropping removes target electron density; residual electrostatic effects require separation convergence.",
+    "Post-handoff nonlocal pseudopotential Galilean covariance is not established.",
+    "P(1) is a Kohn-Sham determinant regional count inclusive over residual-target states.",
+    "No reference comparison, excitation or exclusive ionization result is claimed."
+  ],
+  "initial_orthogonality_error": 2.604583215770617e-13,
+  "neutral_target_restart_max_amplitude_error": 0.0,
+  "handoff": {
+    "time_au": 299.90000000000003,
+    "origin_bohr": [
+      44.92458254196052,
+      3.3641150911580757,
+      -6.08069801652829e-12
+    ],
+    "velocity_au": [
+      0.19979537719288717,
+      0.0062438603170220505,
+      -3.018903557412647e-14
+    ],
+    "minimum_target_distance_bohr": 43.26582622920947,
+    "laboratory_absorber_clearance_bohr": 28.635884908841923,
+    "retained_electron_norm": 0.46255114242670337,
+    "source_electron_norm": 7.981696643021217,
+    "import_overlap_error": 0.0,
+    "import_density_electron_count": 0.462551142426703
+  },
+  "stationarity_passed": false,
+  "capture_sha256": "27a5c800cc85d8ee9d7ccb617ca7cfbdb86c20c5b62b916b92e234c17a209639"
+}

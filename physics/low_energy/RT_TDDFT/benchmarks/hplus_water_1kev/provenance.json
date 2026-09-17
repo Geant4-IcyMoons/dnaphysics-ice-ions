@@ -1,0 +1,14 @@
+{
+  "source_files": {
+    "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/low_energy/RT_TDDFT/runs/hplus_water_1keV_b2_256cpu_128gb_20260916/case/clearing_0024000/capture.json": "80dd69c6fd18d7ca7be676c12b8a8a1fc005cd9ab46fddc4c4a103759946b77d",
+    "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/low_energy/RT_TDDFT/runs/hplus_water_1keV_b2_256cpu_128gb_20260916/case/collision/td.general/coordinates": "0e2faa3a09ad189bd68ff1b6d2649f41aacf4c38f9d9aef4ccbaac90ce63d47a",
+    "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/low_energy/RT_TDDFT/runs/hplus_water_1keV_b2_256cpu_128gb_20260916/case/result.json": "814da5ccd998dcb2577f1df59ab166d6091e600d42fefe5bc2fa9825eb37fbf7"
+  },
+  "energy_ev": 1000.0,
+  "impact_bohr": 2.0,
+  "handoff_time_au": 299.90000000000003,
+  "orientation": "xy_bisector_positive_x",
+  "stationarity_tolerance": 0.001,
+  "stationarity_frames": 3,
+  "status": "Stationarity passes; numerical convergence and literature comparison outstanding."
+}
