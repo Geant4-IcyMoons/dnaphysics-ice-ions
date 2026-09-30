@@ -210,7 +210,7 @@ def main():
             size, sha = source.stat().st_size, digest(source)
         rows.append((str(relative), str(source), size, sha, digest(target)))
     with (CATALOGUE / "MANIFEST.csv").open("w", newline="") as stream:
-        writer = csv.writer(stream)
+        writer = csv.writer(stream, lineterminator="\n")
         writer.writerow(("catalogue_path", "original_path", "original_bytes", "original_sha256", "catalogue_sha256"))
         writer.writerows(rows)
     elastic_copy()
