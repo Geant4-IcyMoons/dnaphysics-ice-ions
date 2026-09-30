@@ -1,0 +1,27 @@
+{
+  "source_sha256": "c227cfb3242b58f69011002bd7cb26ea8b26e024ebdce4161ccc8120c8fb2db2",
+  "generator_exit": 0,
+  "status": "numerically_complete",
+  "products": [
+    {
+      "path": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/inelastic_dielectric/output/tables/proton_q0_20260914_gy7ofudd/diagnostic_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs/sigma_excitation_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs_emfietzoglou_kyriakou.dat",
+      "size": 141589,
+      "mtime_ns": 1789870381125895000
+    },
+    {
+      "path": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/inelastic_dielectric/output/tables/proton_q0_20260914_gy7ofudd/diagnostic_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs/sigmadiff_ionisation_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs_emfietzoglou_kyriakou.dat",
+      "size": 163906580,
+      "mtime_ns": 1789870380819547027
+    },
+    {
+      "path": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/inelastic_dielectric/output/tables/proton_q0_20260914_gy7ofudd/diagnostic_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs/sigmadiff_excitation_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs_emfietzoglou_kyriakou.dat",
+      "size": 164007679,
+      "mtime_ns": 1789870375952813362
+    },
+    {
+      "path": "/gpfs01/work/yoffegid/dnaphysics-ice-ions/physics/inelastic_dielectric/output/tables/proton_q0_20260914_gy7ofudd/diagnostic_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs/sigma_ionisation_proton_hexagonal_ice_rpwba_dm2022_q0_frozen_hf_barkas_dcs_emfietzoglou_kyriakou.dat",
+      "size": 141589,
+      "mtime_ns": 1789870381429594000
+    }
+  ]
+}
