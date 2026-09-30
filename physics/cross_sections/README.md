@@ -17,6 +17,16 @@ Check every compressed copy without extracting several gigabytes:
 python physics/cross_sections/restore.py --verify-only
 ```
 
+To regenerate the 86-entry ZIP of original DAT files in `Downloads`, with
+source checksums and ZIP CRCs verified before it replaces an earlier copy:
+
+```bash
+python physics/cross_sections/package_hydrogen.py
+```
+
+The ZIP itself exceeds GitHub's regular-file limit. The constituent tables,
+manifest, provenance, and this packaging script are tracked on `ion_modular`.
+
 `H1` is H⁺ and `H0` is neutral hydrogen. Every combination of the two charge
 states, two ice phases, PWBA/RPWBA, and polarization off/on is present: 16 cases,
 64 DAT files. The H⁺ polarization-on products are completed 5% continuations:
