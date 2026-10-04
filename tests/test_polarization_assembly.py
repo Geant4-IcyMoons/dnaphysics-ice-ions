@@ -69,20 +69,24 @@ def test_oos_normalization_per_h2o():
     s = model.epsilon_optical("amorphous")
     W = np.geomspace(1.0e-3, 1.0e6, 1000)
     oos = correction.oos_density(W, s, material="amorphous", include_kshell=True)
-    assert np.isclose(oos.valence_integral_raw * oos.valence_norm, 8.0, rtol=1e-12)
-    assert np.isclose(oos.ok_integral_raw * oos.ok_norm, 2.0, rtol=1e-12)
+    assert oos.valence_norm == oos.ok_norm
+    assert 8.2 < oos.valence_integral_raw * oos.valence_norm < 8.3
+    assert 1.7 < oos.ok_integral_raw * oos.ok_norm < 1.8
     assert np.isclose(oos.total_integral_norm_grid, 10.0, rtol=1e-5)
     assert np.isfinite(oos.total_integral_unique_grid)
     assert oos.df_dW_total_unique.size == np.unique(W).size
 
 
-def test_oos_normalization_is_separate_from_finite_q_kshell_fsum():
+def test_oos_normalization_reuses_unscaled_core_and_common_conversion():
     s = model.epsilon_optical("amorphous")
     W = np.geomspace(1.0e-6, 1.0e8, 5000)
     oos = correction.oos_density(W, s, material="amorphous", include_kshell=True)
-    assert np.isclose(oos.valence_integral_raw * oos.valence_norm, 8.0, rtol=1e-12)
-    assert np.isclose(oos.ok_integral_raw * oos.ok_norm, 2.0, rtol=1e-12)
-    assert np.isclose(oos.total_integral_norm_grid, 10.0, rtol=1e-12)
+    assert oos.valence_norm == oos.ok_norm
+    assert np.isclose(oos.total_integral_norm_grid, 10.0, rtol=1e-5)
+    from physics.inelastic_dielectric.finite_q import optical_input
+    raw = model.oxygen_K_ion_hydrogenic_gos_elf(W, 0., Ep_eV=s.Ep)
+    n, scale, _, _ = optical_input.normalization(s)
+    np.testing.assert_allclose(oos.df_dW_OK, W*raw*scale/(n*optical_input.OPTICAL_SUM_UNIT_EV2_M3), rtol=1e-14)
 
     continuum_strength = model.oxygen_K_hydrogenic_gos_continuum_strength(0.0)
     assert np.isclose(continuum_strength, 1.736914215348305, rtol=3e-6)

@@ -7,7 +7,8 @@ for sources, units, and the distinct Born/Barkas energy-loss cutoffs.
 from dataclasses import dataclass
 from typing import Callable
 import numpy as np
-from physics.constants import C_AU, EH, EV_TO_HA, MC2_eV, a0, ELF_ROLLOFF_COEF, ELF_ROLLOFF_E0_eV
+from physics.constants import C_AU, EH, EV_TO_HA, MC2_eV, a0
+from physics.inelastic_dielectric.finite_q.optical_input import valence_rolloff
 from physics.inelastic_dielectric.finite_q import emfietzoglou_model_finite_q as model
 from physics.inelastic_dielectric.numerics import _simpson_integrate
 
@@ -22,12 +23,7 @@ class PWBAKernel:
     screening_ratio: Callable
 
     def _elf_rolloff_factor(self, Ei):
-        Ei = np.asarray(Ei, dtype=float)
-        factor = np.ones_like(Ei)
-        mask = Ei > ELF_ROLLOFF_E0_eV
-        if np.any(mask):
-            factor[mask] = 1.0 - ELF_ROLLOFF_COEF * np.log10(Ei[mask] / ELF_ROLLOFF_E0_eV)
-        return factor
+        return valence_rolloff(Ei)
 
 
     def projectile_rest_energy_eV(self, projectile_mass_au=None):

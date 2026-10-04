@@ -11,6 +11,7 @@ import pytest
 from scipy.constants import elementary_charge, electron_mass, epsilon_0, hbar
 
 from physics.inelastic_dielectric import generate_cross_sections as gen
+from physics.constants import AVOGADRO, H2O_MOLAR_MASS_G_MOL
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +40,7 @@ def dispersion():
 ])
 def test_single_material_density_and_plasma_energy(phase, rho):
     data = gen._ion_normalization_metadata(phase)
-    number = rho * 1e6 * gen.AVOGADRO / gen.H2O_MOLAR_MASS_G_MOL
+    number = rho * 1e6 * AVOGADRO / H2O_MOLAR_MASS_G_MOL
     plasma = hbar / elementary_charge * np.sqrt(
         10 * number * elementary_charge**2 / (electron_mass * epsilon_0)
     )
@@ -88,8 +89,9 @@ def test_no_kshell_does_not_renormalize_valence_or_change_barkas(phase):
     gen._set_kshell_model("old-optical")
     assert gen._ion_elf_per_molecule_factor(s) == factor
     oos = gen.correction.oos_density(np.geomspace(7.0, 1e6, 1000), s, phase)
-    assert oos.valence_integral_raw * oos.valence_norm == pytest.approx(8.0)
-    assert oos.ok_integral_raw * oos.ok_norm == pytest.approx(2.0)
+    meta = gen._ion_normalization_metadata(phase)
+    assert oos.valence_integral_raw * oos.valence_norm == pytest.approx(meta["optical_valence_electrons_per_H2O"], rel=1e-5)
+    assert oos.ok_integral_raw * oos.ok_norm == pytest.approx(meta["optical_kshell_continuum_electrons_per_H2O"], rel=1e-5)
     assert gen.KSHELL_B_EV == 543.4
     assert gen.KSHELL_ZEFF == 7.7
     assert gen.HYDROGENIC_KSHELL_ROLLOFF_APPLIED is False

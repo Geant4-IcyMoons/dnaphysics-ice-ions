@@ -37,9 +37,18 @@ the Born longitudinal/transverse response.
 
 ## Optical assignment and units
 
-The unchanged optical OOS convention is 8 valence plus 2 core electrons per
-H2O, separate from the finite-q K continuum sum rule. Valence derives from
-W*ELF(W,0); no finite-q ELF is inserted into the nonlinear oscillator.
+The optical OOS comes from the same partitioned q=0 response and common
+per-molecule normalization as Born, in `finite_q/optical_input.py`.
+Valence derives from W*ELF(W,0), including the existing Born valence rolloff;
+the hydrogenic continuum receives no rolloff. The common optical conversion
+gives approximately 8.262 valence and 1.738 continuum electrons per H2O.
+These are model-integrated strengths, not measured shell populations. There
+is no independent 8+2 renormalization. Only the optical limit is used here;
+the oscillator is not supplied a finite-q dielectric function.
+
+Version v2 changes these optical weights, not the encounter ODEs. Equal
+target spectra remove an input discrepancy but do not equate the oscillator
+leading response with the finite-q Born DCS or validate the spectral mapping.
 
     d_sigma_pol/dW = (df/dW)/W * 2*pi*a0^2 * integral b db (DeltaE_full-DeltaE_0)
 

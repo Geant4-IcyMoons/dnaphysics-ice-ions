@@ -164,9 +164,11 @@ python -m physics.inelastic_dielectric.jobs.submit_campaign \
 These outputs are for diagnosis only, not transport or physical validation.
 
 The nonlinear replacement leaves the Born kernels, densities and target
-response unchanged. The ion K continuum remains unscaled; molecular allocation and
-polarization OOS normalization remain separate. The latter uses 8 valence
-plus 2 core electrons. Missing core bound excitations are not invented.
+response unchanged. Nonlinear polarization v2 shares Born's partitioned optical
+input and common molecular normalization; the ion K continuum is not separately
+rescaled. Missing core bound excitations are not invented. The
+[optical audit](benchmarks/optical_elf/README.md) checks the shared spectrum,
+normalization and logarithmic moment against the Matias figure-derived input.
 
 The full-minus-leading oscillator correction remains an experimental optical
 spectral approximation. It includes higher even and odd terms, not just

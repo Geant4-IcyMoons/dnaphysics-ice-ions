@@ -25,8 +25,10 @@ ICRU or Matias. The reference quadrature uses 240001 logarithmic nodes to
 
 See [KSHELL_MODEL.md](../k_shell/README.md) for the finite-q molecular
 allocation, continuum convention, numerical checks, and unresolved physical
-bound-excitation contribution. Barkas keeps its separate optical OOS
-normalization of 8 valence + 2 core electrons. The fitted plasma energies
+bound-excitation contribution. Nonlinear polarization v2 shares the Born
+optical input and normalization instead of independently forcing 8+2. This
+change requires regeneration only of oscillator/polarization spectral products
+and dependent simulations, not Born-only tables. The fitted plasma energies
 remain spectral parameters, not extra material densities.
 
 ## Export and transport numerics

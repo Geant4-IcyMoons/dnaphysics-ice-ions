@@ -20,6 +20,9 @@ python -m pytest -q tests/test_ion_optical_normalization.py tests/test_hydrogeni
 python -m physics.inelastic_dielectric.k_shell.benchmarking.audit_finite_q_sum_rule
 ```
 
-The joint molecular allocation, the unscaled K continuum, and the separate
-polarization OOS normalization are documented in [validation](../validation/README.md).
+`optical_input.py` holds the common Born/oscillator optical normalization and
+the partitioned q=0 spectrum used by polarization. The unchanged Born
+normalization and valence rolloff have one implementation, not duplicate fits.
+The joint molecular allocation and unscaled K continuum are documented in
+[validation](../validation/README.md).
 Optical diagnostic figures use this component's ignored `benchmarking/plots/` directory.

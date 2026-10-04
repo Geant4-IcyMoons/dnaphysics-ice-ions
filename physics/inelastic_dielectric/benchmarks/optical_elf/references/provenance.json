@@ -1,0 +1,52 @@
+{
+  "doi": "10.1103/ksdx-mnd7",
+  "source_url": "https://research.science.eus/documentos/6900abd7ee6cd0098b614df1/f/6900abd7ee6cd0098b614df2.pdf",
+  "pdf_sha256": "9f30facce1622105babf78a744f1bb285896800bd5ee52568665d9f0d127c969",
+  "figure": "1, PDF page 3",
+  "reference_kind": "MELF-GOS fits, not raw measurements",
+  "method": "Colored vector dash endpoints; main/inset identified by linewidth 1.336/0.980 PDF points, with each clip box enforced. Linear ELF/log energy in main panel, log/log in inset. Horizontal annotations excluded. No normalization imposed.",
+  "main_calibration_pdf_points": {
+    "10_eV_x": 119.231,
+    "100_eV_x": 289.764,
+    "ELF_0_y": 204.458,
+    "ELF_0.8_y": 51.033
+  },
+  "inset_calibration_pdf_points": {
+    "100_eV_x": 217.899,
+    "32000_eV_x": 285.483,
+    "ELF_0.01_y": 62.34,
+    "ELF_1e-10_y": 129.751
+  },
+  "density_g_cm3": 0.94,
+  "limits": "Finite-resolution figure extraction, not author-supplied numerical data. Gaps between dashes are interpolated. No extrapolation below/above the extracted domain; reference I is a truncated figure estimate only.",
+  "curves": {
+    "amorphous_optical": {
+      "points": 132,
+      "energy_range_eV": [
+        6.463194786689726,
+        98.91628064769208
+      ]
+    },
+    "amorphous_tail": {
+      "points": 72,
+      "energy_range_eV": [
+        111.19225444689754,
+        29212.061309050874
+      ]
+    },
+    "hexagonal_optical": {
+      "points": 173,
+      "energy_range_eV": [
+        7.377184960110076,
+        99.87181052965838
+      ]
+    },
+    "hexagonal_tail": {
+      "points": 66,
+      "energy_range_eV": [
+        115.50652254827938,
+        30120.99611080163
+      ]
+    }
+  }
+}

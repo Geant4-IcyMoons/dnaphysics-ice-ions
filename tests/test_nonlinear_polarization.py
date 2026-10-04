@@ -41,12 +41,15 @@ def test_radial_field_gauss_law_and_derivative(element, charge):
 
 
 @pytest.mark.parametrize("phase", ["amorphous", "hexagonal"])
-def test_oos_normalization_remains_eight_plus_two(phase):
+def test_oos_normalization_matches_born_allocation(phase):
     s = gen.model.epsilon_optical(phase)
-    w = np.geomspace(1e-6, 1e8, 50000)
+    w = np.unique(np.r_[np.geomspace(1., 1e9, 240001), 7., 10., 13., 17., 32.,
+                           gen.KSHELL_B_EV, np.nextafter(gen.KSHELL_B_EV, np.inf)])
     oos = bd.oos_density(w, s, phase)
-    assert np.trapezoid(oos.df_dW_valence, w) == pytest.approx(8., abs=1e-10)
-    assert np.trapezoid(oos.df_dW_OK, w) == pytest.approx(2., abs=1e-10)
+    meta = gen._ion_normalization_metadata(phase)
+    assert np.trapezoid(oos.df_dW_valence, w) == pytest.approx(meta["optical_valence_electrons_per_H2O"], rel=1e-5)
+    assert np.trapezoid(oos.df_dW_OK, w) == pytest.approx(meta["optical_kshell_continuum_electrons_per_H2O"], rel=1e-5)
+    assert oos.valence_norm == oos.ok_norm
 
 
 @pytest.mark.parametrize("relativistic", [False, True])
@@ -88,6 +91,8 @@ def test_generator_exports_corrected_totals_and_metadata(tmp_path, monkeypatch, 
         assert gen._dcs_data_from_npz(saved)["barkas_model_metadata"] == sb.metadata(load_density(element, charge))
         wrong = dict(saved)
     wrong["barkas_model"] = "stale"
+    assert not gen._npz_matches_params(wrong, NE=12, Nq=128, T_list=t, include_barkas_dcs=True)
+    wrong["barkas_model"] = "frozen-full-nonlinear-oscillator-v1"
     assert not gen._npz_matches_params(wrong, NE=12, Nq=128, T_list=t, include_barkas_dcs=True)
 
 

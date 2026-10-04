@@ -7,11 +7,11 @@ There is no cubic/Salvat production correction in this module.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
 
 import numpy as np
 
 from physics.inelastic_dielectric.finite_q import emfietzoglou_model_finite_q as model
+from physics.inelastic_dielectric.finite_q import optical_input
 
 RE_CLASSICAL_CM = 2.8179403205e-13
 ALPHA_FINE = 7.2973525643e-3
@@ -128,45 +128,12 @@ def interaction_charge(T_total_eV, nuclear_charge, projectile_mass_me, charge_mo
     raise ValueError("charge_mode must be bare, zeff, or explicit.")
 
 
-def _valence_oos_raw(W_eV, s):
-    W = np.asarray(W_eV, dtype=float)
-    e1 = model.epsilon1_valence_E0(W, s)["total"]
-    e2 = model.epsilon2_valence_E0(W, s)["total"]
-    denom = np.where(e1 * e1 + e2 * e2 > 0.0, e1 * e1 + e2 * e2, np.finfo(float).tiny)
-    elf = e2 / denom
-    df = 2.0 * H2O_Z_MOL * W * elf / (np.pi * float(s.Ep) ** 2)
-    return np.where(np.isfinite(df) & (df > 0.0), df, 0.0)
-
-
-def _ok_oos_raw(W_eV):
-    W = np.asarray(W_eV, dtype=float)
-    df = model.oxygen_K_hydrogenic_gos_df_dE(W, 0.0)
-    return np.where(np.isfinite(df) & (df > 0.0), df, 0.0)
-
-
-@lru_cache(maxsize=16)
-def _oos_norms(material, Ep_eV, include_kshell):
-    s = model.epsilon_optical(material)
-    W = np.geomspace(1.0e-6, 1.0e8, 50000)
-    raw_val = _valence_oos_raw(W, s)
-    val_int = float(np.trapezoid(raw_val, W))
-    if not np.isfinite(val_int) or val_int <= 0.0:
-        raise RuntimeError("Cannot normalize polarization valence OOS density.")
-    val_norm = 8.0 / val_int
-
-    ok_int = 0.0
-    ok_norm = 0.0
-    if include_kshell:
-        raw_ok = _ok_oos_raw(W)
-        ok_int = float(np.trapezoid(raw_ok, W))
-        if not np.isfinite(ok_int) or ok_int <= 0.0:
-            raise RuntimeError("Cannot normalize polarization O K-shell OOS density.")
-        ok_norm = 2.0 / ok_int
-    total_norm_grid = float(np.trapezoid(val_norm * raw_val + ok_norm * _ok_oos_raw(W), W))
-    return val_int, ok_int, val_norm, ok_norm, total_norm_grid
-
-
 def oos_density(W_eV, s, material, include_kshell=True, fail_if_missing_k=True):
+    """Born's partitioned q=0 OOS, with its common valence/core scale.
+
+    Raw diagnostic integrals are per-molecule electron strengths before that
+    common scale, including the existing valence rolloff. No 8+2 refit occurs.
+    """
     W = np.asarray(W_eV, dtype=float)
     if W.size == 0:
         raise ValueError("Polarization OOS requires a nonempty W grid.")
@@ -176,13 +143,21 @@ def oos_density(W_eV, s, material, include_kshell=True, fail_if_missing_k=True):
         raise RuntimeError(
             "Polarization OOS normalization requires O K-shell strength when W reaches the O K edge."
         )
-    val_int, ok_int, val_norm, ok_norm, total_norm_grid = _oos_norms(material, float(s.Ep), bool(include_kshell))
-    val = val_norm * _valence_oos_raw(W, s)
-    ok = ok_norm * _ok_oos_raw(W) if include_kshell else np.zeros_like(W)
+    if s.material != material:
+        raise ValueError("Optical model and requested ice phase differ")
+    _, scale, _, _ = optical_input.normalization(s)
+    val_int, ok_int = optical_input.reference_integrals(
+        s.Ep, s.Bmin, tuple(s.excitations), tuple(s.ionizations), material)
+    val_norm = scale
+    ok_norm = scale if include_kshell else 0.
+    total_norm_grid = val_norm*val_int + ok_norm*ok_int
+    raw_val, raw_ok = optical_input.raw_oos_components(W, s)
+    val, ok = val_norm*raw_val, ok_norm*raw_ok
     total = val + ok
     W_unique = np.unique(W[np.isfinite(W) & (W > 0.0)])
-    val_unique = val_norm * _valence_oos_raw(W_unique, s)
-    ok_unique = ok_norm * _ok_oos_raw(W_unique) if include_kshell else np.zeros_like(W_unique)
+    _, indices = np.unique(W, return_index=True)
+    val_unique = val.ravel()[indices]
+    ok_unique = ok.ravel()[indices]
     total_unique = val_unique + ok_unique
     total_unique_int = float(np.trapezoid(total_unique, W_unique)) if W_unique.size > 1 else float("nan")
     return OOSDensity(

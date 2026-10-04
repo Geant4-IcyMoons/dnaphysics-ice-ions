@@ -28,9 +28,15 @@ ICE_TYPE=amorphous python -m physics.inelastic_dielectric.generate_cross_section
 The existing `--include-barkas-dcs` switch and `barkas_*` data names remain
 for active job/table consumers. They now select/store nonlinear polarization,
 including higher even and odd terms, not a pure cubic Barkas term. Correction-off
-runs retain Born. The model metadata is `frozen-full-nonlinear-oscillator-v1`.
+runs retain Born. The model metadata is `frozen-full-nonlinear-oscillator-v2`,
+with `polarization_optical_input=partitioned-born-optical-per-H2O-v1`.
 Older corrected caches and energy patches are rejected, not relabelled.
-Regenerate polarization-on tables; Born-only tables are unchanged.
+Regenerate polarization-on tables; Born-only tables are unchanged. The v2
+change shares Born's partitioned q=0 target spectrum and normalization,
+replacing the unpartitioned 8+2 oscillator input. The nonlinear equations,
+projectile potentials, kinematics, and channel-assignment prescription are
+unchanged. Recompute linear/full oscillator spectra as well when used in
+separate diagnostic products. Old simulation output cannot be relabelled v2.
 Use new output/cache directories, or explicitly replace old table ranges
 with `--no-merge-energy-patches`. Do not merge old cubic and nonlinear patches.
 

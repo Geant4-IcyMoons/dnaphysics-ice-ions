@@ -52,9 +52,9 @@ The GOS-to-ELF conversion is
 its existing phase-specific optical-sum normalization to obtain microscopic
 cross sections per H2O at the physical material density. The finite-q change
 does not alter that density normalization, Born prefactors, projectile
-kinematics, or the separate Barkas OOS 8+2 normalization. Barkas does reuse
-the corrected optical K-shell shape, so its K-shell-containing tables also
-become stale.
+kinematics. Nonlinear polarization v2 reuses the same optical K continuum
+and common molecular conversion, with no independent two-electron rescaling.
+Changes to that shared input invalidate the corresponding corrected tables.
 
 ## Checks and limits
 

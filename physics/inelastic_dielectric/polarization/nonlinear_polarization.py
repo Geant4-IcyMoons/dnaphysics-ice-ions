@@ -15,8 +15,9 @@ import numpy as np
 
 from physics.inelastic_dielectric.projectile_potentials.projectile_form_factors import DEFAULT_WORKERS, load_density
 from physics.inelastic_dielectric.polarization import nonlinear_oscillator
+from physics.inelastic_dielectric.finite_q.optical_input import OPTICAL_INPUT_VERSION
 
-MODEL = "frozen-full-nonlinear-oscillator-v1"
+MODEL = "frozen-full-nonlinear-oscillator-v2"
 QUADRATURE_RTOL = nonlinear_oscillator.RELATIVE_TOLERANCE
 _STOP_EVENT = None
 
@@ -29,6 +30,8 @@ def _init_polarization_worker(stop_event):
 def metadata(density=None):
     return {
         "barkas_model": MODEL,
+        "polarization_optical_input": OPTICAL_INPUT_VERSION,
+        "polarization_oos_normalization": "shared-Born-valence-and-K-continuum",
         "polarization_response": "full_minus_leading",
         "polarization_contains_higher_even_and_odd": True,
         "polarization_cubic_backend_available": False,
